@@ -6,7 +6,7 @@
 import { PHASE, GEO } from '../../../shared/constants.js';
 import { deriveSeed } from '../../sim/rng.js';
 import { withBounties } from '../waves.js';
-import { planUnite } from '../unite.js';
+import { planUnites } from '../unite.js';
 import { FieldRunner, DeadBattle } from '../fields.js';
 import { DELAYS } from './common.js';
 
@@ -155,14 +155,14 @@ export class MatchCombat {
   }
 
   /**
-   * After the COMBAT_END pause: 联防 or SETTLE. The plan is made now, from the players still in — a player who quit
+   * After the COMBAT_END pause: 联防 or SETTLE. The plans are made now, from the players still in — a player who quit
    * during the last field or the pause (中途退出 = eliminated, board cleared) is neither a helper nor a leaker whose
-   * enemies re-enter.
+   * enemies re-enter. 2V2: one plan per team (planUnites), run as separate 联防 fields.
    */
   _afterCombat() {
     if (this.phase !== PHASE.COMBAT) return;
-    const plan = planUnite(this, this.lastResults);
-    if (plan) this.startUnite(plan);
-    else this.settle(null, null);
+    const plans = planUnites(this, this.lastResults);
+    if (plans.length) this.startUnite(plans);
+    else this.settle([], null);
   }
 }

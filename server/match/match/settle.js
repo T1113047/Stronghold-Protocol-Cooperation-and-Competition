@@ -11,33 +11,51 @@ import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
 
 export class MatchSettle {
-  settle(plan, uniteResult) {
+  /**
+   * `plans`: the round's 联防 plans (2V2: one per team; coop: at most one). `uniteResults`: each plan's battle result,
+   * in the same order (null when no 联防 ran).
+   * @param {any[]|any|null} plans
+   * @param {any[]|any|null} uniteResults
+   */
+  settle(plans, uniteResults) {
     this.phase = PHASE.SETTLE;
     this.runner = null;
     this._stopClientCombat();
     // the pending in-battle gains the views showed become persistent below (alive players) or lapse (DESIGN §20.15)
     for (const ps of this.order) if (ps.pendingLayerGains) { ps.pendingLayerGains = null; ps.dirty(); }
+    const list = Array.isArray(plans) ? plans : (plans ? [plans] : []);
+    const results = Array.isArray(uniteResults) ? uniteResults : (uniteResults ? [uniteResults] : []);
     const cap = this.gd.lpCapPerRound;
-    // a 联防 battle that could not run at all (synthetic result) must not wipe the leakers' losses: charge their own leaks
-    const uniteRan = !!(plan && uniteResult && !uniteResult.synthetic);
-    const survivors = uniteRan ? uniteSurvivors(plan, uniteResult) : null;
+    // a 联防 battle that could not run at all (synthetic result) must not wipe the leakers' losses: charge their own
+    // leaks. 2V2: every team's 联防 survivors merge into one map (each leaker is billed by its own team's battle).
+    const survivors = new Map();
+    let uniteRan = false;
+    for (let i = 0; i < list.length; i++) {
+      const res = results[i];
+      if (!res || res.synthetic) continue;
+      uniteRan = true;
+      for (const [pid, n] of uniteSurvivors(list[i], res)) survivors.set(pid, (survivors.get(pid) || 0) + n);
+    }
+    const allLeakers = list.flatMap((p) => p.leakers);
+    const allHelpers = list.flatMap((p) => p.helpers);
     // The 联防's outcome as data for the SETTLE view (m.public.uniteResult, views.js; GitHub #235, PR #112 by @Convey123):
     // each client pops the official result box from it (ui/gameLogic/phases.js uniteResultBox) — `through` = the leakers'
     // enemies that still got through (uncapped; only decides whether 「全员无伤！」 is true), `losses` = every alive
     // player's own LP charge of this round, the same `loss` deducted below, so the box and the LP bar never disagree. A
     // leaker's own battle leaks are not its charge in a 联防 round, which is why the client cannot work the number out
     // itself. No ticker line: the official reports the outcome in the one dialog. null when no 联防 resolved.
-    this.uniteResultView = uniteRan && plan.leakers.length ? {
-      through: plan.leakers.reduce((n, lk) => n + Math.max(0, survivors.get(lk.playerId) || 0), 0),
-      helpers: plan.helpers.map((p) => p.playerId),
-      leakers: plan.leakers.map((p) => p.playerId),
+    this.uniteResultView = uniteRan && allLeakers.length ? {
+      through: allLeakers.reduce((n, lk) => n + Math.max(0, survivors.get(lk.playerId) || 0), 0),
+      helpers: allHelpers.map((p) => p.playerId),
+      leakers: allLeakers.map((p) => p.playerId),
       losses: {},
     } : null;
     const alive = this.alivePlayers();
     for (const ps of alive) {
       const r = this.lastResults.get(ps.playerId) || { leaked: [], perfect: true, coins: 0, layerGains: {}, killed: 0, damageDealt: 0 };
       const counted = (r.leaked || []).filter((l) => l && l.counted !== false).length;
-      const loss = uniteRan && plan.leakers.includes(ps) ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
+      const isLeaker = list.some((pl) => pl.leakers.includes(ps));
+      const loss = uniteRan && isLeaker ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
       if (this.uniteResultView) this.uniteResultView.losses[ps.playerId] = loss;
       ps.lp -= loss;
       ps.stats.lpLost += loss;
@@ -48,11 +66,21 @@ export class MatchSettle {
       if (r.perfect !== false && counted === 0) ps.stats.perfectRounds++;
       // bounty coins (own battle + unite kills) are credited to the next prep
       let coins = Math.max(0, Math.trunc(Number(r.coins) || 0));
-      const up = uniteResult && uniteResult.perPlayer && uniteResult.perPlayer[ps.playerId];
-      if (up) {
-        coins += Math.max(0, Math.trunc(Number(up.coins) || 0));
-        ps.stats.dmgDealt += Number(up.damageDealt) || 0;
-        ps.stats.kills += Number(up.killed) || 0;
+      // 2V2: merge the per-player entries of every 联防 battle this player ran (coop: the single one)
+      const up = { coins: 0, damageDealt: 0, killed: 0 };
+      let hasUp = false;
+      for (const res of results) {
+        const e = res && res.perPlayer && res.perPlayer[ps.playerId];
+        if (!e) continue;
+        hasUp = true;
+        up.coins += Math.max(0, Math.trunc(Number(e.coins) || 0));
+        up.damageDealt += Number(e.damageDealt) || 0;
+        up.killed += Number(e.killed) || 0;
+      }
+      if (hasUp) {
+        coins += up.coins;
+        ps.stats.dmgDealt += up.damageDealt;
+        ps.stats.kills += up.killed;
       }
       // perfect-payout bounties (战术特训): own phase perfect
       for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
@@ -70,7 +98,10 @@ export class MatchSettle {
         this.dispatch(ps, 'onLayers', { bondId, from: before, to: ps.layers[bondId], reason: 'battle' });
       }
       this._charDamageTickers(ps, r);
-      this.dispatch(ps, 'onBattleResult', { result: r, lpLoss: loss, perfect: counted === 0 && r.perfect !== false, unite: uniteResult || null });
+      // the 联防 battle of the player's own team (coop: the single one) — null when none ran
+      let uniteForPs = null;
+      for (let i = 0; i < list.length; i++) if (list[i].team === this.teamIdOf(ps)) { uniteForPs = results[i] || null; break; }
+      this.dispatch(ps, 'onBattleResult', { result: r, lpLoss: loss, perfect: counted === 0 && r.perfect !== false, unite: uniteForPs });
       ps.recompute();
     }
     for (const ps of alive) {

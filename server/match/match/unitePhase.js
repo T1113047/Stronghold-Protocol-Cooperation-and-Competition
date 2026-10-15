@@ -13,29 +13,38 @@ import { msg } from '../../../shared/i18n.js';
 import { onStartUnite } from '../botEmotes.js';
 
 export class MatchUnite {
-  startUnite(plan) {
-    if (this.clientCombat) { this._startUniteClient(plan); return; }
+  /** `plans`: one 联防 plan per team (2V2 'versus': up to two fields, `u0`/`u1`; coop: one field, `u`). */
+  startUnite(plans) {
+    if (this.clientCombat) { this._startUniteClient(plans); return; }
     this.phase = PHASE.UNITE;
-    this.unitePlan = plan;
+    this.unitePlans = plans;
+    this.unitePlan = mergedUniteView(plans);
+    const multi = plans.length > 1;
     const limit = this.wave ? this.wave.timeLimit : 60;
-    const battle = this.newBattle(this._uniteOpts(plan, limit));
-    this.fields = [{ fieldId: 'u', kind: 'unite', players: plan.helpers.map((p) => p.playerId), battle, live: true }];
+    this.fields = plans.map((plan, i) => ({
+      fieldId: multi ? `u${i}` : 'u', kind: 'unite', players: plan.helpers.map((p) => p.playerId),
+      battle: this.newBattle(this._uniteOpts(plan, limit, i, multi)), live: true,
+    }));
     this.deadline = this.sched.instant ? 0 : this.sched.now() + Math.round((limit / this.gameSpeed) * 1000);
     this._defaultWatch();
     this.markPublic();
-    this.tickerText(msg('联防阶段：{names} 迎战突破防线的敌人', { names: plan.helpers.map((p) => p.name) }), FLOW_TICKER_PRIORITY);
-    onStartUnite(this, plan); // an AI helper says "合作愉快" once on the open of a 联防 (enabled by default; SP_BOT_EMOTES=0 silences it)
+    this.tickerText(msg('联防阶段：{names} 迎战突破防线的敌人', { names: plans.flatMap((p) => p.helpers).map((p) => p.name) }), FLOW_TICKER_PRIORITY);
+    // an AI helper says "合作愉快" once on the open of a 联防 (enabled by default; SP_BOT_EMOTES=0 silences it)
+    for (const plan of plans) onStartUnite(this, plan);
     this._uniteLeftKey = null;
     this.runner = new FieldRunner(this, this.fields, {
       onTick: (runner) => this._uniteTick(runner),
       onDone: (runner) => {
         if (this.phase !== PHASE.UNITE) return;
-        const res = runner.resultOf(this.fields[0]);
-        this._collectSimErrors(this.fields[0], res);
-        this.fields[0].live = false;
+        const results = this.fields.map((f) => {
+          const res = runner.resultOf(f);
+          this._collectSimErrors(f, res);
+          f.live = false;
+          return res;
+        });
         this.deadline = 0;
         this.markPublic();
-        this.later(this.scaled(DELAYS.COMBAT_END), () => this.settle(plan, res));
+        this.later(this.scaled(DELAYS.COMBAT_END), () => this.settle(plans, results));
       },
     });
     this.runner.start();
@@ -47,10 +56,10 @@ export class MatchUnite {
    * escaped-level map is withdrawn). The field meta and the client-run spec carry the match stageId, so every viewer
    * draws the battlefield the boards stand on.
    */
-  _uniteOpts(plan, limit) {
+  _uniteOpts(plan, limit, i = 0, multi = false) {
     const { wave, players } = uniteBattleOpts(this, plan, limit);
     return {
-      seed: deriveSeed(this.seed, `u:${this.round}`),
+      seed: deriveSeed(this.seed, multi ? `u:${this.round}:${i}` : `u:${this.round}`),
       kind: 'unite',
       modeId: this.modeId,
       round: this.round,
@@ -62,41 +71,52 @@ export class MatchUnite {
       routes: wave.routes,
       sharedBoss: null,
       flags: { layerGainsEnabled: false, ...this.gd.dp },
-      fieldId: 'u',
+      fieldId: multi ? `u${i}` : 'u',
       // leaked enemies re-enter with the stats they had: the round template's stat overrides apply again
       enemyOverrides: this.wave && this.wave.overrides ? this.wave.overrides : {},
       waveId: wave.templateId,
     };
   }
 
-  _startUniteClient(plan) {
+  _startUniteClient(plans) {
     this.phase = PHASE.UNITE;
-    this.unitePlan = plan;
+    this.unitePlans = plans;
+    this.unitePlan = mergedUniteView(plans);
+    const multi = plans.length > 1;
     const limit = this.wave ? this.wave.timeLimit : 60;
-    const f = this._ccField({ fieldId: 'u', kind: 'unite', players: plan.helpers.map((p) => p.playerId), opts: this._uniteOpts(plan, limit) });
+    const fields = plans.map((plan, i) => this._ccField({ fieldId: multi ? `u${i}` : 'u', kind: 'unite', players: plan.helpers.map((p) => p.playerId), opts: this._uniteOpts(plan, limit, i, multi) }));
     this.deadline = this.sched.instant ? 0 : this.sched.now() + Math.round((limit / this.gameSpeed) * 1000);
     this.watchers.clear();
-    this._launch([f]);
-    // helpers and everyone else (as observers, spectator seats included) simulate the same 联防 spec locally
+    this._launch(fields);
+    // helpers and everyone else (as observers, spectator seats included) simulate the 联防 spec locally. 2V2: every
+    // viewer runs/watches the 联防 field of its own team (a viewer with no team on the field falls back to the first).
     for (const ps of this._viewers()) {
-      this.watchers.set(ps.playerId, 'u');
-      this._sendStart(ps.playerId, f, { watch: !f.players.includes(ps.playerId) });
+      const f = this._uniteFieldFor(ps) || fields[0];
+      if (!f) continue;
+      const own = f.players.includes(ps.playerId);
+      this.watchers.set(ps.playerId, f.fieldId);
+      this._sendStart(ps.playerId, f, { watch: !own });
     }
     this.markPublic();
-    this.tickerText(msg('联防阶段：{names} 迎战突破防线的敌人', { names: plan.helpers.map((p) => p.name) }), FLOW_TICKER_PRIORITY);
+    this.tickerText(msg('联防阶段：{names} 迎战突破防线的敌人', { names: plans.flatMap((p) => p.helpers).map((p) => p.name) }), FLOW_TICKER_PRIORITY);
+  }
+
+  /** The running 联防 field of ps's own team, or null (coop: the single field). */
+  _uniteFieldFor(ps) {
+    const plans = this.unitePlans || [];
+    const t = this.teamIdOf(ps);
+    const i = plans.findIndex((pl) => pl.team === t);
+    return i >= 0 ? (this.fields[i] || null) : null;
   }
 
   _finishUniteClient() {
     if (this.phase !== PHASE.UNITE) return;
-    const f = this.fields[0];
-    const res = f.result;
-    this._collectSimErrors(f, res);
+    const plans = this.unitePlans || [];
+    const results = this.fields.map((f) => { const res = f.result; this._collectSimErrors(f, res); f.live = false; return res; });
     this._stopClientCombat();
-    f.live = false;
     this.deadline = 0;
     this.markPublic();
-    const plan = this.unitePlan;
-    this.later(this.scaled(DELAYS.COMBAT_END), () => this.settle(plan, res));
+    this.later(this.scaled(DELAYS.COMBAT_END), () => this.settle(plans, results));
   }
 
   /**
@@ -112,10 +132,13 @@ export class MatchUnite {
    * @returns {number|null}
    */
   _uniteLeft(ps) {
-    const plan = this.unitePlan;
-    if (this.phase !== PHASE.UNITE || !plan || !ps || !plan.leakers.includes(ps)) return null;
+    const plans = this.unitePlans;
+    if (this.phase !== PHASE.UNITE || !plans || !ps) return null;
+    const idx = plans.findIndex((pl) => pl.leakers.includes(ps));
+    if (idx < 0) return null;
+    const plan = plans[idx];
     const pid = ps.playerId;
-    const f = this.fields.find((x) => x && x.kind === 'unite') || null;
+    const f = this.fields[idx] || this.fields.find((x) => x && x.kind === 'unite') || null;
     let res = null;
     if (f && f.cc) res = f.done ? f.result : null;
     else if (f && f.battle && f.battle.finished) { try { res = f.battle.result(); } catch { res = null; } }
@@ -143,12 +166,35 @@ export class MatchUnite {
 
   /** Server-run 联防 (streaming mode): refresh m.public about once a game second when a leaker's count moved. */
   _uniteTick(runner) {
-    const f = runner && runner.fields ? runner.fields[0] : null;
-    if (!f || !f.battle || runner.ticks % 30 !== 0) return;
+    const fields = runner && runner.fields ? runner.fields : null;
+    if (!fields || runner.ticks % 30 !== 0) return;
     let key = '';
-    try { key = JSON.stringify(uniteLeft(f.battle)); } catch { key = ''; }
+    for (const f of fields) {
+      if (!f || !f.battle) continue;
+      try { key += JSON.stringify(uniteLeft(f.battle)); } catch { /* ignore */ }
+    }
     if (key === this._uniteLeftKey) return;
     this._uniteLeftKey = key;
     this.markPublic();
   }
+}
+
+/**
+ * The union of the round's 联防 plans (m.public `unite`, statusOf, and the `m.unitePlan` field the tests/UI read;
+ * one plan in coop, one per team in 2V2). Carries the full plan shape — `leaked` and `notReentered` merged — so
+ * uniteSurvivors() and existing readers keep working; `team` stays set only when there is a single plan.
+ * @param {any[]} plans
+ * @returns {object | null}
+ */
+function mergedUniteView(plans) {
+  if (!plans.length) return null;
+  const notReentered = new Map();
+  for (const p of plans) for (const [pid, n] of p.notReentered) notReentered.set(pid, (notReentered.get(pid) || 0) + n);
+  return {
+    helpers: plans.flatMap((p) => p.helpers),
+    leakers: plans.flatMap((p) => p.leakers),
+    leaked: plans.flatMap((p) => p.leaked),
+    notReentered,
+    team: plans.length === 1 ? plans[0].team : null,
+  };
 }

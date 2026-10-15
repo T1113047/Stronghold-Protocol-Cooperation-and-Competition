@@ -259,6 +259,7 @@ export class MatchPhases {
     this.fields = [];
     this.watchers.clear();
     this.unitePlan = null;
+    this.unitePlans = null;
     this.uniteResultView = null;
     this.sp = null;
     this.wave = null;

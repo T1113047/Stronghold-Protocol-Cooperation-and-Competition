@@ -37,19 +37,18 @@ import { buildUniteWave } from './waves.js';
 import { layerGainRoom } from '../../shared/constants.js';
 
 /**
+ * The 联防 plan of ONE group of players — a single team (solo/coop: the whole roster). Null when the group has no
+ * leaker, no perfect player, or the match is solo.
  * @param {import('./Match.js').Match} m
  * @param {Map<string, object>} results playerId → BattleResult.perPlayer entry of the player's own combat
+ * @param {any[]} [players] the group to plan for (default: every alive player)
  * @returns {null | { helpers: any[], leakers: any[], leaked: object[], notReentered: Map<string, number> }}
  */
-export function planUnite(m, results) {
+export function planUnite(m, results, players = m.alivePlayers()) {
   if (m.isSolo) return null;
-  // 2V2 ('versus', 阶段 2 进行中): 联防 must never pair a player with an OPPONENT. Per-team 联防 fields land in
-  // step 2.2; until then a versus match runs no 联防 at all (better none than a cross-team one).
-  if (m.isVersus) return null;
-  const alive = m.alivePlayers();
   const leakers = [];
   const perfects = [];
-  for (const ps of alive) {
+  for (const ps of players) {
     const r = results.get(ps.playerId);
     if (!r) continue;
     const counted = (r.leaked || []).filter((l) => l && l.counted !== false);
@@ -81,6 +80,27 @@ export function planUnite(m, results) {
     }
   }
   return { helpers, leakers, leaked, notReentered };
+}
+
+/**
+ * The round's 联防 plans, one per team (2V2 'versus': each team plans its own — never a cross-team 联防; solo: none;
+ * coop: at most one). Each plan carries its `team` so the fields/views can be matched back to the players.
+ * @returns {Array<{ helpers: any[], leakers: any[], leaked: object[], notReentered: Map<string, number>, team: number }>}
+ */
+export function planUnites(m, results) {
+  if (m.isSolo) return [];
+  const byTeam = new Map();
+  for (const ps of m.alivePlayers()) {
+    const t = m.teamIdOf(ps);
+    if (!byTeam.has(t)) byTeam.set(t, []);
+    byTeam.get(t).push(ps);
+  }
+  const plans = [];
+  for (const t of [...byTeam.keys()].sort((a, b) => a - b)) {
+    const plan = planUnite(m, results, byTeam.get(t));
+    if (plan) plans.push({ ...plan, team: t });
+  }
+  return plans;
 }
 
 /**

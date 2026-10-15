@@ -388,47 +388,70 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
   wrap(m, '_afterCombat', function (orig) {
     if (m.phase === PHASE.COMBAT) check('unite trigger', () => {
       const counted = (pid) => ((m.lastResults.get(pid) || {}).leaked || []).filter((l) => l && l.counted !== false).length;
-      const alive = m.alivePlayers();
-      const leak = alive.some((p) => counted(p.playerId) > 0);
-      const perfect = alive.some((p) => counted(p.playerId) === 0);
-      expectUnite = { round: m.round, expect: !m.isSolo && leak && perfect };
+      // 2V2: 联防 is decided per team — any team with both a leaker and a perfect player fields one
+      const byTeam = new Map();
+      for (const p of m.alivePlayers()) {
+        const t = m.teamIdOf(p);
+        if (!byTeam.has(t)) byTeam.set(t, []);
+        byTeam.get(t).push(p);
+      }
+      let expect = false;
+      for (const members of byTeam.values()) {
+        const leak = members.some((p) => counted(p.playerId) > 0);
+        const perfect = members.some((p) => counted(p.playerId) === 0);
+        if (leak && perfect) expect = true;
+      }
+      expectUnite = { round: m.round, expect: !m.isSolo && expect };
     });
     return orig();
   });
-  wrap(m, 'startUnite', function (orig, plan) {
+  wrap(m, 'startUnite', function (orig, plans) {
+    const list = Array.isArray(plans) ? plans : (plans ? [plans] : []);
     check('unite plan', () => {
       const res = m.lastResults;
       const counted = (pid) => ((res.get(pid) || {}).leaked || []).filter((l) => l && l.counted !== false).length;
       const alive = m.alivePlayers();
-      const leakers = alive.filter((p) => counted(p.playerId) > 0).map((p) => p.playerId).sort();
-      const perfect = alive.filter((p) => counted(p.playerId) === 0);
-      const helpers = helperOrder(m, perfect, res).map((p) => p.playerId);
-      if (helpers.length > gd.unite.maxHelpers) fail(`${helpers.length} 联防 helpers (max ${gd.unite.maxHelpers})`);
-      if (plan.helpers.some((p) => !p.alive || p.left)) fail(`联防 helper eliminated / departed: ${plan.helpers.filter((p) => !p.alive || p.left).map((p) => p.playerId)}`);
       if (m.isSolo) fail('联防 in solo');
-      if (JSON.stringify(plan.leakers.map((p) => p.playerId).sort()) !== JSON.stringify(leakers)) fail(`联防 leakers ${plan.leakers.map((p) => p.playerId)} != ${leakers}`);
-      if (JSON.stringify(plan.helpers.map((p) => p.playerId)) !== JSON.stringify(helpers)) fail(`联防 helpers ${plan.helpers.map((p) => p.playerId)} != ${helpers}`);
+      if (!list.length) fail('startUnite with no plan');
+      const allLeakers = [];
+      for (const plan of list) {
+        // a plan covers exactly one team (coop: the whole roster)
+        const team = Number.isInteger(plan.team) ? plan.team : m.teamIdOf(plan.helpers[0] || plan.leakers[0]);
+        const members = alive.filter((p) => m.teamIdOf(p) === team);
+        const leakers = members.filter((p) => counted(p.playerId) > 0).map((p) => p.playerId).sort();
+        const perfect = members.filter((p) => counted(p.playerId) === 0);
+        const helpers = helperOrder(m, perfect, res).map((p) => p.playerId);
+        if (helpers.length > gd.unite.maxHelpers) fail(`${helpers.length} 联防 helpers (max ${gd.unite.maxHelpers})`);
+        if (plan.helpers.some((p) => !p.alive || p.left)) fail(`联防 helper eliminated / departed: ${plan.helpers.filter((p) => !p.alive || p.left).map((p) => p.playerId)}`);
+        if (JSON.stringify(plan.leakers.map((p) => p.playerId).sort()) !== JSON.stringify(leakers)) fail(`联防 leakers ${plan.leakers.map((p) => p.playerId)} != ${leakers}`);
+        if (JSON.stringify(plan.helpers.map((p) => p.playerId)) !== JSON.stringify(helpers)) fail(`联防 helpers ${plan.helpers.map((p) => p.playerId)} != ${helpers}`);
+        allLeakers.push(...plan.leakers.map((p) => p.playerId));
+      }
+      if (new Set(allLeakers).size !== allLeakers.length) fail('a leaker appears in two 联防 plans');
     });
-    const r = orig(plan);
+    const r = orig(plans);
     runInvariants();
     return r;
   });
-  wrap(m, 'settle', function (orig, plan, uniteResult) {
+  wrap(m, 'settle', function (orig, plans, uniteResults) {
+    const list = Array.isArray(plans) ? plans : (plans ? [plans] : []);
+    const results = Array.isArray(uniteResults) ? uniteResults : (uniteResults ? [uniteResults] : []);
     check('unite trigger', () => {
-      if (expectUnite && expectUnite.round === m.round && expectUnite.expect !== !!plan) fail(`联防 ${plan ? 'ran' : 'skipped'} but ${expectUnite.expect ? '≥ 1 leaker and ≥ 1 perfect player' : 'not both a leaker and a perfect player'}`);
+      if (expectUnite && expectUnite.round === m.round && expectUnite.expect !== (list.length > 0)) fail(`联防 ${list.length ? 'ran' : 'skipped'} but ${expectUnite.expect ? '≥ 1 leaker and ≥ 1 perfect player' : 'not both a leaker and a perfect player'}`);
       expectUnite = null;
     });
     const before = new Map(m.alivePlayers().map((ps) => [ps, ps.lp]));
-    const res = orig(plan, uniteResult);
+    const res = orig(plans, uniteResults);
     check('settle', () => {
       const cap = gd.lpCapPerRound;
-      const uniteRan = !!(plan && uniteResult && !uniteResult.synthetic);
+      const uniteRan = list.some((pl, i) => pl && results[i] && !results[i].synthetic);
+      const isLeaker = (ps) => list.some((pl) => pl.leakers.includes(ps));
       for (const [ps, lp0] of before) {
         const r = m.lastResults.get(ps.playerId) || { leaked: [] };
         const counted = (r.leaked || []).filter((l) => l && l.counted !== false).length;
         // after 联防 a leaker pays for every surviving enemy of its source — enemies spawned by its leaked enemies
         // (splitters, summoners) included — so only the cap bounds it; everybody else never exceeds own leaks
-        const max = uniteRan && plan.leakers.includes(ps) ? cap : Math.min(cap, counted);
+        const max = uniteRan && isLeaker(ps) ? cap : Math.min(cap, counted);
         if (ps.alive) {
           const loss = lp0 - ps.lp;
           if (loss < 0) fail(`${ps.playerId}: LP rose in settle ${lp0} → ${ps.lp}`);

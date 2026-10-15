@@ -53,18 +53,19 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(m.aliveAlliesOf(p0).map((p) => p.playerId), m.alivePlayers().map((p) => p.playerId));
   });
 
-  test('a versus match runs to RESULT with no engine errors, and runs no cross-team 联防', () => {
+  test('a versus match runs to RESULT with no engine errors, and every 联防 group is single-team', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 11, fake: true }).start();
     h.autoHumans();
-    // a versus match must never enter a 联防 (step 2.1: per-team 联防 is not implemented yet, and a cross-team one
-    // would be a competition bug) — watch the phase as the match runs
-    let sawUnite = false;
-    const onBc = (msg) => { if (msg.t === 'm.public' && msg.phase === PHASE.UNITE) sawUnite = true; };
-    h.onBroadcast.push(onBc);
+    const m = h.m;
+    // watch every 联防 as it opens: each plan's helpers + leakers must all be on ONE team (never a cross-team 联防)
+    const groups = [];
+    h.onBroadcast.push((msg) => {
+      if (msg.t !== 'm.public' || msg.phase !== PHASE.UNITE || !Array.isArray(m.unitePlans)) return;
+      for (const pl of m.unitePlans) groups.push([...pl.helpers, ...pl.leakers].map((p) => m.teamIdOf(p)));
+    });
     const done = h.drive(() => h.ended != null, { maxSteps: 3e6 });
-    assert.ok(done && h.ended, `the match ended (phase ${h.m.phase} R${h.m.round})`);
-    assert.equal(sawUnite, false, 'no 联防 in step 2.1');
+    assert.ok(done && h.ended, `the match ended (phase ${m.phase} R${m.round})`);
     assert.deepEqual(h.logs.error, [], 'no engine errors');
-    assert.equal(h.m.unitePlan ?? null, null);
+    for (const g of groups) assert.equal(new Set(g).size, 1, `a 联防 group spanned teams: ${g.join()}`);
   });
 });

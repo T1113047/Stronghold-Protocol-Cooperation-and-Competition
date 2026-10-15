@@ -64,14 +64,38 @@ export class MatchBoss {
     return groups;
   }
 
+  /** The merged team LP a player's team holds (versus: per team; solo/coop: the scalar `teamLp`). */
+  _teamLpOf(team) { return this.teamLps ? (this.teamLps.get(team) ?? 0) : this.teamLp; }
+
+  /** The shared boss pool a field's team damages (versus: per team; solo/coop: the scalar `bossPool`). */
+  _poolOf(team) { return this.bossPools ? this.bossPools.get(team) : this.bossPool; }
+
+  /** Subtract `n` from a team's merged LP (versus: per team; solo/coop: the scalar). */
+  _teamLpLossOf(team, n) {
+    if (!Number.isFinite(n) || !(n > 0)) return;
+    if (this.teamLps) this.teamLps.set(team, Math.max(0, (this.teamLps.get(team) ?? 0) - n));
+    else if (this.teamLp != null) this.teamLp = Math.max(0, this.teamLp - n);
+  }
+
   startFinalAssault(hidden) {
     const alive = this.alivePlayers();
     if (!alive.length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
     this.phase = hidden ? PHASE.HIDDEN_CORE : PHASE.FINAL_ASSAULT;
     this.lastResults = new Map();
     if (!hidden) {
-      this.teamLp = alive.reduce((s, p) => s + Math.max(0, p.lp), 0);
       for (const ps of alive) ps.lpAtFinal = Math.max(0, ps.lp);
+      if (this.isVersus) {
+        // 2V2: each team merges its own LP; the scalar teamLp stays the sum (existing readers of m.public.teamLp / results).
+        this.teamLps = new Map();
+        for (const ps of alive) {
+          const t = this.teamIdOf(ps);
+          this.teamLps.set(t, (this.teamLps.get(t) || 0) + Math.max(0, ps.lp));
+        }
+        this.teamLp = [...this.teamLps.values()].reduce((s, v) => s + v, 0);
+      } else {
+        this.teamLps = null;
+        this.teamLp = alive.reduce((s, p) => s + Math.max(0, p.lp), 0);
+      }
     }
     const bossId = hidden ? this.hiddenBossId : this.bossId;
     // BOSS_HIT tickers ("对敌方领袖造成的伤害超过20% / 50% / 80%"): the player's damage to THIS leader over its pool —

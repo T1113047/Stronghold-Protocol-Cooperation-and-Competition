@@ -397,7 +397,13 @@ export class Match {
     /** 联防: { plan, bounds } — per leaker the most survivors settlement can bill (_uniteLeft's clamp) */
     this._uniteBounds = null;
     this.teamLp = null;
+    /** 2V2 ('versus'): the merged LP per team (Map<teamId, number>); null in solo/coop (the scalar teamLp). */
+    this.teamLps = null;
     this.bossPool = null;
+    /** 2V2 ('versus'): the shared boss HP pool per team (Map<teamId, SharedBossPool>); null in solo/coop (scalar bossPool). */
+    this.bossPools = null;
+    /** 2V2 ('versus'): each team's boss-round ending ('cleared' | 'forced'), Map<teamId, reason>; null in solo/coop. */
+    this._finalEndings = null;
     this.hiddenLayerSum = 0;
     this.hiddenReached = false;
     this.outcome = null;

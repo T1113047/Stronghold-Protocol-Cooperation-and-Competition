@@ -1,10 +1,26 @@
 # 卫戍协议：盟约 · Stronghold Protocol: Alliance
 
+《明日方舟》季节性自走棋塔防玩法「卫戍协议：盟约」的**非官方同人复刻**：浏览器即开即玩，单人或 1–4 人联机合作。
+
 > **本仓库：《卫戍协议-合作与竞争版》 · *Stronghold Protocol: Cooperation and Competition***
 >
 > 这是在 [sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol) **v0.2.6** 基础上开发的**非官方 2V2 衍生版**：把原本 1–4 人的合作玩法扩展为**两支双人小队**的「**合作 + 竞争**」模式。代码同样以 **GPL-3.0-or-later** 发布，同样**非官方、非商业、不含游戏素材**；上游的全部声明与限制继续适用（见下）。上游作者与贡献者的著作权与署名一并保留（详见 [NOTICE.md](NOTICE.md)）。
 
-《明日方舟》季节性自走棋塔防玩法「卫戍协议：盟约」的**非官方同人复刻**：浏览器即开即玩，单人或 1–4 人联机合作。
+## 🙏 原项目与原作者（请先支持上游）
+
+本仓库是 **[sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol)** 的 **2V2 衍生版**。原版的完整合作玩法、规则复刻、战斗模拟、素材工具与全部文档，都出自原作者 **[@sganggs](https://github.com/sganggs)** 与上游贡献者；**没有原项目就没有本衍生版**。本仓库只在上游之上增加了 2V2「合作 + 竞争」模式，其余内容与上游一致。
+
+👉 **请优先 Star、关注并使用原项目，把支持给到原作者：**
+
+| 入口 | 链接 |
+|---|---|
+| ⭐ 原仓库（**Star 请点这里**） | https://github.com/sganggs/Stronghold-Protocol |
+| 👤 原作者 | https://github.com/sganggs |
+| 📦 原版整合包 / Releases | https://github.com/sganggs/Stronghold-Protocol/releases |
+| 📖 原版玩法指南 | https://github.com/sganggs/Stronghold-Protocol/blob/master/docs/PLAYING.md |
+| 🐞 上游问题反馈 | https://github.com/sganggs/Stronghold-Protocol/issues |
+
+> 只想体验原版的话，请直接使用上面的原仓库；本衍生版仅在你需要 2V2 时使用。
 
 ![version](https://img.shields.io/badge/version-0.2.6-2ea44f)
 ![license](https://img.shields.io/badge/code%20license-GPL--3.0--or--later-blue)

@@ -149,8 +149,8 @@ export function botPickBand(m, ps) {
   const ids = gd.bandIds();
   if (!ids.length) return gd.defaultBandId;
   const lateFunds = (id) => /暂存/.test(String(gd.band(id)?.desc || ''));
-  const reserved = new Set(ps && typeof m.alivePlayers === 'function'
-    ? m.alivePlayers().filter((p) => p !== ps).flatMap((p) => gd.bandBondIds(p.bandId))
+  const reserved = new Set(ps && typeof m.aliveAlliesOf === 'function'
+    ? m.aliveAlliesOf(ps).filter((p) => p !== ps).flatMap((p) => gd.bandBondIds(p.bandId))
     : []);
   const inactive = (id) => gd.bandBondIds(id).some((b) => gd.modeInactiveBonds.has(b));
   const pairs = ids.map((id) => {
@@ -364,7 +364,7 @@ function mainCoreBond(m, p) {
  * `ps._botFocusId` keeps the focus across rounds.
  */
 export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
-  const livingBands = m.alivePlayers().filter((p) => p !== ps).flatMap((p) => m.gd.bandBondIds(p.bandId)).sort().join();
+  const livingBands = m.aliveAlliesOf(ps).filter((p) => p !== ps).flatMap((p) => m.gd.bandBondIds(p.bandId)).sort().join();
   const key = `${m.round}|${ps.shop.level}|${[...owned.counts.entries()].map(([k, v]) => k + v).join()}|${livingBands}`;
   if (ps._botFocus && ps._botFocus.key === key) return ps._botFocus;
   const prev = ps._botFocusId ?? null;

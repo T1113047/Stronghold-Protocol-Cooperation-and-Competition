@@ -88,8 +88,21 @@ export class MatchInfra {
   }
   humans() { return this.order.filter((p) => !p.isBot && !p.left); }
 
-  /** [ASSUMED] Touch's initial, match-long team grant survives its holder's elimination/quit; focus alone grants none. */
-  teamMedicGranted() { return this.order.some(p => p.bandId === 'band_amedic'); }
+  /**
+   * 2V2 ('versus'): the team a player fights for (PlayerState.team; 0 for solo/coop, where every player is one team).
+   * @returns {number}
+   */
+  teamIdOf(ps) { return ps && Number.isInteger(ps.team) ? ps.team : 0; }
+
+  /** Every player of ps's team, in seat order (solo/coop: the whole roster — a no-op). */
+  alliesOf(ps) { const t = this.teamIdOf(ps); return this.order.filter((p) => this.teamIdOf(p) === t); }
+
+  /** The alive players of ps's team (solo/coop: every alive player). */
+  aliveAlliesOf(ps) { return this.alliesOf(ps).filter((p) => p.alive); }
+
+  /** [ASSUMED] Touch's initial, match-long team grant survives its holder's elimination/quit; focus alone grants none.
+   *  2V2: scoped to the player's own team (solo/coop: the whole roster, as before). */
+  teamMedicGranted(ps) { return this.alliesOf(ps).some(p => p.bandId === 'band_amedic'); }
 
   /**
    * The boss-round group of a player (`bossWaves`: the per-match random pairs, planned in startRound

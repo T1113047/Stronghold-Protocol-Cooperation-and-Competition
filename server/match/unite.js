@@ -43,6 +43,9 @@ import { layerGainRoom } from '../../shared/constants.js';
  */
 export function planUnite(m, results) {
   if (m.isSolo) return null;
+  // 2V2 ('versus', 阶段 2 进行中): 联防 must never pair a player with an OPPONENT. Per-team 联防 fields land in
+  // step 2.2; until then a versus match runs no 联防 at all (better none than a cross-team one).
+  if (m.isVersus) return null;
   const alive = m.alivePlayers();
   const leakers = [];
   const perfects = [];

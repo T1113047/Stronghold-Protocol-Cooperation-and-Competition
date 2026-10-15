@@ -480,7 +480,7 @@ export function makeCtx(m, ps, source, hook, ev = null) {
     lp: () => ps.lp,
     alive: () => ps.alive,
     bandId: () => ps.bandId,
-    teamMedicGranted: () => m.teamMedicGranted(),
+    teamMedicGranted: () => m.teamMedicGranted(ps),
     shopLevel: () => ps.shop.level,
     bond: (id) => (ps.bonds[id] ? { ...ps.bonds[id] } : null),
     bonds: () => Object.fromEntries(Object.entries(ps.bonds).map(([k, v]) => [k, { ...v }])),
@@ -697,7 +697,7 @@ export function makeCtx(m, ps, source, hook, ev = null) {
     },
 
     // ---- team
-    teammates: () => m.alivePlayers().filter((p) => p !== ps).map((p) => makeCtx(m, p, source, hook, null)),
+    teammates: () => m.aliveAlliesOf(ps).filter((p) => p !== ps).map((p) => makeCtx(m, p, source, hook, null)),
     player: (playerId) => { const p = m.players.get(playerId); return p && p.alive ? makeCtx(m, p, source, hook, null) : null; },
   };
   return ctx;

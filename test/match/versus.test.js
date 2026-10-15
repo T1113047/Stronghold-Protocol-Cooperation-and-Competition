@@ -68,4 +68,23 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
     for (const g of groups) assert.equal(new Set(g).size, 1, `a 联防 group spanned teams: ${g.join()}`);
   });
+
+  test('versus: boss pairing stays within a team', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 5, fake: true }).start();
+    h.autoHumans();
+    const m = h.m;
+    let checked = false;
+    h.onBroadcast.push((msg) => {
+      if (msg.t !== 'm.public' || (m.phase !== PHASE.FINAL_ASSAULT && m.phase !== PHASE.HIDDEN_CORE)) return;
+      if (checked || !Array.isArray(m.bossPairs) || !m.bossPairs.length) return;
+      checked = true;
+      for (const pair of m.bossPairs) {
+        const teams = new Set(pair.map((id) => m.teamIdOf(m.players.get(id))));
+        assert.equal(teams.size, 1, `boss pair spans teams: ${pair.join()}`);
+      }
+    });
+    h.drive(() => h.ended != null, { maxSteps: 3e6 });
+    assert.ok(checked, 'the match reached the Final Assault');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
 });

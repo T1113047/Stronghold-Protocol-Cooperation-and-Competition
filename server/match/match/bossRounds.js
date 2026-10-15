@@ -36,6 +36,34 @@ const BOSS_LP_BURST = 10;
 const BOSS_LP_PER_GS = 1;
 
 export class MatchBoss {
+  /**
+   * The boss-round pairing: the pairs that share a boss field. Solo/coop: the whole roster pairs freely (pairPlayers).
+   * 2V2 ('versus'): pairs form WITHIN a team only — an opponent never shares a field. `previous` pairs carry through
+   * rounds per team. Consumes no shop / wave / draft randomness.
+   * @param {any[]} alive
+   * @returns {any[][]}
+   */
+  bossPairGroups(alive) {
+    if (!this.isVersus) return pairPlayers(alive, createRng(deriveSeed(this.seed, 'boss-pairs')), this.bossPairs);
+    const rng = createRng(deriveSeed(this.seed, 'boss-pairs'));
+    const byTeam = new Map();
+    for (const p of alive) {
+      const t = this.teamIdOf(p);
+      if (!byTeam.has(t)) byTeam.set(t, []);
+      byTeam.get(t).push(p);
+    }
+    const prevByTeam = new Map();
+    for (const ids of this.bossPairs || []) {
+      const first = this.players.get(ids[0]);
+      const t = first ? this.teamIdOf(first) : 0;
+      if (!prevByTeam.has(t)) prevByTeam.set(t, []);
+      prevByTeam.get(t).push(ids);
+    }
+    const groups = [];
+    for (const t of [...byTeam.keys()].sort((a, b) => a - b)) groups.push(...pairPlayers(byTeam.get(t), rng, prevByTeam.get(t) || null));
+    return groups;
+  }
+
   startFinalAssault(hidden) {
     const alive = this.alivePlayers();
     if (!alive.length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
@@ -66,7 +94,7 @@ export class MatchBoss {
       },
     });
     this.bossPool = pool;
-    const groups = pairPlayers(alive, createRng(deriveSeed(this.seed, 'boss-pairs')), this.bossPairs);
+    const groups = this.bossPairGroups(alive);
     this.bossPairs = groups.map(g => g.map(p => p.playerId));
     const reuse = this.bossWaves && this.bossWaves.length === groups.length && this.bossWaves.every((w, i) => w.players.join() === groups[i].map((p) => p.playerId).join());
     this.fields = groups.map((g, i) => {

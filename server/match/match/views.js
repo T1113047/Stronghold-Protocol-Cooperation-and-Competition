@@ -130,7 +130,16 @@ export class MatchViews {
     if (this.teamLp != null) v.teamLp = Math.max(0, Math.round(this.teamLp));
     // 最终攻势 / 隐秘核心: when the overtime drain starts (ms epoch; `deadline` is the level's 120 s countdown)
     if ((this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE) && this.overtimeAt) v.overtimeAt = this.overtimeAt;
-    if (this.bossPool) v.bossHp = { hp: Math.max(0, Math.round(this.bossPool.hp)), max: Math.round(this.bossPool.maxHp) };
+    if (this.isVersus && this.bossPools) {
+      // 2V2: one boss HP per team (the scalar bossHp is null); the client shows its own team's entry
+      v.bossHpTeams = {};
+      for (const t of this._teamIds()) {
+        const pool = this._poolOf(t);
+        v.bossHpTeams[t] = { hp: Math.max(0, Math.round(pool.hp)), max: Math.round(pool.maxHp) };
+      }
+    } else if (this.bossPool) {
+      v.bossHp = { hp: Math.max(0, Math.round(this.bossPool.hp)), max: Math.round(this.bossPool.maxHp) };
+    }
     if (this.phase === PHASE.BAND_DRAFT && this.draft) {
       const d = this.draft;
       // turnSeconds: the length of a turn (the countdown gauge's total; 0 when untimed) — deadline = turnDeadline

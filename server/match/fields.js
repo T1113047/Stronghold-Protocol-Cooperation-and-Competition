@@ -200,6 +200,9 @@ export class FieldRunner {
 
   forceAll(reason = 'forced') { this._forceAll(reason); this._checkDone(); }
 
+  /** Force one field (2V2: end a single team's boss field while the others keep fighting). */
+  forceField(f, reason = 'forced') { this._forceField(f, reason); this._checkDone(); }
+
   _emit(f) {
     let ev = [];
     try { ev = f.battle.drainEvents() || []; } catch (e) { this.m.reportError(`field ${f.fieldId} drainEvents`, e); }

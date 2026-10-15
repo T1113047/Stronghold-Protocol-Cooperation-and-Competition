@@ -58,7 +58,7 @@ export class MatchReports {
     if (!v.ok) {
       this.verifyStats.rejected++;
       this.log.warn?.(`[match ${this.roomCode}] ${f.fieldId}: rejected client result from ${ps.playerId} (${v.reason}) — server re-simulation`);
-      if (bossLike && this._finalEnding) { f.result = syntheticResult(f.players, { bossBy: f.bossBy, time: this._fieldElapsed(f) }); this._fieldDone(f); this._checkFinalEnd(); }
+      if (bossLike && this._endingOf(f.team)) { f.result = syntheticResult(f.players, { bossBy: f.bossBy, time: this._fieldElapsed(f) }); this._fieldDone(f); this._checkFinalEnd(); }
       else if (bossLike) this._bossHandover(f, 'invalid', { demote: true });
       else this._runOnServer(f, 'invalid');
       return OK;
@@ -73,13 +73,13 @@ export class MatchReports {
       // the client emptied the pool as it saw it (server hp − its unacknowledged damage): what is left on the server is
       // float dust from summing the fields' reports in another order — the boss is down (pools never hold less than
       // BOSS_POOL_MIN_HP, finalAssault.js: this only catches a noise-level disagreement at that boundary)
-      const pool = this.bossPool;
-      if (result.reason === 'cleared' && this._finalEnding !== 'forced' && pool && pool.hp > 0 && pool.hp < 1 + 1e-6) pool.damage(f.players[0] ?? null, pool.hp);
+      const pool = this._poolOf(f.team);
+      if (result.reason === 'cleared' && this._endingOf(f.team) !== 'forced' && pool && pool.hp > 0 && pool.hp < 1 + 1e-6) pool.damage(f.players[0] ?? null, pool.hp);
       // a boss field ends only when the shared pool is empty (the client saw it reach 0) or the match forced the end
       // (b.end): any other result — 'forced' / 'timeout' at t = 0, 'cleared' while the pool still holds — would stop
       // the pair's fight (and, with every field done, end the Final Assault as a defeat). The field is handed to the
       // partner's replica or the server instead, and the sender never reports it again.
-      if (!this._finalEnding && !(pool && pool.hp <= 0)) {
+      if (!this._endingOf(f.team) && !(pool && pool.hp <= 0)) {
         // 'cleared' while the budget still holds part of the client's cumulative report back: when that report covers
         // what the pool holds, the client emptied the pool as it saw it, only faster than BOSS_MIN_CLEAR_GS lets the
         // server credit (999-layer boards kill a 绝境 leader in 2–4 game s; official "boss一秒死", DESIGN §20.10). The

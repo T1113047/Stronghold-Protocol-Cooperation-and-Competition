@@ -77,6 +77,12 @@ export class MatchBoss {
     else if (this.teamLp != null) this.teamLp = Math.max(0, this.teamLp - n);
   }
 
+  /** The boss-round ending ('cleared' | 'forced') of a team, or null (versus: per team; solo/coop: the scalar). */
+  _endingOf(team) { return this._finalEndings ? (this._finalEndings.get(team) ?? null) : this._finalEnding; }
+
+  /** The team ids of this match's boss fight (versus: every team; solo/coop: the single team 0). */
+  _teamIds() { return this.teamLps ? [...this.teamLps.keys()] : [0]; }
+
   startFinalAssault(hidden) {
     const alive = this.alivePlayers();
     if (!alive.length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
@@ -99,15 +105,16 @@ export class MatchBoss {
     }
     const bossId = hidden ? this.hiddenBossId : this.bossId;
     // BOSS_HIT tickers ("对敌方领袖造成的伤害超过20% / 50% / 80%"): the player's damage to THIS leader over its pool —
-    // the pool's own per-player tally, one pool per boss round. stats.bossDamage (the result's 领袖伤害) adds up both
-    // rounds, so it would credit the Final Assault's damage to the hidden leader ("隐藏boss还没打就出了50%播报").
+    // the pool's own per-player tally, one pool per boss round (2V2: one pool per team). stats.bossDamage (the result's
+    // 领袖伤害) adds up both rounds, so it would credit the Final Assault's damage to the hidden leader.
     const hitSteps = new Map();
-    const pool = new SharedBossPool(bossPoolHp(this.gd, bossId, alive.length), {
-      onHit: (pid, dmg) => {
+    const makePool = (count) => {
+      const p = new SharedBossPool(bossPoolHp(this.gd, bossId, count), {});
+      p.onHit = (pid, dmg) => {
         const ps = this.players.get(pid);
         if (!ps) return;
         ps.stats.bossDamage += dmg;
-        const share = (pool.byPlayer.get(pid) || 0) / pool.maxHp;
+        const share = (p.byPlayer.get(pid) || 0) / p.maxHp;
         const done = hitSteps.get(pid) || 0;
         let reached = done;
         BOSS_HIT_STEPS.forEach((s, i) => { if (share >= s) reached = Math.max(reached, i + 1); });
@@ -115,14 +122,30 @@ export class MatchBoss {
           hitSteps.set(pid, reached);
           this.tickerFor('BOSS_HIT', [ps.name], { playerId: pid, param: String(BOSS_HIT_STEPS[reached - 1]) });
         }
-      },
-    });
-    this.bossPool = pool;
+      };
+      return p;
+    };
+    if (this.isVersus) {
+      // 2V2: each team fights its own leader on its own pool (design 2026-10-16: 各打各的 Boss).
+      this.bossPools = new Map();
+      const byTeam = new Map();
+      for (const ps of alive) { const t = this.teamIdOf(ps); if (!byTeam.has(t)) byTeam.set(t, []); byTeam.get(t).push(ps); }
+      for (const [t, members] of byTeam) this.bossPools.set(t, makePool(members.length));
+      this.bossPool = null;
+      this._finalEndings = new Map();
+      this._finalEnding = null;
+    } else {
+      this.bossPools = null;
+      this.bossPool = makePool(alive.length);
+      this._finalEndings = null;
+      this._finalEnding = null;
+    }
     const groups = this.bossPairGroups(alive);
     this.bossPairs = groups.map(g => g.map(p => p.playerId));
     const reuse = this.bossWaves && this.bossWaves.length === groups.length && this.bossWaves.every((w, i) => w.players.join() === groups[i].map((p) => p.playerId).join());
     this.fields = groups.map((g, i) => {
       const solo = this.isSolo || g.length === 1;
+      const team = this.teamIdOf(g[0]);
       const wave = reuse ? this.bossWaves[i].wave : buildBossWave(this.gd, this.rngWaves, this.factions, this.round, { bossId, solo });
       // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place)
       const spawns = wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));
@@ -133,7 +156,7 @@ export class MatchBoss {
       });
       const inputs = g.map((ps, j) => {
         const input = ps.battleInput({ side: j === 0 ? 'L' : 'R', colOffset: j === 0 ? 0 : 8 });
-        input.lpForBoss = this.teamLp;
+        input.lpForBoss = this._teamLpOf(team);
         // `side` + `routes`: the player's half of a pair field (spawn-list edits for one player, e.g. 鸭爵's swap)
         const ev = { input, kind: hidden ? 'hidden' : 'boss', round: this.round, spawns, routes: wave.routes, side: g.length > 1 ? (j === 0 ? 'L' : 'R') : null };
         this.dispatch(ps, 'onBattleStart', ev);
@@ -151,7 +174,7 @@ export class MatchBoss {
         players: inputs,
         spawns: this._sanitizeSpawns(spawns),
         routes: wave.routes,
-        sharedBoss: this.bossPool,
+        sharedBoss: this._poolOf(team),
         // the round's enemy effects for the leaders' mid-fight summons (server/sim/content/bosses.js summonMods)
         flags: { layerGainsEnabled: false, ...this.gd.dp, enemyScale: this.gd.enemyScale(this.round) },
         fieldId,
@@ -159,14 +182,14 @@ export class MatchBoss {
         waveId: wave.templateId,
         bossId,
       };
-      if (this.clientCombat) return { fieldId, kind: hidden ? 'hidden' : 'boss', players: g.map((p) => p.playerId), opts: bopts, battle: null, live: true };
+      if (this.clientCombat) return { fieldId, team, kind: hidden ? 'hidden' : 'boss', players: g.map((p) => p.playerId), opts: bopts, battle: null, live: true };
       const battle = this.newBattle(bopts);
       try {
-        battle.on('enemyLeak', (ctx) => this._bossLeak(ctx && ctx.enemy), { priority: -1000, owner: 'match' });
+        battle.on('enemyLeak', (ctx) => this._bossLeak(ctx && ctx.enemy, team), { priority: -1000, owner: 'match' });
         // leader "扣除目标生命" effects (boss_7 Doom, 斥退 …: server/sim/content/bosses.js lpLoss) hit the team pool
-        battle.on('lpLoss', (ctx) => this._teamLpLoss(ctx && ctx.amount), { priority: -1000, owner: 'match' });
+        battle.on('lpLoss', (ctx) => this._teamLpLoss(team, ctx && ctx.amount), { priority: -1000, owner: 'match' });
       } catch (e) { this.reportError('boss leak hook', e); }
-      return { fieldId, kind: hidden ? 'hidden' : 'boss', players: g.map((p) => p.playerId), battle, live: true };
+      return { fieldId, team, kind: hidden ? 'hidden' : 'boss', players: g.map((p) => p.playerId), battle, live: true };
     });
     this.overtimeApplied = 0;
     // HUD: the boss level's countdown (maxPlayTime, 120 real s — the battle goes on past it) and the moment the
@@ -191,8 +214,12 @@ export class MatchBoss {
   }
 
   _startFinalClient(hidden) {
-    const pool = this.bossPool;
-    const recs = this.fields.map((x) => this._ccField({ fieldId: x.fieldId, kind: x.kind, players: x.players, opts: x.opts, boss: { poolHp: pool.hp, poolMax: pool.maxHp } }));
+    const recs = this.fields.map((x) => {
+      const pool = this._poolOf(x.team);
+      const rec = this._ccField({ fieldId: x.fieldId, kind: x.kind, players: x.players, opts: x.opts, boss: { poolHp: pool.hp, poolMax: pool.maxHp } });
+      rec.team = x.team;
+      return rec;
+    });
     this._finalEnding = null;
     this._bossStartAt = this.sched.now();
     this.watchers.clear();
@@ -202,11 +229,12 @@ export class MatchBoss {
       for (const f of recs) {
         f.mode = 'server';
         // a CreditPool with nothing acknowledged credits everything; it counts this field's damage for b.pool `acked`
+        const pool = this._poolOf(f.team);
         f.credit = new CreditPool(pool);
         f.battle = this._specBattle(f.spec, { sharedBoss: f.credit });
         try {
-          f.battle.on('enemyLeak', (ctx) => this._bossLeak(ctx && ctx.enemy), { priority: -1000, owner: 'match' });
-          f.battle.on('lpLoss', (ctx) => this._teamLpLoss(ctx && ctx.amount), { priority: -1000, owner: 'match' });
+          f.battle.on('enemyLeak', (ctx) => this._bossLeak(ctx && ctx.enemy, f.team), { priority: -1000, owner: 'match' });
+          f.battle.on('lpLoss', (ctx) => this._teamLpLoss(f.team, ctx && ctx.amount), { priority: -1000, owner: 'match' });
         } catch (e) { this.reportError('boss leak hook', e); }
       }
       this._watchBossFields(recs);
@@ -229,7 +257,8 @@ export class MatchBoss {
 
   /** The most shared-pool damage a boss field's client reports may have credited by now (server field clock). */
   _bossDmgBudget(f) {
-    return this.bossPool ? (this.bossPool.maxHp * this._fieldElapsed(f)) / BOSS_MIN_CLEAR_GS : 0;
+    const pool = this._poolOf(f.team);
+    return pool ? (pool.maxHp * this._fieldElapsed(f)) / BOSS_MIN_CLEAR_GS : 0;
   }
 
   /** The most team LP a boss field's client reports may have cost by now (server field clock). */
@@ -242,11 +271,11 @@ export class MatchBoss {
    * plausibility budget of the field clock; the rest is credited by later reports / the boss clock (`bossReported`).
    */
   _creditBoss(f, cum, by) {
-    const pool = this.bossPool;
+    const pool = this._poolOf(f.team);
     const reported = Number(cum);
     // the team LP ran out first: the run failed at that moment (PRTS "…使目标生命值扣除至0，则无视倒计时直接失败"), so
     // damage reported afterwards — in flight, or rounded up in the final b.result — changes nothing (user playtest #6)
-    if (!pool || !Number.isFinite(reported) || this._finalEnding === 'forced') return;
+    if (!pool || !Number.isFinite(reported) || this._endingOf(f.team) === 'forced') return;
     if (!f.bossReported || reported > f.bossReported.cum) f.bossReported = { cum: reported, by: by && typeof by === 'object' ? { ...by } : null };
     const c = Math.min(reported, this._bossDmgBudget(f));
     if (!(c > f.bossAcked)) return;
@@ -280,13 +309,13 @@ export class MatchBoss {
       if (n <= f.lpAcked) return;
       const d = n - f.lpAcked;
       f.lpAcked = n;
-      this._teamLpLoss(d);
+      this._teamLpLoss(f.team, d);
       return;
     }
     const before = f.lpCum;
     f.lpCum += n;
     const credit = Math.max(0, f.lpCum - Math.max(before, f.lpAcked));
-    if (credit > 0) this._teamLpLoss(credit);
+    if (credit > 0) this._teamLpLoss(f.team, credit);
   }
 
   /**
@@ -320,7 +349,7 @@ export class MatchBoss {
 
   /** The server runs a boss field in real time (no client left): credits only what exceeds the client's reports. */
   _bossServerRun(f) {
-    const credit = new CreditPool(this.bossPool, { acked: f.bossAcked, ackedBy: f.bossBy });
+    const credit = new CreditPool(this._poolOf(f.team), { acked: f.bossAcked, ackedBy: f.bossBy });
     const battle = this._specBattle(f.spec, { sharedBoss: credit });
     f.battle = battle;
     f.credit = credit;
@@ -390,29 +419,50 @@ export class MatchBoss {
     else this._bossClockOn = false;
   }
 
-  /** Pool depleted → victory; team LP 0 → defeat: every boss field is ended. */
+  /** Pool depleted → victory; team LP 0 → defeat. 2V2: per team; the fight ends once every team has one. */
   _checkFinalEnd() {
-    if (this._finalEnding || !this.bossPool || !this.fields.some((f) => f.cc)) return;
     if (this.phase !== PHASE.FINAL_ASSAULT && this.phase !== PHASE.HIDDEN_CORE) return;
-    if (this.bossPool.hp <= 0) this._endFinal('cleared');
-    else if (this.teamLp != null && this.teamLp <= 0) this._endFinal('forced');
+    if (!this.fields.some((f) => f.cc)) return;
+    if (this.isVersus && this._finalEndings) {
+      for (const t of this._teamIds()) {
+        if (this._finalEndings.has(t)) continue;
+        const pool = this._poolOf(t);
+        if (pool && pool.hp <= 0) this._finalEndings.set(t, 'cleared');
+        else if (this._teamLpOf(t) <= 0) this._finalEndings.set(t, 'forced');
+      }
+      if (this._teamIds().every((t) => this._finalEndings.has(t))) this._endFinal();
+      return;
+    }
+    if (this._finalEnding) return;
+    const pool = this._poolOf(0);
+    if (!pool) return;
+    if (pool.hp <= 0) this._endFinal('cleared');
+    else if (this._teamLpOf(0) != null && this._teamLpOf(0) <= 0) this._endFinal('forced');
   }
 
   _endFinal(reason) {
-    if (this._finalEnding) return;
-    this._finalEnding = reason;
+    if (this.isVersus) {
+      // 2V2: _checkFinalEnd records each team's ending and calls _endFinal() once every team has one.
+      if (this._teamIds().some((t) => !this._finalEndings.has(t))) return;
+      if (this._finalEnding) return;
+      this._finalEnding = 'done'; // sentinel: the boss fight is over, credit nothing further
+    } else {
+      if (this._finalEnding) return;
+      this._finalEnding = reason;
+    }
     this._broadcastPool(true);
     for (const f of this.fields) {
       if (!f.cc || f.done) continue;
+      const fReason = this.isVersus ? (this._finalEndings.get(f.team) || 'forced') : reason;
       if (f.mode === 'server' && f.battle) {
-        try { f.battle.forceEnd('forced'); } catch (e) { this.reportError('boss forceEnd', e); }
+        try { f.battle.forceEnd(fReason); } catch (e) { this.reportError('boss forceEnd', e); }
         let res = null;
         try { res = f.battle.result(); } catch (e) { this.reportError('boss result', e); }
         f.result = res && res.perPlayer ? res : syntheticResult(f.players, { bossBy: f.bossBy });
         f.resultSource = 'server';
         continue; // _fieldDone below (after every field was told)
       }
-      for (const pid of this._humansShowing(f)) this.sendTo(pid, { t: 'b.end', battleId: f.battleId, fieldId: f.fieldId, reason });
+      for (const pid of this._humansShowing(f)) this.sendTo(pid, { t: 'b.end', battleId: f.battleId, fieldId: f.fieldId, reason: fReason });
       if (f.heldResult) {
         // its authority already reported 'cleared' (_onResult): that result completes the field
         f.result = f.heldResult;
@@ -431,9 +481,9 @@ export class MatchBoss {
     for (const f of this.fields) if (f.cc && !f.done && (f.mode === 'server' || f.heldResult)) this._fieldDone(f);
   }
 
-  /** b.pool { hp, max, teamLp, acked } to everyone (≤ 4 Hz; `force` skips the dedupe, never the rate). */
+  /** b.pool { hp, max, teamLp, acked } to everyone (≤ 4 Hz; `force` skips the dedupe, never the rate). 2V2: `pools`. */
   _broadcastPool(force) {
-    if (!this.bossPool || this.disposed) return;
+    if (this.disposed || (!this.isVersus && !this.bossPool)) return;
     const now = this.sched.now();
     if (now - this._lastPoolAt < POOL_MIN_GAP_MS) {
       if (!this._poolTimer) {
@@ -447,10 +497,19 @@ export class MatchBoss {
     // replica (a reconnecting / watching human) subtracts only its local damage beyond that from the server hp
     const acked = {};
     for (const f of this.fields) if (f.cc) acked[f.fieldId] = f.mode === 'server' && f.credit ? Math.max(f.bossAcked, f.credit.cum) : f.bossAcked;
-    const msg = {
-      t: 'b.pool', hp: Math.max(0, this.bossPool.hp), max: this.bossPool.maxHp,
-      teamLp: this.teamLp == null ? null : Math.max(0, Math.round(this.teamLp)), acked,
-    };
+    const msg = { t: 'b.pool', acked };
+    if (this.isVersus) {
+      // 2V2: one entry per team; the per-team view the client shows (the scalar hp/max/teamLp are null)
+      msg.hp = null; msg.max = null; msg.teamLp = null; msg.pools = {};
+      for (const t of this._teamIds()) {
+        const pool = this._poolOf(t);
+        msg.pools[t] = { hp: Math.max(0, pool.hp), max: pool.maxHp, teamLp: Math.max(0, Math.round(this._teamLpOf(t))) };
+      }
+    } else {
+      msg.hp = Math.max(0, this.bossPool.hp);
+      msg.max = this.bossPool.maxHp;
+      msg.teamLp = this.teamLp == null ? null : Math.max(0, Math.round(this.teamLp));
+    }
     const key = JSON.stringify(msg);
     if (!force && key === this._lastPoolKey) return;
     this._lastPoolKey = key;
@@ -475,17 +534,18 @@ export class MatchBoss {
     ps.dirty();
   }
 
-  _bossLeak(enemy) {
-    if (!enemy || this.teamLp == null) return;
+  _bossLeak(enemy, team = 0) {
+    const lp = this._teamLpOf(team);
+    if (!enemy || lp == null) return;
     // lifePointReduce from data: 0 for harmless enemies (e.g. 装置 / unharmful escorts), 1 when absent
     const lpr = Number.isFinite(enemy.lpr) && enemy.lpr >= 0 ? enemy.lpr : 1;
-    this._teamLpLoss(lpr);
+    this._teamLpLoss(team, lpr);
   }
 
-  _teamLpLoss(amount) {
+  _teamLpLoss(team, amount) {
     const n = Number(amount);
-    if (this.teamLp == null || !Number.isFinite(n) || !(n > 0)) return;
-    this.teamLp = Math.max(0, this.teamLp - n);
+    if (this._teamLpOf(team) == null || !Number.isFinite(n) || !(n > 0)) return;
+    this._teamLpLossOf(team, n);
     if (this._bossLazyPublic()) { this._bossPublic(); return; }
     this._syncTeamLp();
     this.markPublic();
@@ -511,13 +571,18 @@ export class MatchBoss {
   /**
    * The merged team LP (Final Assault / Hidden Core, research 01 §9) written back to the alive players as shares of
    * what each brought in (`lpAtFinal`, largest remainder, ties → seat), so m.public / m.private / m.result never show
-   * the pre-merge LP of a team that lost LP in the boss fight (Σ alive lp = round(teamLp)).
+   * the pre-merge LP of a team that lost LP in the boss fight (Σ alive lp = round(teamLp)). 2V2: per team.
    */
   _syncTeamLp() {
-    if (this.teamLp == null) return;
-    const alive = this.alivePlayers().filter((p) => p.lpAtFinal != null);
+    for (const t of this._teamIds()) this._syncTeamLpOf(t);
+  }
+
+  _syncTeamLpOf(team) {
+    const teamLp = this._teamLpOf(team);
+    if (teamLp == null) return;
+    const alive = this.alivePlayers().filter((p) => p.lpAtFinal != null && this.teamIdOf(p) === team);
     if (!alive.length) return;
-    const total = Math.max(0, Math.round(this.teamLp));
+    const total = Math.max(0, Math.round(teamLp));
     const base = alive.reduce((s, p) => s + Math.max(0, p.lpAtFinal), 0);
     const rows = alive.map((p) => {
       const v = base > 0 ? (total * Math.max(0, p.lpAtFinal)) / base : total / alive.length;
@@ -535,20 +600,24 @@ export class MatchBoss {
 
   /**
    * Overtime drain on the boss field clock (`gt` game seconds): 1 team LP per real second from the 150 real-second mark
-   * (bossTurnHpReduceTime, gamedata.js bossOvertimeDue).
+   * (bossTurnHpReduceTime, gamedata.js bossOvertimeDue). 2V2: each team pays its own drain.
    */
   _applyOvertime(gt) {
     const due = this.gd.bossOvertimeDue(gt, this.bossOvertimeStartReal);
-    if (due > this.overtimeApplied) {
-      const loss = due - this.overtimeApplied;
-      this.overtimeApplied = due;
-      this._teamLpLoss(loss);
-    }
+    if (!(due > this.overtimeApplied)) return;
+    const loss = due - this.overtimeApplied;
+    this.overtimeApplied = due;
+    for (const t of this._teamIds()) this._teamLpLoss(t, loss);
   }
 
   _bossTick(runner) {
     this._applyOvertime(runner.time);
-    if (this.teamLp <= 0 && this.bossPool.hp > 0) runner.forceAll('forced');
+    // 2V2: force only a team whose LP ran out while its boss still stands (the other team keeps fighting)
+    for (const f of runner.fields) {
+      const team = f.team ?? 0;
+      const pool = this._poolOf(team);
+      if (pool && pool.hp > 0 && this._teamLpOf(team) <= 0) runner.forceField(f, 'forced');
+    }
     // client-side combat with every boss field on the server: humans that reconnect / watch run display replicas
     // whose LocalBossPool follows b.pool
     if (this.fields.some((f) => f.cc)) { this._broadcastPool(false); this._bossPublic(); }
@@ -564,7 +633,9 @@ export class MatchBoss {
     this._stopClientCombat();
     // the end condition the server registered first decides (client-side combat: _endFinal — pool 0 → victory, team LP 0
     // → defeat); a boss field's final result may never turn a defeat into a victory (user playtest #6 item 5)
-    const victory = this._finalEnding ? this._finalEnding === 'cleared' : this.bossPool.hp <= 0;
+    const victory = this.isVersus
+      ? this._teamIds().every((t) => (this._poolOf(t)?.hp ?? 0) <= 0) // every team cleared its own boss
+      : this._finalEnding ? this._finalEnding === 'cleared' : this.bossPool.hp <= 0;
     for (const f of this.fields) {
       const res = resultOf(f);
       this._collectSimErrors(f, res);
@@ -596,7 +667,8 @@ export class MatchBoss {
     this.markPublic();
     this.runner = null;
     if (!hidden) {
-      const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
+      // 2V2: the match ends after the Final Assault — no Hidden Core (design 2026-10-16: R14 比胜负)
+      const eligible = !this.isVersus && victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
       this.later(this.scaled(DELAYS.SETTLE), () => {
         if (eligible) {
           this.hiddenReached = true;

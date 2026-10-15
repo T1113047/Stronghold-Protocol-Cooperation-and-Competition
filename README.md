@@ -1,5 +1,9 @@
 # 卫戍协议：盟约 · Stronghold Protocol: Alliance
 
+> **本仓库：《卫戍协议-合作与竞争版》 · *Stronghold Protocol: Cooperation and Competition***
+>
+> 这是在 [sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol) **v0.2.6** 基础上开发的**非官方 2V2 衍生版**：把原本 1–4 人的合作玩法扩展为**两支双人小队**的「**合作 + 竞争**」模式。代码同样以 **GPL-3.0-or-later** 发布，同样**非官方、非商业、不含游戏素材**；上游的全部声明与限制继续适用（见下）。上游作者与贡献者的著作权与署名一并保留（详见 [NOTICE.md](NOTICE.md)）。
+
 《明日方舟》季节性自走棋塔防玩法「卫戍协议：盟约」的**非官方同人复刻**：浏览器即开即玩，单人或 1–4 人联机合作。
 
 ![version](https://img.shields.io/badge/version-0.2.6-2ea44f)

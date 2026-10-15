@@ -2,6 +2,10 @@
 
 **卫戍协议：盟约 · Stronghold Protocol** 是《明日方舟》限时玩法「卫戍协议：盟约」的**非官方同人复刻**，与上海鹰角网络科技有限公司（Hypergryph）、Yostar 及其关联方**没有任何关联**，也未获得其授权或认可。
 
+## 0. 本仓库（派生说明）
+
+本仓库 **《卫戍协议-合作与竞争版》**（*Stronghold Protocol: Cooperation and Competition*，GitHub：`T1113047/Stronghold-Protocol-Cooperation-and-Competition`）是 [sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol) **v0.2.6** 的衍生作品，在上游基础上增加了 **2V2「合作 + 竞争」模式**。它同样是**非官方、非商业**的同人作品，**沿用上游的 GPL-3.0-or-later 代码许可证**，并完整保留本文件、`LICENSE` 与 `THIRD-PARTY-NOTICES.md` 的全部条款与限制。上游作者与贡献者的著作权与署名一并保留；上游关于游戏素材「不适用 GPL、仅限非商业」的限制对本衍生版同样全部适用。
+
 ## 1. 代码许可证：GPL-3.0-or-later
 
 Copyright (C) 2026 Stronghold-Protocol contributors

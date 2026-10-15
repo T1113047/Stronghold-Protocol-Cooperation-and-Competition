@@ -2,7 +2,7 @@
   "name": "stronghold-protocol-alliance",
   "version": "0.2.6",
   "private": true,
-  "description": "明日方舟「卫戍协议：盟约」非官方同人联机网页复刻（1–4 人合作，Node.js 服务器 + 浏览器客户端）",
+  "description": "《卫戍协议-合作与竞争版》：基于 sganggs/Stronghold-Protocol v0.2.6 的 2V2 合作与竞争衍生版（Node.js 服务器 + 浏览器客户端，GPL-3.0-or-later，非商业）",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/sganggs/Stronghold-Protocol#readme",
   "repository": {

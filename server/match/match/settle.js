@@ -144,6 +144,15 @@ export class MatchSettle {
 
   afterSettle() {
     if (!this.alivePlayers().length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
+    // 2V2: a team fully eliminated before the Final Assault ends the match for BOTH teams (双败)
+    if (this.isVersus) {
+      const aliveTeams = new Set(this.alivePlayers().map((p) => this.teamIdOf(p)));
+      if (aliveTeams.size < this.matchTeamIds().length && this.round < this.gd.bossRound) {
+        this.versusOutcome = { winnerTeam: null, doubleLoss: true };
+        this.finish({ victory: false, reason: 'versus-eliminated' });
+        return;
+      }
+    }
     resetRoundCounters(this); // AI bot merge-counter resets each round (server/match/botEmotes.js)
     this.startRound(this.round + 1);
   }

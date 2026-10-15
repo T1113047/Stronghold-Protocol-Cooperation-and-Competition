@@ -100,6 +100,9 @@ export class MatchInfra {
   /** The alive players of ps's team (solo/coop: every alive player). */
   aliveAlliesOf(ps) { return this.alliesOf(ps).filter((p) => p.alive); }
 
+  /** The team ids present in this match, sorted (2V2 'versus': [0,1]; solo/coop: [0]). */
+  matchTeamIds() { return [...new Set(this.order.map((p) => this.teamIdOf(p)))].sort((a, b) => a - b); }
+
   /** [ASSUMED] Touch's initial, match-long team grant survives its holder's elimination/quit; focus alone grants none.
    *  2V2: scoped to the player's own team (solo/coop: the whole roster, as before). */
   teamMedicGranted(ps) { return this.alliesOf(ps).some(p => p.bandId === 'band_amedic'); }

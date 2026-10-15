@@ -192,6 +192,7 @@ export class MatchBoss {
       return { fieldId, team, kind: hidden ? 'hidden' : 'boss', players: g.map((p) => p.playerId), battle, live: true };
     });
     this.overtimeApplied = 0;
+    this._bossStartAt = this.sched.now();
     // HUD: the boss level's countdown (maxPlayTime, 120 real s — the battle goes on past it) and the moment the
     // overtime drain starts (150 real s), both on the field clock
     const onClock = (realS) => this.sched.now() + Math.round(((realS * this.gd.combatTimeScale) / this.gameSpeed) * 1000);
@@ -627,6 +628,32 @@ export class MatchBoss {
 
   _finalDone(runner, hidden) { this._finishFinal(hidden, (f) => runner.resultOf(f)); }
 
+  /**
+   * 2V2 final scoring (design 2026-10-16): first compare each team's boss damage as a share of its OWN pool, then the
+   * converted time (remaining seconds + remaining LP × 2s). `remainingTime` is the boss countdown remaining on the
+   * shared field clock (both teams fight on it, so it is the same for both).
+   */
+  _versusDecide() {
+    const entries = this._teamIds().map((t) => {
+      const pool = this._poolOf(t);
+      const maxHp = pool ? pool.maxHp : 1;
+      const dealt = pool ? Math.max(0, maxHp - pool.hp) : 0;
+      const bossPct = dealt / maxHp;
+      const lp = Math.max(0, Math.round(this._teamLpOf(t)));
+      const elapsed = this._bossStartAt != null ? Math.max(0, (this.sched.now() - this._bossStartAt) / 1000) : 0;
+      const remainingTime = Math.max(0, (this.gd.bossLevelTime(this.round) || 0) - elapsed);
+      const score = lp * 2 + remainingTime;
+      return { t, bossPct, score, lp, remainingTime };
+    });
+    entries.sort((a, b) => (b.bossPct - a.bossPct) || (b.score - a.score));
+    const tie = entries.length >= 2
+      && Math.abs(entries[0].bossPct - entries[1].bossPct) <= 1e-9
+      && Math.abs(entries[0].score - entries[1].score) <= 1e-9;
+    const teams = {};
+    for (const e of entries) teams[e.t] = { bossPct: e.bossPct, score: e.score, lp: e.lp, remainingTime: e.remainingTime };
+    return { winnerTeam: tie ? null : (entries[0]?.t ?? null), doubleLoss: false, teams };
+  }
+
   /** Every boss field is over: stats, bounties, then the Hidden Core or RESULT. */
   _finishFinal(hidden, resultOf) {
     if (this.phase !== (hidden ? PHASE.HIDDEN_CORE : PHASE.FINAL_ASSAULT)) return;
@@ -666,9 +693,15 @@ export class MatchBoss {
     this.overtimeAt = 0;
     this.markPublic();
     this.runner = null;
+    if (this.isVersus) {
+      // 2V2: the Final Assault is the end — no Hidden Core. Score the teams and finish (per-player victory comes
+      // from this.versusOutcome in results.js).
+      this.versusOutcome = this._versusDecide();
+      this.later(this.scaled(DELAYS.SETTLE), () => this.finish({ victory: true, reason: 'versus' }));
+      return;
+    }
     if (!hidden) {
-      // 2V2: the match ends after the Final Assault — no Hidden Core (design 2026-10-16: R14 比胜负)
-      const eligible = !this.isVersus && victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
+      const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
       this.later(this.scaled(DELAYS.SETTLE), () => {
         if (eligible) {
           this.hiddenReached = true;

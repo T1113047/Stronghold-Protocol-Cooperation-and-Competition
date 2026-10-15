@@ -87,4 +87,22 @@ describe('versus (2V2) match: team model', () => {
     assert.ok(checked, 'the match reached the Final Assault');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
+
+  test('versus: the result carries per-team scoring and a winner', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 21, fake: true }).start();
+    h.autoHumans();
+    h.drive(() => h.ended != null, { maxSteps: 3e6 });
+    assert.ok(h.ended, 'the match ended');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+    assert.ok(h.ended.versus, 'the summary carries the versus scoring');
+    assert.equal(h.ended.versus.doubleLoss, false, 'both teams reached R14');
+    assert.equal(Object.keys(h.ended.versus.teams).length, 2, 'both teams scored');
+    assert.ok(h.ended.versus.winnerTeam === 0 || h.ended.versus.winnerTeam === 1 || h.ended.versus.winnerTeam === null, 'a valid winner');
+    // the players' victory flags follow their team's win
+    const winner = h.ended.versus.winnerTeam;
+    for (const p of h.ended.players) {
+      const want = winner != null && p.alive && (h.m.players.get(p.playerId).team === winner);
+      assert.equal(p.victory, want, `${p.playerId} victory ${p.victory}, want ${want}`);
+    }
+  });
 });

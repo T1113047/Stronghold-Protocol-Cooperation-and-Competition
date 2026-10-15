@@ -90,6 +90,7 @@ function rewardFor(gd, roundsPassed) {
 export function buildResult(m, outcome) {
   const gd = m.gd;
   const { victory, hiddenReached, hiddenCleared } = outcome;
+  const versus = m.isVersus ? (m.versusOutcome || { winnerTeam: null, doubleLoss: false, teams: {} }) : null;
   const players = [...m.players.values()].sort((a, b) => a.seat - b.seat);
   const titles = assignTitles(gd, players, victory);
   const teamRounds = victory ? gd.bossRound + (hiddenCleared ? 1 : 0) : Math.max(0, Math.min(m.round, gd.bossRound) - 1);
@@ -106,8 +107,9 @@ export function buildResult(m, outcome) {
       if (si && si.standInFor) e.standInFor = si.standInFor;
       return e;
     });
-    // the team's clear counts for the players still in; an eliminated / departed teammate did not pass the boss round
-    const cleared = victory && ps.alive;
+    // the team's clear counts for the players still in; an eliminated / departed teammate did not pass the boss round.
+    // 2V2: a player wins when its team won (versusOutcome.winnerTeam); a double loss clears nobody.
+    const cleared = versus ? (versus.winnerTeam != null && versus.winnerTeam === ps.team) : (victory && ps.alive);
     return {
       playerId: ps.playerId,
       seat: ps.seat,
@@ -140,6 +142,8 @@ export function buildResult(m, outcome) {
     hiddenReached,
     hiddenCleared,
     reason: outcome.reason,
+    // 2V2: the per-team scoring and winner (winnerTeam = the winning team, or null on a draw / double loss)
+    versus: versus ? { winnerTeam: versus.winnerTeam, doubleLoss: versus.doubleLoss, teams: versus.teams } : undefined,
     // the merged Final Assault pool (null before round 14); players[].lp are the alive players' shares of it
     teamLp: m.teamLp != null ? Math.max(0, Math.round(m.teamLp)) : null,
     modeId: m.modeId,

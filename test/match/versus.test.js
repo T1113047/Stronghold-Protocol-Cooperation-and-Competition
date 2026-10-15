@@ -6,7 +6,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch } from './harness.js';
-import { PHASE, TEAMS, teamOfSeat } from '../../shared/constants.js';
+import { PHASE, teamOfSeat } from '../../shared/constants.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
 const vsSeats = () => ([

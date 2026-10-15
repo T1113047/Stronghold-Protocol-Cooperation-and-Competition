@@ -95,6 +95,9 @@ export class MatchViews {
       players: this.order.map((ps) => ({
         playerId: ps.playerId,
         seat: ps.seat,
+        // 2V2 ('versus'): the team this player fights for — present only in a versus match (the client groups the team
+        // panel by it); 'solo' / 'coop' rows keep their exact shape
+        ...(ps.team != null ? { team: ps.team } : {}),
         name: ps.name,
         isBot: ps.isBot,
         connected: ps.isBot || (ps.connected && !ps.left),

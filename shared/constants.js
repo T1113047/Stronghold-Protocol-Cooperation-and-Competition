@@ -25,9 +25,25 @@ export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS'];
 export const DIFFICULTY_NAMES = { FUNNY: N_('标准模拟'), NORMAL: N_('险境模拟'), HARD: N_('绝境模拟'), ABYSS: N_('终极模拟') };
 export const DIFFICULTY_COLORS = { FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024' };
 
-// modeId in data/config.json = `mode_${type}_${difficulty.toLowerCase()}` with type single|multi
+// modeId in data/config.json = `mode_${type}_${difficulty.toLowerCase()}` with type single|multi.
+// The 2V2 'versus' room reuses the MULTI tuning: data/config.json is generated (never hand-edited, AGENTS.md), so the
+// versus deltas (two teams, the competition mechanic) are applied in code — server/lobby.js and server/match/**.
 export const modeIdFor = (roomMode, difficulty) =>
   `mode_${roomMode === 'solo' ? 'single' : 'multi'}_${difficulty.toLowerCase()}`;
+
+/** Room modes: 'solo' (1 human, no AI), 'coop' (1–4 co-op, one shared team) and 'versus' (2V2: two teams of two). */
+export const ROOM_MODES = Object.freeze(['solo', 'coop', 'versus']);
+/** Players per team in a 'versus' room (2V2). */
+export const TEAM_SIZE = 2;
+/** How many teams a 'versus' room has. */
+export const TEAMS = 2;
+/**
+ * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
+ * Non-versus rooms keep the flat, team-less seat model (null).
+ * @param {number} seat 0..MAX_SEATS-1
+ * @returns {number} 0..TEAMS-1
+ */
+export const teamOfSeat = (seat) => Math.floor(seat / TEAM_SIZE) % TEAMS;
 
 export const PHASE = Object.freeze({
   LOBBY: 'LOBBY',

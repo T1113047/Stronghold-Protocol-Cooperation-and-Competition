@@ -83,6 +83,10 @@
 }
 .seat__head { align-self: stretch; display: flex; align-items: center; gap: .1rem; }
 .seat__no { font-size: calc(.22 * var(--t)); font-weight: 700; color: var(--text-md); padding-left: .08rem; border-left: 3px solid var(--line-3); line-height: 1.1; }
+/* 2V2 ('versus'): the seat's team badge (room.state seats[].team); team 0 / team 1 tint the seat's left border */
+.seat__team { margin-right: auto; font-size: calc(.13 * var(--t)); font-weight: 700; color: var(--text-md); padding: .02rem .09rem; border: 1px solid var(--line-3); }
+.seat--team-0 .seat__no { border-left-color: #4aa3ff; }
+.seat--team-1 .seat__no { border-left-color: #ff6a4a; }
 .seat__host {
   margin-left: auto;
   display: flex;

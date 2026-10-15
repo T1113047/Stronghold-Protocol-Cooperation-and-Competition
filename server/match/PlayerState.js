@@ -144,6 +144,8 @@ export class PlayerState {
     this.gd = m.gd;
     this.playerId = seat.playerId;
     this.seat = seat.seat;
+    // 2V2: the team this player fights for (null outside a 'versus' match) — Match passes seats[].team
+    this.team = Number.isInteger(seat.team) ? seat.team : null;
     this.name = seat.name;
     this.isBot = !!seat.isBot;
     this.connected = this.isBot ? true : !!seat.connected;

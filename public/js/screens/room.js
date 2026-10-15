@@ -122,11 +122,12 @@ function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot,
   const offline = seat.connected === false && !seat.isBot;
   // The host never needs to toggle ready: starting the match readies them (server rule).
   const state = offline ? 'offline' : seat.ready || seat.isBot ? 'ready' : isHostSeat ? 'host' : 'waiting';
-  return html`<article class=${`seat brackets${isMe ? ' is-me' : ''}${isHostSeat ? ' is-host' : ''}${seat.isBot ? ' is-bot' : ''} is-${state}`}
+  return html`<article class=${`seat brackets${isMe ? ' is-me' : ''}${isHostSeat ? ' is-host' : ''}${seat.isBot ? ' is-bot' : ''} is-${state}${seat.team != null ? ` seat--team-${seat.team}` : ''}`}
       style=${`--seat-i:${index}`}>
     <header class="seat__head">
       <span class="seat__no num">P${index + 1}</span>
       <${MicroLabel}>SEAT ${String(index + 1).padStart(2, '0')}<//>
+      ${seat.team != null ? html`<span class="seat__team num">${t('队伍 {n}', { n: seat.team + 1 })}</span>` : null}
       ${isHostSeat ? html`<span class="seat__host"><${Icon} name="crown" />${t('创建者')}</span>` : null}
     </header>
     <div class="seat__art">

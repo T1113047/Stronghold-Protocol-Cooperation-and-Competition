@@ -99,7 +99,7 @@
 //     a player seat (the seat is kept and given back on resume).
 
 import { randomBytes, randomInt } from 'node:crypto';
-import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor } from '../shared/constants.js';
+import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, TEAMS, teamOfSeat, modeIdFor } from '../shared/constants.js';
 import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks } from '../shared/protocol.js';
 import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { getData as defaultGetData, lookup } from './data.js';
@@ -220,9 +220,10 @@ export class Room {
   /** Humans that have not departed, in seat order. @returns {Seat[]} */
   activeHumans() { return this.seats.filter((s) => s && !s.isBot && !s.left); }
 
-  /** `room.state` frame (DESIGN §8.1) plus `inMatch`. */
+  /** `room.state` frame (DESIGN §8.1) plus `inMatch`. In a 'versus' room every seat carries its `team` (0..TEAMS-1). */
   toState() {
-    return {
+    const versus = this.mode === 'versus';
+    const state = {
       t: 'room.state',
       code: this.code,
       hostId: this.hostId,
@@ -230,11 +231,17 @@ export class Room {
       difficulty: this.difficulty,
       aiPicksLast: this.aiPicksLast,
       inMatch: !!this.match,
-      seats: this.seats.map((s) => (s
-        ? { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left }
-        : null)),
+      seats: this.seats.map((s) => {
+        if (!s) return null;
+        const row = { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left };
+        if (versus) row.team = teamOfSeat(s.seat);
+        return row;
+      }),
       spectators: this.spectators.map((s) => ({ playerId: s.playerId, name: s.name, connected: s.connected })),
     };
+    // 2V2: how many teams the room splits its seats into — present only in a versus room (solo / coop keep their shape)
+    if (versus) state.teams = TEAMS;
+    return state;
   }
 }
 
@@ -718,6 +725,8 @@ export class Lobby {
     if (host) host.ready = true;
     const seats = room.seats.filter(Boolean).map((s) => ({
       seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, connected: s.connected,
+      // 2V2 ('versus'): the team this seat fights for (PlayerState.team) — absent in 'solo' / 'coop'
+      ...(room.mode === 'versus' ? { team: teamOfSeat(s.seat) } : {}),
       // DESIGN §16: the human's checked operator loadout and (0.2.2) per-operator 潜能 / 练度 (bots fight with the defaults)
       loadout: s.isBot ? null : s.loadout || null,
       ops: s.isBot ? null : s.ops || null,

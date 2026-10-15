@@ -233,7 +233,9 @@ export class Match {
     }
     this.opts = opts;
     this.roomCode = opts.roomCode ?? '----';
-    this.mode = opts.mode === 'solo' ? 'solo' : 'coop';
+    this.mode = opts.mode === 'solo' ? 'solo' : opts.mode === 'versus' ? 'versus' : 'coop';
+    /** 2V2 (ROOM_MODES 'versus'): two teams of TEAM_SIZE; the competition layer reads this. */
+    this.isVersus = this.mode === 'versus';
     this.difficulty = opts.difficulty;
     this.modeId = opts.modeId || modeIdFor(this.mode, opts.difficulty);
     this.seed = (Number(opts.seed) >>> 0) || 1;

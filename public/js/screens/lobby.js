@@ -13,7 +13,7 @@
 
 import { ResumeMatchButton } from '../ui/resumeMatch.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, modeIdFor, ERR } from '../../../shared/constants.js';
+import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, ROOM_MODES, modeIdFor, ERR } from '../../../shared/constants.js';
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
 import { GuideButton } from '../ui/guide.js';
@@ -85,6 +85,11 @@ const MODE_CARDS = [
     id: 'coop', name: N_('同盟模拟'), en: 'ALLIANCE SIMULATION', icon: 'users',
     desc: N_('与至多 {n} 名博士组成同盟，共享干员池，联防协作抵御敌潮。'), params: { n: MAX_SEATS - 1 },
     points: [N_('1–{n} 名博士 · 可由 AI 队友补位'), N_('联防阶段 · 最终攻势合并生命值')], pointParams: { n: MAX_SEATS },
+  },
+  {
+    id: 'versus', name: N_('对抗模拟 2V2'), en: 'VERSUS SIMULATION 2V2', icon: 'sword',
+    desc: N_('两支双人小队同时模拟；从抽中的回合起进入对抗期，可干预对面的出怪，最后比较剩余时间定胜负。'),
+    points: [N_('固定 2V2（共 {n} 席，可由 AI 补位）'), N_('竞争机制开发中')], pointParams: { n: MAX_SEATS },
   },
 ];
 
@@ -244,7 +249,10 @@ export function LobbyScreen() {
   const me = useStore((s) => s.me, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
   useData('config');
-  const [roomMode, setRoomMode] = useState(() => (loadPref('lobby.mode', 'coop') === 'solo' ? 'solo' : 'coop'));
+  const [roomMode, setRoomMode] = useState(() => {
+    const m = loadPref('lobby.mode', 'coop');
+    return ROOM_MODES.includes(m) ? m : 'coop';
+  });
   const [difficulty, setDifficulty] = useState(() => {
     const d = loadPref('lobby.difficulty', 'FUNNY');
     return DIFFICULTIES.includes(d) ? d : 'FUNNY';
@@ -369,12 +377,12 @@ export function LobbyScreen() {
         <div class="create-box">
           <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
             <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
-              ${roomMode === 'solo' ? t('开始独立模拟') : t('创建同盟')}
+              ${roomMode === 'solo' ? t('开始独立模拟') : roomMode === 'versus' ? t('创建 2V2 房间') : t('创建同盟')}
             <//>
           <//>
           <div class="create-box__hint">
             ${online
-              ? html`<span>${roomMode === 'solo' ? t('创建后即可开始模拟') : t('创建后可邀请好友或添加 AI 队友')}</span>`
+              ? html`<span>${roomMode === 'solo' ? t('创建后即可开始模拟') : roomMode === 'versus' ? t('创建后邀请另一位博士，或添加 AI 队友补满两队') : t('创建后可邀请好友或添加 AI 队友')}</span>`
               : html`<${Spinner} size="sm" label="CONNECTING" />`}
           </div>
         </div>

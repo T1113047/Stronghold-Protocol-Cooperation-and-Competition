@@ -69,11 +69,27 @@ export class MatchInfra {
 
   alivePlayers() { return this.order.filter((p) => p.alive); }
 
-  /** Whether any chess of a bond is in this match's pool (a 驰援 card of a fully banned bond is never offered). */
-  bondInPool(bondId) {
-    for (const id of this.pool.entries.keys()) {
-      const c = this.gd.chess(id);
-      if (c && Array.isArray(c.bonds) && c.bonds.includes(bondId)) return true;
+  /** The chess pool a team's players draw from (2V2: per team; solo/coop: the single pool). */
+  poolOf(team) { return this.pools ? this.pools.get(team) : this.pool; }
+
+  /** The disabled-bond draw of a team (2V2: per team; solo/coop: the single match-wide draw). */
+  bansOf(team) {
+    if (!this.teamBans) return { drawn: this.disabledBonds, staticOff: this.staticInactiveBonds, banned: this.bannedChess };
+    return this.teamBans.get(team) || { drawn: [], staticOff: [], banned: [] };
+  }
+
+  /**
+   * Whether any chess of a bond is in the pool (a 驰援 card of a fully banned bond is never offered). `team` omitted:
+   * any team's pool (2V2 offers a card while either team can use it); given: only that team's pool.
+   */
+  bondInPool(bondId, team = null) {
+    const pools = team == null && this.pools ? [...this.pools.values()] : [this.poolOf(team ?? 0)];
+    for (const pool of pools) {
+      if (!pool) continue;
+      for (const id of pool.entries.keys()) {
+        const c = this.gd.chess(id);
+        if (c && Array.isArray(c.bonds) && c.bonds.includes(bondId)) return true;
+      }
     }
     return false;
   }

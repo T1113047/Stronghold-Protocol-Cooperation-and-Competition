@@ -337,16 +337,38 @@ export class Match {
     this.factions = setup.factions;
     this.bossId = setup.bossId;
     this.hiddenBossId = setup.hiddenBossId;
-    const bans = drawDisabledBonds(this.gd, this.rngSetup);
-    this.disabledBonds = bans.drawn;
-    this.staticInactiveBonds = bans.staticOff;
-    this.bannedChess = bans.banned;
-    this.pool = new SharedPool(this.gd, { banned: bans.banned });
+    // 2V2 ('versus', design 2026-10-17): each team has its OWN disabled core bonds —
+    // 5 of the 8 core bonds are banned per team (3 available) — and thus its own chess pool; the stage / boss /
+    // factions stay SHARED. Solo/coop keep the single match-wide setup.
+    const difBans = this.gd.bans(this.gd.difficulty);
+    if (this.isVersus) {
+      this.pools = new Map();
+      this.teamBans = new Map();
+      for (const t of this.matchTeamIds()) {
+        const bans = drawDisabledBonds(this.gd, this.rngSetup, { core: 5, addon: difBans.addon });
+        this.teamBans.set(t, bans);
+        this.pools.set(t, new SharedPool(this.gd, { banned: bans.banned }));
+      }
+      this.pool = null; // every read goes through poolOf(team)
+      this.disabledBonds = [];
+      this.staticInactiveBonds = [];
+      this.bannedChess = [];
+    } else {
+      this.pools = null;
+      this.teamBans = null;
+      const bans = drawDisabledBonds(this.gd, this.rngSetup);
+      this.disabledBonds = bans.drawn;
+      this.staticInactiveBonds = bans.staticOff;
+      this.bannedChess = bans.banned;
+      this.pool = new SharedPool(this.gd, { banned: bans.banned });
+    }
     this.itemPool = new SharedItemPool(this.gd, () => this.order);
     // 自选编队 (0.2.0): each human's slotted DIY pieces get their own stock — none for one whose bonds are all off this
-    // match (player/diy.js initDiyStock); no randomness is drawn here
-    const off = new Set([...bans.drawn, ...bans.staticOff]);
-    for (const ps of this.order) ps.initDiyStock(off);
+    // match (player/diy.js initDiyStock); no randomness is drawn here. 2V2: the player's TEAM's bans apply.
+    for (const ps of this.order) {
+      const bans = this.bansOf(ps.team);
+      ps.initDiyStock(new Set([...bans.drawn, ...bans.staticOff]));
+    }
 
     this.phase = PHASE.LOBBY;
     this.round = 0;

@@ -16,7 +16,8 @@ export class MatchPlatform {
   start() {
     if (this.disposed || this.ended || this.phase !== PHASE.LOBBY) return;
     this.guard(() => {
-      if (!this.gd.visibleChess.length || this.pool.entries.size === 0) {
+      const pools = this.pools ? [...this.pools.values()] : [this.pool];
+      if (!this.gd.visibleChess.length || pools.some((p) => !p || p.entries.size === 0)) {
         this.log.error?.(`[match ${this.roomCode}] game data unusable (no chess pool) — ending the match`);
         this.phase = PHASE.INFO_CHECK;
         this.markPublic();

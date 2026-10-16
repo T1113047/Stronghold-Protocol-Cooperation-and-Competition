@@ -27,16 +27,18 @@
  * @param {Function} rng seeded rng (createRng)
  * @returns {{ drawn: string[], staticOff: string[], banned: string[] }}
  */
-export function drawDisabledBonds(gd, rng) {
-  const { core: nCore, addon: nAddon } = gd.bans(gd.difficulty);
+export function drawDisabledBonds(gd, rng, { core, addon } = {}) {
+  const base = gd.bans(gd.difficulty);
+  const nCore = Number.isInteger(core) && core >= 0 ? core : base.core;
+  const nAddon = Number.isInteger(addon) && addon >= 0 ? addon : base.addon;
   const staticOff = [...gd.modeInactiveBonds].filter((b) => gd.bond(b)).sort();
   const eligible = gd.bondIds.filter((b) => {
     const bond = gd.bond(b);
     return bond && Number(bond.weight) > 0 && !gd.modeInactiveBonds.has(b);
   });
-  const core = eligible.filter((b) => gd.bond(b).isCore);
-  const addon = eligible.filter((b) => !gd.bond(b).isCore);
-  const drawn = [...sample(core, nCore, rng), ...sample(addon, nAddon, rng)].sort();
+  const corePool = eligible.filter((b) => gd.bond(b).isCore);
+  const addonPool = eligible.filter((b) => !gd.bond(b).isCore);
+  const drawn = [...sample(corePool, nCore, rng), ...sample(addonPool, nAddon, rng)].sort();
   const off = new Set([...drawn, ...staticOff]);
   const banned = [];
   for (const id of gd.visibleChess) {

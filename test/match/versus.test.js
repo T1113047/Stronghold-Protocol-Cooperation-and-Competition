@@ -5,7 +5,7 @@
 // no engine errors, so the team plumbing never breaks the round loop.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeMatch } from './harness.js';
+import { makeMatch, DATA } from './harness.js';
 import { PHASE, teamOfSeat } from '../../shared/constants.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
@@ -131,6 +131,17 @@ describe('versus (2V2) match: team model', () => {
       || [...ps.board.values()].some((pc) => (pc.items || []).some((it) => it.id === 'chess_item_2_06_e_a'));
     assert.ok([...m.players.values()].some(hasPhone), 'a 小电话 was granted at the contest-round prep');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: each team has its own disabled core bonds (3 available)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 51, fake: true }).start();
+    const m = h.m;
+    assert.ok(m.pools instanceof Map && m.pools.size === 2, 'one chess pool per team');
+    const coreIds = new Set(Object.values(DATA.bonds).filter((b) => b && b.isCore && b.weight > 0).map((b) => b.bondId));
+    const bansOf = (t) => m.bansOf(t).drawn.filter((b) => coreIds.has(b));
+    assert.equal(bansOf(0).length, 5, `team 0 bans ${bansOf(0).length} core bonds`);
+    assert.equal(bansOf(1).length, 5, `team 1 bans ${bansOf(1).length} core bonds`);
+    assert.notDeepEqual([...bansOf(0)].sort(), [...bansOf(1)].sort(), 'the two teams ban different core bonds');
   });
 
   test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();

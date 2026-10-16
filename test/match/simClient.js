@@ -65,7 +65,7 @@ export class SimClient {
       }
       return;
     }
-    const entry = { spec: msg.spec, battleId: msg.battleId, fieldId: msg.fieldId, authoritative: !!msg.authoritative, finished: false, sentResult: false, timer: null, lastProgress: -Infinity };
+    const entry = { spec: msg.spec, battleId: msg.battleId, fieldId: msg.fieldId, team: msg.team ?? null, authoritative: !!msg.authoritative, finished: false, sentResult: false, timer: null, lastProgress: -Infinity };
     entry.battle = createBattleFromSpec(msg.spec, this.o.ds, { BattleClass: this.o.BattleClass, recordEvents: false, quiet: true });
     entry.meter = attachLpMeter(entry.battle);
     this.battles.set(msg.battleId, entry);
@@ -79,7 +79,11 @@ export class SimClient {
     this.pools.push(msg);
     for (const e of this.battles.values()) {
       const pool = e.battle.sharedBoss;
-      if (pool && typeof pool.sync === 'function') pool.sync(msg.hp, msg.acked ? msg.acked[e.fieldId] : undefined);
+      if (!pool || typeof pool.sync !== 'function') continue;
+      // 2V2: one pool per team in `pools`; the scalars are null there (the browser runner does the same, poolView)
+      const v = msg.pools ? (e.team != null ? msg.pools[e.team] || null : null) : msg;
+      if (!v) continue;
+      pool.sync(v.hp, msg.acked ? msg.acked[e.fieldId] : undefined);
     }
   }
 

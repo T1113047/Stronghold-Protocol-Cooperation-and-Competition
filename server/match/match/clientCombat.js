@@ -90,6 +90,8 @@ export class MatchClientCombat {
   _startMsg(f, pid, { watch = false } = {}) {
     return {
       t: 'b.start', battleId: f.battleId, fieldId: f.fieldId, kind: f.kind,
+      // 2V2: the field's team — the client picks its entry out of b.pool.pools (the scalar hp is null there)
+      team: f.team ?? null,
       spec: this.spectators.has(pid) ? this._spectatorSpec(f) : f.spec,
       authoritative: !!(!f.done && !f.verifyJob && f.mode === 'client' && f.authority === pid && !watch),
       startAt: f.startAt, serverNow: this.sched.now(), elapsed: Math.round(this._fieldElapsed(f) * 1000) / 1000,

@@ -656,6 +656,8 @@ export function createBattleRunner(deps) {
     }
     const e = {
       battleId: msg.battleId, fieldId: msg.fieldId || msg.spec.fieldId, kind: msg.kind || msg.spec.kind, spec: msg.spec,
+      // 2V2: the field's team — b.pool carries one pool per team (b.pool.pools), the scalars are null there
+      team: msg.team ?? null,
       // built by prepare(); `seq` = its latest b.start, `elapsed` = the field clock to start from, `endReason` = the first
       // forced / timeout b.end (applied once the Battle exists), `ready` = the preparation (a promise)
       sim: null, battle: null, meter: null, seq, elapsed: Number(msg.elapsed) || 0, endReason: null, ready: null,
@@ -710,7 +712,8 @@ export function createBattleRunner(deps) {
       e.meter = sim.spec.attachLpMeter(battle);
       e.t0 = clock() - (e.elapsed / e.speed) * 1000;
       if (lastPool && battle.sharedBoss && typeof battle.sharedBoss.sync === 'function') {
-        battle.sharedBoss.sync(lastPool.hp, lastPool.acked ? lastPool.acked[e.fieldId] : undefined);
+        const v = poolView(lastPool, e);
+        if (v) battle.sharedBoss.sync(v.hp, lastPool.acked ? lastPool.acked[e.fieldId] : undefined);
       }
       if (e.endReason) endBattle(e);
       // silent catch-up to the field's clock before it is shown (a reconnect / observing a running field) — for the view
@@ -739,13 +742,26 @@ export function createBattleRunner(deps) {
     }
   }
 
+  /**
+   * The pool view of one field's battle: 2V2 sends `b.pool.pools[team]` (one pool per team) and leaves the scalar
+   * hp/max/teamLp null, so reading the scalar synced the local pool to `Number(null) = 0` and the boss field ended as
+   * 'cleared' the moment it started (the server called it implausible and took the field over). Co-op keeps the scalar.
+   */
+  function poolView(msg, e) {
+    if (!msg || !msg.pools) return msg;
+    return e && e.team != null ? (msg.pools[e.team] || null) : null;
+  }
+
   function onPool(msg) {
     if (!msg || typeof msg !== 'object') return;
     lastPool = msg;
     // a pending battle not built yet takes lastPool when it is built
     for (const e of [...entries.values(), ...pending.values()]) {
       const pool = e.battle ? e.battle.sharedBoss : null;
-      if (pool && typeof pool.sync === 'function') pool.sync(msg.hp, msg.acked ? msg.acked[e.fieldId] : undefined);
+      if (!pool || typeof pool.sync !== 'function') continue;
+      const v = poolView(msg, e);
+      if (!v) continue; // no entry for this field's team (a spectator of the other side): keep the last known hp
+      pool.sync(v.hp, msg.acked ? msg.acked[e.fieldId] : undefined);
     }
     emit('pool', msg);
   }

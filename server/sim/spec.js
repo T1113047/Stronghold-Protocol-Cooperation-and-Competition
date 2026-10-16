@@ -214,10 +214,18 @@ export class LocalBossPool {
   }
 
   sync(serverHp, ackedCum) {
-    const h = Number(serverHp);
-    if (Number.isFinite(h)) this.serverHp = Math.max(0, Math.min(this.maxHp, h));
-    const a = Number(ackedCum);
-    if (Number.isFinite(a) && a >= 0) this.acked = a;
+    // 2V2 sends one pool per team (b.pool.pools) and leaves the scalar hp null — but `Number(null)` is 0, so syncing it
+    // zeroed the pool: the local boss died on the first broadcast and the field reported 'cleared' while the server's
+    // pool still held millions (log: "implausible boss result … cleared while the pool holds 8000000", 2026-10-16).
+    // An absent hp / ack changes nothing.
+    if (serverHp != null) {
+      const h = Number(serverHp);
+      if (Number.isFinite(h)) this.serverHp = Math.max(0, Math.min(this.maxHp, h));
+    }
+    if (ackedCum != null) {
+      const a = Number(ackedCum);
+      if (Number.isFinite(a) && a >= 0) this.acked = a;
+    }
   }
 }
 

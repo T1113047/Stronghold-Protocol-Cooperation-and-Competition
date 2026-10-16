@@ -88,6 +88,56 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus (client-side combat): the per-team boss pools reach the clients intact', () => {
+    // 2026-10-16 production bug: b.pool leaves the scalar hp null and sends one pool per team (b.pool.pools); the
+    // client read the scalar, `Number(null)` is 0, so the local pool was zeroed and the boss field reported 'cleared'
+    // the moment it started — the server logged "implausible boss result … while the pool holds 8000000" and took the
+    // field over. The players never saw the boss fight.
+    // 4 humans: both teams' boss fields must run client-side, which is where the bug lived
+    const seats = [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'p_2', name: 'B0', isBot: false, connected: true, team: 1 },
+      { seat: 3, playerId: 'p_3', name: 'B1', isBot: false, connected: true, team: 1 },
+    ];
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats, seed: 21, fake: true, clientCombat: true }).start();
+    h.autoHumans();
+    const m = h.m;
+    h.drive(() => h.ended != null || m.phase === PHASE.FINAL_ASSAULT, { maxSteps: 3e6 });
+    assert.equal(m.phase, PHASE.FINAL_ASSAULT, `reached the Final Assault (${m.phase} R${m.round})`);
+    // b.start: a boss field names its team, so the client can pick its entry out of b.pool.pools (the round start hands
+    // the fields out as it launches them)
+    h.flushAll();
+    for (const [id, team] of [['p_0', 0], ['p_2', 1]]) {
+      const start = h.allTo(id, 'b.start').find((msg) => msg.kind === 'boss');
+      assert.ok(start, `${id} received a boss b.start`);
+      assert.equal(start.team, team, 'the field carries its team');
+    }
+    // b.pool: one entry per team, no scalars
+    h.drive(() => h.bc.some((msg) => msg.t === 'b.pool' && msg.pools), { maxSteps: 2e5 });
+    h.flushAll(); // the deliveries run on the scheduler, like a real socket frame
+    const first = h.bc.find((msg) => msg.t === 'b.pool' && msg.pools);
+    assert.ok(first, 'the boss round broadcasts one pool per team');
+    assert.equal(first.hp, null, '2V2 has no scalar pool');
+    assert.deepEqual(Object.keys(first.pools).sort(), ['0', '1']);
+    for (const t of ['0', '1']) {
+      assert.ok(first.pools[t].max > 0, `team ${t} pool has a size`);
+      assert.equal(first.pools[t].hp, first.pools[t].max, `team ${t} pool starts full`);
+      assert.ok(Number.isFinite(first.pools[t].teamLp), `team ${t} carries its LP`);
+    }
+    // the browser side (the harness's SimClient applies the same rule as public/js/battle/runner.js): the local pool
+    // must keep its hp — with the bug it read 0 and the field ended as 'cleared'
+    const c0 = h.clients.get('p_0');
+    assert.ok(c0.pools.length, 'the client received the pool broadcast');
+    const field = [...c0.battles.values()].find((e) => e.battle && e.battle.sharedBoss);
+    assert.ok(field && field.battle.sharedBoss.maxHp > 0, 'the client built its team boss field');
+    assert.ok(field.battle.sharedBoss.hp > 0, 'the local pool is not zeroed by the null scalar');
+    h.drive(() => h.ended != null, { maxSteps: 3e6 });
+    assert.deepEqual(h.logs.warn.filter((w) => /implausible boss result/.test(w)), [], 'no boss result was rejected');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+    assert.ok(h.ended, 'the match ended');
+  });
+
   test('versus: the result carries per-team scoring and a winner', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 21, fake: true }).start();
     h.autoHumans();

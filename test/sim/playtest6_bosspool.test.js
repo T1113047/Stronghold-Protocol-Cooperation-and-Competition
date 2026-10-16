@@ -66,6 +66,25 @@ test('LocalBossPool: the stalled state of the real match reads 0 HP (dead), not 
   assert.equal(pool.cum, STALL.cum);
 });
 
+test('LocalBossPool: a null server hp (2V2 b.pool.pools) leaves the pool standing, never zeroes it', () => {
+  // the 2026-10-16 production bug: 2V2 leaves the scalar b.pool.hp null and sends b.pool.pools[team], but the client
+  // synced the scalar — `Number(null)` is 0, so the local boss died on the first broadcast and the field reported
+  // 'cleared' while the server's pool held 8000000 (the server logged it as implausible and took the field over).
+  const p = new LocalBossPool(1000, 900);
+  p.sync(null, null);
+  assert.equal(p.hp, 900, 'an absent hp keeps the last known value');
+  assert.equal(p.serverHp, 900);
+  p.damage('p_0', 100);
+  p.sync(null, null);
+  assert.equal(p.hp, 800, 'and the local damage still shows');
+  p.sync(500, 100);
+  assert.equal(p.hp, 500, 'a real broadcast still lands');
+  assert.equal(p.damage('p_0', 100), 100);
+  p.sync(500, 200);
+  assert.equal(p.hp, 500);
+  assert.equal(p.acked, 200);
+});
+
 test('LocalBossPool: a killing hit empties the pool whatever the float alignment of server hp and local damage', () => {
   let stuck = 0;
   for (let k = 0; k < 400; k++) {

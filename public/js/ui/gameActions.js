@@ -90,6 +90,8 @@ export const actions = {
   destroy: (uid) => act('g.destroy', { uid }),
   reward: (idx) => act('g.reward', { idx }),
   choice: (idx, choiceId) => act('g.choice', choiceId === undefined ? { idx } : { idx, choiceId }),
+  // 2V2 对抗期: the team's intervention (a monster group + the placed monsters in spawn order)
+  confront: (group, picks) => act('g.confront', { group, picks: (picks || []).map((p) => ({ enemyKey: p.enemyKey, routeIndex: p.routeIndex })) }, { sfx: 'confirm' }),
   ready: (ready) => act('g.ready', { ready }, { sfx: ready ? 'ready' : 'back' }),
   emote: (id) => act('g.emote', { id }, { quiet: true }),
   // `playerId`: the player tapped in the team panel (a shared field shows two) — what an eliminated viewer follows

@@ -1274,5 +1274,5 @@
   "已离开，AI 接管": "Left the match — AI takeover",
   "{name}博士已离开，由 AI 接管": "Dr. {name} left — the AI takes the seat over",
   "沿用上轮": "Reuse last round",
-  "沿用上一轮的编队（按本轮预算重新装填）": "Reuse last round's squad (refitted to this round's budget)"
+  "沿用上一轮的编队（按本轮预算重新装填）": "Reuse last round's squad; the leftover budget is topped up automatically (nothing fits: it stays)"
 }

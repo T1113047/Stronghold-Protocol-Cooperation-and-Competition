@@ -100,7 +100,10 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     setPicks(out);
     setPosition('mid');
   };
-  /** 沿用上轮: the kinds this browser submitted last time, in the same order, refitted to THIS round's budget. */
+  /**
+   * 沿用上轮: the kinds this browser submitted last time, in the same order, refitted to THIS round's budget — and the
+   * LEFTOVER is topped up with the auto-selection's greedy walk (when nothing more fits, the leftover simply stays).
+   */
   const reuse = () => {
     if (submitted || busy || !lastSquad || !lastSquad.keys.length) return;
     const gi = groups.findIndex((g) => g.some((r) => r.key === lastSquad.keys[0]));
@@ -108,12 +111,20 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     if (!idx) return;
     const list = groups[idx - 1] || [];
     const out = [];
+    const used = new Set();
     let left = budget;
     for (const key of lastSquad.keys) {
       const rec = list.find((r) => r.key === key);
-      if (!rec || rec.value > left) continue;
+      if (!rec || used.has(key) || rec.value > left) continue;
       left -= rec.value;
+      used.add(key);
       out.push({ enemyKey: key, gate: lastSquad.gates[out.length] || (out.length % 2 ? 'upper' : 'lower') });
+    }
+    for (const r of list.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)))) {
+      if (used.has(r.key) || r.value > left) continue;
+      left -= r.value;
+      used.add(r.key);
+      out.push({ enemyKey: r.key, gate: out.length % 2 ? 'upper' : 'lower' });
     }
     if (!out.length) return;
     setGroup(idx);

@@ -15,7 +15,7 @@ const source = readFileSync(sourcePath, 'utf8')
 const METHODS = ['setStage', 'setCamera', 'setPrep', 'enterBattle', 'pushSnapshot', 'pushEvents', 'highlightTiles', 'on', 'resize'];
 const flush = async () => { for (let i = 0; i < 16; i++) await Promise.resolve(); };
 
-function fixture() {
+function fixture(extra = {}) {
   const timers = new Map(), requests = [], fallbacks = [], warnings = [];
   let timerId = 0;
   const unrelated = { name: 'unrelated' };
@@ -36,7 +36,8 @@ function fixture() {
   }
   const context = vm.createContext({
     AbortController, DOMException, URLSearchParams, Promise,
-    console: { warn: (...args) => warnings.push(args) },
+    console: { warn: (...args) => warnings.push(args), info: () => {} },
+    gpuTier: () => 'ok',
     audio: {}, data: { get() { return null; } }, settingsStore: { get() { return {}; } },
     setTimeout(fn) { timers.set(++timerId, fn); return timerId; },
     clearTimeout(id) { timers.delete(id); },
@@ -44,7 +45,7 @@ function fixture() {
     importApp: async () => ({
       createFieldView(_host, opts) {
         // Deliberately ignore cancellation: the host must still dispose a factory's late return value.
-        return new Promise((resolve, reject) => requests.push({ resolve, reject, signal: opts.signal }));
+        return new Promise((resolve, reject) => requests.push({ resolve, reject, signal: opts.signal, opts }));
       },
     }),
     createFallbackView() {
@@ -52,6 +53,7 @@ function fixture() {
       fallbacks.push({ view: fallback, rendererAborted: requests.at(-1)?.signal?.aborted });
       return fallback;
     },
+    ...extra,
   });
   vm.runInContext(source + '\nglobalThis.mount = mountFieldView;', context, { filename: sourcePath.pathname });
   return {
@@ -66,6 +68,16 @@ function settled(promise) {
   promise.then((value) => { result.state = 'fulfilled'; result.value = value; }, (error) => { result.state = 'rejected'; result.value = error; });
   return result;
 }
+
+test('a weak GPU starts the field on the 2D board instead of the official 3D one', async () => {
+  const f = fixture({ gpuTier: () => 'weak' });
+  const pending = f.mount();
+  await flush();
+  assert.equal(f.requests[0].opts.board, '2d', 'the 2D atlas board is the default without a real GPU');
+  assert.equal(f.requests[0].opts.settings && typeof f.requests[0].opts.settings, 'object');
+  f.requests[0].resolve(f.view('engine'));
+  (await pending).destroy();
+});
 
 test('successful initialization releases deadlines and cancellation listeners', async () => {
   const f = fixture(), controller = new AbortController();

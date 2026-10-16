@@ -68,7 +68,10 @@ const NOT_SCALED = [
   // decorative wordmarks and boot/rotate overlays whose size is the composition
   /\.title-cn/, /\.title-en/, /\.title-bg__target/, /\.brief-boss__q/, /\.boot__/, /\.rotate-hint/,
   // the join code's letter-spaced field, the px-floored 本局信息 dialog, the 16 px diagnostics box (iOS zoom guard)
-  /\.field--code/, /\.minfo-dlg/, /\.set-diag__text/,
+  /\.field--code/, /\.minfo-dlg/, /\.set-diag__text/, /\.set-diag__perf/,
+  // the 悬赏期 target boxes and the 悬赏名单 rows: their glyphs sit inside fixed .rem avatar frames and scale with the
+  // box (the layout root), not with the text root — a bigger 文字大小 must not spill out of them
+  /\.conffoe/, /\.confclash/,
   // the keyboard hints of the 快捷键 list (a shared rule with the HUD's .toolbtn kbd)
   /\.set-hint kbd/,
 ];

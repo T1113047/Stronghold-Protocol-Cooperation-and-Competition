@@ -25,13 +25,21 @@ import { openGuide } from './guide.js';
 import { detectFeatures } from './device.js';
 import { LangToggle, machineTranslationNote } from './lang.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
-import { errorCount, currentBattle, diagnosticsText, perfSnapshot, perfLine, browserEnv } from '../diag.js';
+import { errorCount, currentBattle, diagnosticsText, perfSnapshot, perfLine, browserEnv, gpuTier } from '../diag.js';
 import { copyText } from './clipboard.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
 /** Settings store: { bgm, sfx, voice, voiceLang, voiceOverrides, muted, damageNumbers, officialDamageNumbers, ammoCount, quality, textSize, keys }. */
-export const settingsStore = createStore(sanitizeSettings(loadPref('settings', null)));
+/** 按 GPU 自动降档: a software / integrated renderer starts at 画面质量「中」 instead of the 高 default (an iGPU cannot
+ *  hold 高画质 + the 3D board); a player who ever chose a quality themselves always keeps that choice. */
+const savedSettings = loadPref('settings', null);
+const initialSettings = sanitizeSettings(savedSettings);
+if (gpuTier() === 'weak' && !(savedSettings && typeof savedSettings === 'object' && 'quality' in savedSettings)) {
+  initialSettings.quality = 'medium';
+  console.info('[settings] weak GPU — defaulting 画面质量 to 中 (the player can still pick 高 in 设置)');
+}
+export const settingsStore = createStore(initialSettings);
 
 /**
  * 设置 →「文字大小」: put the step on <html data-text> — css/theme.css turns it into the text root `--t`

@@ -351,6 +351,28 @@ export function buildDiagnostics(input) {
 }
 
 let gpuName;
+/**
+ * Does a WebGL renderer string name an integrated / software renderer? (纯函数，便于单测；`gpuTier` 用真实探测结果调它。
+ * The 3D board + 高画质 are the heaviest layers, so these machines get 中/2D defaults — an explicit player choice always
+ * wins, and a real GPU (RTX/RX/Arc/Apple M…) is never touched.)
+ * @param {string|null} name
+ */
+export function isWeakGpu(name) {
+  const n = String(name || '');
+  if (!n) return false;
+  if (/swiftshader|llvmpipe|softwarerasterizer|software|basic render|microsoft basic|no webgl/i.test(n)) return true;
+  if (/\bintel\b/i.test(n) && /\b(hd|uhd|iris)\b/i.test(n)) return true; // Intel HD/UHD/Iris iGPUs (Arc is a discrete GPU)
+  if (/\bradeon\b/i.test(n) && /\bgraphics\b/i.test(n)) return true;     // "AMD Radeon(TM) Graphics" / "Radeon Vega … Graphics"
+  return false;
+}
+
+/** 'weak' | 'ok' | 'unknown' — the renderer tier, from the same one-shot probe as browserEnv(). */
+export function gpuTier() {
+  browserEnv(); // fills gpuName (cached for the page; the probe releases its context again)
+  if (!gpuName) return 'unknown';
+  return isWeakGpu(gpuName) ? 'weak' : 'ok';
+}
+
 /** What the report says about this browser and device (null fields stay out). */
 export function browserEnv() {
   const g = globalThis;
@@ -361,6 +383,8 @@ export function browserEnv() {
       const gl = cv && (cv.getContext('webgl2') || cv.getContext('webgl'));
       const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
       gpuName = gl ? String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) : 'no WebGL';
+      // the probe only needs the renderer name: drop the context again instead of keeping it for the page's life
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
     } catch { gpuName = null; }
   }
   let uiLang = null;

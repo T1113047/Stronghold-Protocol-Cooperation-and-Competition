@@ -13,6 +13,7 @@ import { createFallbackView } from './fallbackField.js';
 import { data } from '../data.js';
 import { audio } from '../audio.js';
 import { settingsStore } from './settings.js';
+import { gpuTier } from '../diag.js';
 
 const LOAD_TIMEOUT_MS = 12000;
 const METHODS = ['setStage', 'setCamera', 'setPrep', 'enterBattle', 'pushSnapshot', 'pushEvents', 'highlightTiles', 'on', 'resize', 'destroy'];
@@ -218,6 +219,12 @@ export async function mountFieldView(host, { signal } = {}) {
   checkActive(signal);
   const pref = renderPref();
   const opts = { data, assets: data.get('assets'), audio, settings: settingsStore.get(), padding: hudPadding, hud: hudBands };
+  // 按 GPU 自动降档: without a real GPU the official 3D board is the heaviest layer on screen, so a weak renderer
+  // starts on the 2D atlas board. boardPreference reads `?board=` from the URL first, so 3D can still be forced.
+  if (gpuTier() === 'weak') {
+    opts.board = '2d';
+    if (pref !== 'fallback') console.info('[field] weak GPU — starting on the 2D board (?board=3d forces the 3D one)');
+  }
   if (pref !== 'fallback') {
     const controller = new AbortController();
     const onAbort = () => controller.abort(abortError(signal));

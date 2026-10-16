@@ -128,8 +128,9 @@ describe('#7 the 联防 leak counter (HUD)', () => {
     assert.match(textOf(tag), /14$/);
     assert.match(tag.props.title, /还剩 14 个/);
     assert.ok(hasClass(MissTag({ n: 0 }), 'is-clear'));
-    // wiring: the top bar hands the live value to the capsule; the game screen feeds liveLp with the leaker's count
-    assert.match(read('public/js/ui/hud.js'), /PhaseCapsule} pub=\$\{pub\} hud=\$\{hud\} miss=/);
+    // wiring: the top bar hands the live value to the capsule (and its team, for the per-team boss bar of 2V2); the
+    // game screen feeds liveLp with the leaker's count
+    assert.match(read('public/js/ui/hud.js'), /PhaseCapsule} pub=\$\{pub\} hud=\$\{hud\} myTeam=\$\{myTeam\} miss=/);
     assert.match(read('public/js/screens/game.js'), /uniteLeft: leaker \? uniteRemaining\(localLeft, meP\?\.uniteLeft\) : null/);
     assert.match(read('public/js/ui/teamPanel.js'), /<\$\{MissTag\} n=\$\{lp\.left\} name=/);
   });

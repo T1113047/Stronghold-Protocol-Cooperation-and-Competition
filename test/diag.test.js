@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   recordError, errorLog, errorCount, clearErrorLog, messageOf, stackOf, stripHosts, redact, redactValues, secretsOf, buildDiagnostics,
   setBattleSource, currentBattle, LOG_MAX, STACK_LINES, recordResourceEntry, trafficSummary, trafficLine, clearTraffic, installTrafficMeter,
-  perfSnapshot, perfLine,
+  perfSnapshot, perfLine, isWeakGpu, gpuTier,
 } from '../public/js/diag.js';
 import { APP_VERSION } from '../shared/constants.js';
 
@@ -263,5 +263,34 @@ describe('the live performance readout (设置 → 问题反馈)', () => {
     // reports built without a view (the unit tests above, an old log) keep their exact line set
     assert.ok(!/perf:/.test(buildDiagnostics({ state: {}, now: 0, pageStart: 0 })));
     delete globalThis.__SP_VIEW__;
+  });
+});
+
+describe('the GPU tier (按 GPU 自动降档)', () => {
+  test('isWeakGpu: integrated / software renderers yes, discrete GPUs and Apple silicon no', () => {
+    const weak = [
+      'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (Intel, Intel(R) HD Graphics 530 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (AMD, AMD Radeon Vega 8 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)',
+      'Mesa/X.org (LLVM 15.0.0, llvmpipe)',
+      'no WebGL',
+    ];
+    for (const g of weak) assert.equal(isWeakGpu(g), true, g);
+    const ok = [
+      'ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (Intel, Intel(R) Arc(TM) A770 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)',
+      null,
+    ];
+    for (const g of ok) assert.equal(isWeakGpu(g), false, String(g));
+  });
+
+  test('gpuTier reads the cached probe (no document here: "no WebGL" is a weak tier, never a crash)', () => {
+    assert.equal(gpuTier(), 'weak');
   });
 });

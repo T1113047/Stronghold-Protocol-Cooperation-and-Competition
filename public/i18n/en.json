@@ -1276,5 +1276,6 @@
   "沿用上轮": "Reuse last round",
   "沿用上一轮的编队（按本轮预算重新装填）": "Reuse last round's squad; the leftover budget is topped up automatically (nothing fits: it stays)",
   "点一下换门 · 长按拖动排序（默认下路）": "Tap to switch the gate · press and hold to drag it in the order (default 下路, lower)",
-  "点击换门 · 长按拖动排序": "Tap to switch the gate · press and hold to reorder"
+  "点击换门 · 长按拖动排序": "Tap to switch the gate · press and hold to reorder",
+  "非队友视角无法查看": "You can't view a non-teammate's side"
 }

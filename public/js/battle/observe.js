@@ -43,9 +43,11 @@ export function nameOf(pub, playerId) {
 export function observeTarget(p, pub, myId, { observing = false, ownDone = false } = {}) {
   if (!isObj(p)) return { reason: t('无效的目标') };
   if (p.playerId === myId) return observing ? { back: true } : { reason: null };
+  const me = players(pub).find((x) => x.playerId === myId) || null;
+  // 2V2 ('versus'): the opponent's row is a stub and its field is never published — peeking is not available at all
+  if (p.hidden === true || (p.team != null && me && me.team != null && p.team !== me.team)) return { reason: t('非队友视角无法查看') };
   if (p.alive === false || p.status === 'left') return { reason: t('该队友已被淘汰，无法查看') };
   const phase = pub?.phase;
-  const me = players(pub).find((x) => x.playerId === myId) || null;
   const meAlive = me ? me.alive !== false : true;
   if (!COMBAT.has(phase)) return { fieldId: `n:${p.playerId}` };
   const target = fieldOf(pub, p.playerId);

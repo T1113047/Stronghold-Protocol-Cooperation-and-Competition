@@ -49,6 +49,9 @@ export function cycleField(fields, current, dir = 1) {
  */
 export function watchTarget(p, pub, myId) {
   if (!isObj(p)) return { reason: t('无效的目标') };
+  // 2V2 ('versus'): a non-teammate (the opponent's stub row) has no view to switch to
+  const me0 = sortedPlayers(pub).find((x) => x.playerId === myId);
+  if (p.hidden === true || (p.team != null && me0 && me0.team != null && p.team !== me0.team)) return { reason: t('非队友视角无法查看') };
   if (p.alive === false) return { reason: t('该队友已被淘汰，无法查看其阵地') };
   const combat = isCombatPhase(pub?.phase);
   const fieldId = (combat && typeof p.fieldId === 'string' && p.fieldId) || ownFieldId(p.playerId);

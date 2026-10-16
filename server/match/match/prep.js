@@ -3,7 +3,7 @@
 // (onPrepEnd, PlayerState.endPrep, then COMBAT or the Final Assault / Hidden Core).
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
-import { PHASE } from '../../../shared/constants.js';
+import { PHASE, VERSUS_ITEM_PHONE, VERSUS_ITEM_PAGER, VERSUS_LOW_LP } from '../../../shared/constants.js';
 import { botPrepBeginSteps, botPrepEndSteps } from '../bot.js';
 import { DELAYS } from './common.js';
 
@@ -22,6 +22,8 @@ export class MatchPrep {
       this.dispatch(ps, 'onPrepStart', { round: this.round });
       ps.recompute();
     }
+    // 2V2 development compensation: grant the 小电话 / 寻呼模块 at the prep start (design 2026-10-16)
+    this._versusPrepGrant();
     // solo / single-human matches: untimed (soloUntimed); co-op: the round's prepTime
     const secs = this.soloUntimed ? null : this.gd.prepTime(this.round);
     this.setDeadline(secs, () => this.prepDeadline());
@@ -29,6 +31,30 @@ export class MatchPrep {
     for (const ps of alive) if (ps.botControlled) this.scheduleBotPrep(ps, i++);
     this.markPublic();
     this.maybeEndPrep();
+  }
+
+  /**
+   * 2V2 ('versus') development compensation (design 2026-10-16; 开发日志 §5.2a): from the drawn contest round, every
+   * OTHER round every alive player gains a 小电话 (简易通讯机); a team whose total remaining LP drops below
+   * VERSUS_LOW_LP additionally gains a 寻呼模块 that round (not bound to the every-other rule). Non-versus untouched.
+   * [ASSUMED] the grant respects the shared item pool (canGain); exhausted copies are skipped silently.
+   */
+  _versusPrepGrant() {
+    if (!this.isVersus || this.contestStartRound == null) return;
+    const r = this.round;
+    const everyOther = r >= this.contestStartRound && (r - this.contestStartRound) % 2 === 0;
+    const alive = this.alivePlayers();
+    const lowTeams = new Set();
+    for (const t of this.matchTeamIds()) {
+      const lp = alive.filter((p) => this.teamIdOf(p) === t).reduce((s, p) => s + Math.max(0, p.lp), 0);
+      if (lp > 0 && lp < VERSUS_LOW_LP) lowTeams.add(t);
+    }
+    if (!everyOther && !lowTeams.size) return;
+    const grant = (ps, id) => { if (this.itemPool.canGain(id)) ps.acquireItem(id, { source: 'versus-grant' }); };
+    for (const ps of alive) {
+      if (everyOther) grant(ps, VERSUS_ITEM_PHONE);
+      if (lowTeams.has(this.teamIdOf(ps))) grant(ps, VERSUS_ITEM_PAGER);
+    }
   }
 
   /**

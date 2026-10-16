@@ -38,6 +38,15 @@ export const TEAM_SIZE = 2;
 /** How many teams a 'versus' room has. */
 export const TEAMS = 2;
 /**
+ * 2V2 development compensation (design 2026-10-16; 开发日志 §5.2a): from the drawn contest round, every OTHER round
+ * each alive player gains a 小电话 (简易通讯机, a 2-coin item); a team whose total remaining LP drops below
+ * VERSUS_LOW_LP additionally gains a 寻呼模块 that round (not bound to the every-other rule). Non-versus modes are
+ * untouched.
+ */
+export const VERSUS_ITEM_PHONE = 'chess_item_2_06_e_a';
+export const VERSUS_ITEM_PAGER = 'chess_item_4_01_e_a';
+export const VERSUS_LOW_LP = 11;
+/**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
  * Non-versus rooms keep the flat, team-less seat model (null).
  * @param {number} seat 0..MAX_SEATS-1

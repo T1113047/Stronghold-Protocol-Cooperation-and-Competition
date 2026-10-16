@@ -122,8 +122,18 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
-  test('co-op keeps the 6-card 机变 draft and no contest round', () => {
-    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
+  test('versus: development compensation grants a 小电话 from the contest round', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 41, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    h.toPrep(m.contestStartRound);
+    const hasPhone = (ps) => [...ps.hand, ...ps.temp].some((p) => p && p.id === 'chess_item_2_06_e_a')
+      || [...ps.board.values()].some((pc) => (pc.items || []).some((it) => it.id === 'chess_item_2_06_e_a'));
+    assert.ok([...m.players.values()].some(hasPhone), 'a 小电话 was granted at the contest-round prep');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
     const m = h.m;
     assert.equal(m.contestStartRound, null);
     let spCards = null;

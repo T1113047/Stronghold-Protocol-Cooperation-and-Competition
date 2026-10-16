@@ -47,6 +47,11 @@ export const VERSUS_ITEM_PHONE = 'chess_item_2_06_e_a';
 export const VERSUS_ITEM_PAGER = 'chess_item_4_01_e_a';
 export const VERSUS_LOW_LP = 11;
 /**
+ * 对抗期 tunables (2V2): the per-team decision window (s), the number of monster groups offered, and the most monsters
+ * a team may place in one round (a cap; the round's share also caps it).
+ */
+export const VERSUS_CONFRONT = Object.freeze({ turnSeconds: 20, groups: 6, maxPicks: 12 });
+/**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
  * Non-versus rooms keep the flat, team-less seat model (null).
  * @param {number} seat 0..MAX_SEATS-1
@@ -62,6 +67,9 @@ export const PHASE = Object.freeze({
   ROUND_START: 'ROUND_START',
   SP_DRAFT: 'SP_DRAFT',
   PREP: 'PREP',
+  // 2V2 ('versus'): the 对抗期 — from the drawn contest round, after each side's prep, each team submits one intervention
+  // against the opponent's next battle (see server/match/match/confront.js)
+  CONFRONT: 'CONFRONT',
   COMBAT: 'COMBAT',
   UNITE: 'UNITE',
   SETTLE: 'SETTLE',
@@ -72,7 +80,7 @@ export const PHASE = Object.freeze({
 
 export const PHASE_NAMES = {
   LOBBY: N_('等待中'), INFO_CHECK: N_('确认本局信息'), BAND_DRAFT: N_('选择策略'), BATTLE_CHECK: N_('协议启动'),
-  ROUND_START: N_('回合开始'), SP_DRAFT: N_('机变阶段'), PREP: N_('休整期'), COMBAT: N_('作战中'), UNITE: N_('联防阶段'),
+  ROUND_START: N_('回合开始'), SP_DRAFT: N_('机变阶段'), PREP: N_('休整期'), CONFRONT: N_('对抗期'), COMBAT: N_('作战中'), UNITE: N_('联防阶段'),
   SETTLE: N_('结算'), FINAL_ASSAULT: N_('最终攻势'), HIDDEN_CORE: N_('隐秘核心'), RESULT: N_('模拟结束'),
 };
 

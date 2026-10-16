@@ -87,6 +87,17 @@ export class MatchViews {
           return [t, { disabledBonds: [...new Set([...b.drawn, ...b.staticOff])].sort(), drawnDisabledBonds: b.drawn.slice(), bannedChess: b.banned.slice() }];
         })),
       } : {}),
+      // 2V2 对抗期: the 6 monster groups + each team's submission ('null' = not yet). The opponent's entry is masked
+      // before the reveal (messaging.js _teamPublicView).
+      ...(this.isVersus && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? {
+        confront: {
+          active: this.phase === PHASE.CONFRONT,
+          round: this.round,
+          ratio: this.confrontRatio(),
+          groups: this.confrontGroups().map((g) => g.map((r) => ({ key: r.key, name: r.name, value: r.value }))),
+          subs: Object.fromEntries(this.matchTeamIds().map((t) => [t, this.confrontSubs && this.confrontSubs.has(t) ? this.confrontSubs.get(t) : null])),
+        },
+      } : {}),
       factions: this.factions.slice(),
       disabledBonds: [...new Set([...this.disabledBonds, ...this.staticInactiveBonds])].sort(),
       drawnDisabledBonds: this.disabledBonds.slice(),

@@ -46,7 +46,10 @@ export class MatchCombat {
     const wave = this.wave;
     const input = ps.battleInput({ side: 'L', colOffset: 0 });
     // the client's list: bounty units inserted among their host action's own units, which are re-timed around them
-    const spawns = withBounties(this.gd, this.round, wave, ps.bounties, ps.playerId).map((s) => ({ ...s, ownerPlayerId: ps.playerId }));
+    const spawns0 = withBounties(this.gd, this.round, wave, ps.bounties, ps.playerId).map((s) => ({ ...s, ownerPlayerId: ps.playerId }));
+    // 2V2 对抗期: the OPPONENT team's placed monsters replace a share of this wave (confront.js)
+    const sub = typeof this.confrontFor === 'function' ? this.confrontFor(ps) : null;
+    const spawns = sub ? this.applyConfront(spawns0, sub, ps) : spawns0;
     const ev = { input, kind: 'normal', round: this.round, spawns };
     this.dispatch(ps, 'onBattleStart', ev);
     return {

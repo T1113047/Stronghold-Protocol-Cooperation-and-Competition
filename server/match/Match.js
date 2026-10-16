@@ -192,6 +192,7 @@ import { MatchIntents } from './match/intents.js';
 import { MatchPause } from './match/pause.js';
 import { MatchPhases } from './match/phases.js';
 import { MatchSetupVote } from './match/setupVote.js';
+import { MatchConfront } from './match/confront.js';
 import { MatchSpDraft } from './match/spDraft.js';
 import { MatchPrep } from './match/prep.js';
 import { MatchCombat } from './match/combat.js';
@@ -385,6 +386,9 @@ export class Match {
     this._infoAdvanceTimer = null;
     this.setupRevision = 0;
     this.setupVote = null;
+    /** 2V2: the 对抗期 submissions of the current round (Map<teamId, sub>); `confrontSubs` collects, `confront` is applied. */
+    this.confrontSubs = null;
+    this.confront = null;
     /** 2V2: one pending setup-reroll vote per team (Map<teamId, vote>); null in solo/coop (the scalar setupVote). */
     this.setupVotes = this.isVersus ? new Map() : null;
     /** 2V2: per-team reroll counter for the seeded draw (Map<teamId, n>); null in solo/coop. */
@@ -446,7 +450,7 @@ export class Match {
 }
 
 // the method modules, in this order (a name defined twice is an error, never a silent override)
-for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSetupVote, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
+for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSetupVote, MatchConfront, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
   for (const key of Reflect.ownKeys(part.prototype)) {
     if (key === 'constructor') continue;
     if (Object.prototype.hasOwnProperty.call(Match.prototype, key)) throw new Error(`Match.${String(key)} is defined twice`);

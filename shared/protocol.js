@@ -435,6 +435,9 @@ export const C2S = {
   'g.reward': { idx: (v) => isInt(v, 0, 5) },
   'g.choice': { idx: (v) => isInt(v, 0, 5), choiceId: isId, $optional: ['choiceId'] },
   'g.ready': { ready: isBool },
+  // 2V2 对抗期 (confront.js): the team's intervention — one of VERSUS_CONFRONT.groups monster groups and the placed
+  // monsters in spawn order ({ enemyKey, routeIndex }). The share replaced is derived from the round.
+  'g.confront': { group: (v) => isInt(v, 1, 6), picks: (v) => isList(v, 12, (p) => isPlain(p) && isId(p.enemyKey) && (p.routeIndex === undefined || isInt(p.routeIndex, 0, 8))) },
   'g.emote': { id: (v) => EMOTES.includes(v) },
   // playerId: the player tapped in the team panel (a 联防 / boss pair field shows two) — what an eliminated viewer or a
   // spectator seat follows from then on (Match.watchPref; community report of 2026-10-06, item 56)

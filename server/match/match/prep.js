@@ -160,6 +160,9 @@ export class MatchPrep {
       this.startFinalAssault(false);
     } else if (r === this.gd.hiddenRound) {
       this.startFinalAssault(true);
+    } else if (this.confrontActive()) {
+      // 2V2 对抗期: each team intervenes against the opponent's next battle before it starts
+      this.enterConfront();
     } else {
       this.startCombat();
     }

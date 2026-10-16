@@ -178,6 +178,26 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus: the 对抗期 runs from the contest round and the opponent\'s wave is sabotaged', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 81, fake: true }).start();
+    const m = h.m;
+    const ok = h.drive(() => m.phase === PHASE.CONFRONT, { maxSteps: 3e6 });
+    assert.ok(ok && m.phase === PHASE.CONFRONT, `reached the 对抗期 (phase ${m.phase} R${m.round})`);
+    assert.equal(m.round, m.contestStartRound, 'at the contest round');
+    const groups = m.confrontGroups();
+    assert.equal(groups.length, 6, '6 monster groups');
+    assert.equal(groups.flat().length, 120, '120 enemies across the groups');
+    const picks = groups[5].slice(0, 3).map((r) => ({ enemyKey: r.key, routeIndex: 0 }));
+    const r = m.submitConfront(m.players.get('p_0'), { group: 6, picks });
+    assert.equal(r && r.ok, true, JSON.stringify(r));
+    assert.equal(m.phase, PHASE.COMBAT, 'combat starts once every team submitted');
+    const sub = m.confrontFor(m.players.get('ai_2'));
+    assert.ok(sub && sub.picks.length === 3, "team 1's wave is sabotaged by team 0's 3 picks");
+    const subBack = m.confrontFor(m.players.get('p_0'));
+    assert.ok(subBack && subBack.picks.length > 0, "team 0's wave is sabotaged by team 1");
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
     const m = h.m;
     assert.equal(m.contestStartRound, null);

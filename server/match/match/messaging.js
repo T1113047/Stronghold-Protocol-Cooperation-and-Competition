@@ -80,6 +80,9 @@ export class MatchMessaging {
         picks: Object.fromEntries(Object.entries(out.draft.picks).filter(([pid]) => same(pid))),
         skipsLeft: Object.fromEntries(Object.entries(out.draft.skipsLeft || {}).filter(([pid]) => same(pid))) };
     }
+    if (out.confront && out.confront.subs) {
+      out.confront = { ...out.confront, subs: out.confront.subs[team] != null ? { [team]: out.confront.subs[team] } : {} };
+    }
     return out;
   }
   /**

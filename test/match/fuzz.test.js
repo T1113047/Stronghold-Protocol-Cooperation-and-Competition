@@ -34,6 +34,12 @@ function randomIntent(rng, m, ps) {
     case 'g.art': return { t, itemUid: uid(), row: rng.int(19), col: rng.int(21) };
     case 'g.reward': case 'g.choice': return { t, idx: rng.int(6) };
     case 'g.ready': return { t, ready: rng() < 0.4 };
+    // 2V2 对抗期: a valid SHAPE (the server may still refuse membership with a legal error)
+    case 'g.confront': {
+      const keys = Object.keys(DATA.enemies || {});
+      const ek = keys.length ? rng.pick(keys) : 'enemy_1000_gopro_2';
+      return { t, group: 1 + rng.int(6), picks: Array.from({ length: rng.int(4) }, () => ({ enemyKey: ek, routeIndex: rng.int(4) })) };
+    }
     case 'g.emote': return { t, id: rng.pick(EMOTES) };
     case 'g.watch': return { t, fieldId: rng.pick(['n:p_0', 'n:p_1', 'n:ai_0', 'u', 'b1', 'b2', 'zz', '']) };
     case 'g.autoplay': return { t, on: rng() < 0.05 };

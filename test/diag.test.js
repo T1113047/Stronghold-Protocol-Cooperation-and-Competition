@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   recordError, errorLog, errorCount, clearErrorLog, messageOf, stackOf, stripHosts, redact, redactValues, secretsOf, buildDiagnostics,
   setBattleSource, currentBattle, LOG_MAX, STACK_LINES, recordResourceEntry, trafficSummary, trafficLine, clearTraffic, installTrafficMeter,
+  perfSnapshot, perfLine,
 } from '../public/js/diag.js';
 import { APP_VERSION } from '../shared/constants.js';
 
@@ -232,5 +233,35 @@ describe('the page\'s traffic (host bandwidth layer 0)', () => {
     assert.deepEqual(trafficSummary().code, { requests: 2, bytes: 147000, cached: 0 });
     assert.equal(installTrafficMeter(win), true, 'already installed');
     assert.equal(trafficSummary().code.requests, 2, 'not twice');
+  });
+});
+
+describe('the live performance readout (设置 → 问题反馈)', () => {
+  beforeEach(() => { delete globalThis.__SP_VIEW__; });
+
+  test('perfSnapshot reads the mounted view (engine stats) and reports the simplified view / no view', () => {
+    globalThis.__SP_VIEW__ = { kind: 'engine', raw: { mode: 'normal', stats: () => ({ fps: 57.4, frameMs: 17.42, cpuMs: 4.2, renderMs: 9.1, units: 26, particles: 130, spine: { live: 31 }, board3d: { on: true } }) } };
+    assert.deepEqual(perfSnapshot(), { kind: 'engine', fps: 57.4, frameMs: 17.42, cpuMs: 4.2, renderMs: 9.1, units: 26, particles: 130, spine: 31, board3d: true, mode: 'normal' });
+    // the simplified view draws the board in the DOM: no engine stats at all (the first thing a slow game is checked for)
+    globalThis.__SP_VIEW__ = { kind: 'fallback', raw: {} };
+    assert.deepEqual(perfSnapshot(), { kind: 'fallback', fps: null, frameMs: null, cpuMs: null, renderMs: null, units: null, particles: null, spine: null, board3d: null, mode: null });
+    // no document (Node): nothing to report; a browser without a field (title / lobby): 'none'
+    delete globalThis.__SP_VIEW__;
+    assert.equal(perfSnapshot(), null);
+    globalThis.document = {};
+    assert.deepEqual(perfSnapshot(), { kind: 'none' });
+    delete globalThis.document;
+  });
+
+  test('perfLine is one plain technical line, and buildDiagnostics carries it only when given one', () => {
+    globalThis.__SP_VIEW__ = { kind: 'engine', raw: { mode: 'normal', stats: () => ({ fps: 57.4, frameMs: 17.42, cpuMs: 4.2, renderMs: 9.1, units: 26, spine: { live: 31 }, board3d: { on: true } }) } };
+    assert.equal(perfLine(), 'perf: view engine | fps 57.4 | frame 17.42 ms | cpu 4.2 ms | render 9.1 ms | units 26 | spine 31 | mode normal | board3d on');
+    globalThis.__SP_VIEW__ = { kind: 'fallback', raw: {} };
+    assert.equal(perfLine(), 'perf: view fallback');
+    const withPerf = buildDiagnostics({ state: {}, now: 0, pageStart: 0, perf: perfSnapshot() });
+    assert.match(withPerf, /\nperf: view fallback\n/);
+    // reports built without a view (the unit tests above, an old log) keep their exact line set
+    assert.ok(!/perf:/.test(buildDiagnostics({ state: {}, now: 0, pageStart: 0 })));
+    delete globalThis.__SP_VIEW__;
   });
 });

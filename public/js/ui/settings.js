@@ -16,7 +16,7 @@
 // card's side do not move — the field is sized from the host element's clientWidth (render/app.js).
 
 import { useLayoutEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { html, Modal, Button, Icon, MicroLabel } from './components.js';
+import { html, Modal, Button, Icon, MicroLabel, useTicker } from './components.js';
 import { GIcon } from './gameComponents.js';
 import { createStore, useStore, loadPref, savePref, store } from '../store.js';
 import { sanitizeSettings, HOTKEY_ACTIONS, DEFAULT_HOTKEYS, hotkeyLabel, rebindHotkey, isDefaultHotkeys, captureHotkey, VOICE_LANGS, TEXT_SIZES } from './gameLogic.js';
@@ -25,7 +25,7 @@ import { openGuide } from './guide.js';
 import { detectFeatures } from './device.js';
 import { LangToggle, machineTranslationNote } from './lang.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
-import { errorCount, currentBattle, diagnosticsText } from '../diag.js';
+import { errorCount, currentBattle, diagnosticsText, perfSnapshot, perfLine, browserEnv } from '../diag.js';
 import { copyText } from './clipboard.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -202,6 +202,11 @@ function DiagSection() {
   const [note, setNote] = useState(null);       // 'copied' | 'refused' | null: the result line
   const [manual, setManual] = useState(null);   // the report, when the clipboard refused it
   const boxRef = useRef(null);
+  // 实时性能: the field view's own fps / frame time, so a slow game can be pinned down without a profiler (和 gpu 一起)
+  useTicker(500);
+  const perf = perfSnapshot();
+  const envRef = useRef(null);
+  if (!envRef.current) envRef.current = browserEnv();
   // the box opens selected for a manual copy, scrolled to its first line (select() leaves it at the end)
   useLayoutEffect(() => {
     const el = boxRef.current;
@@ -221,6 +226,8 @@ function DiagSection() {
       <${Button} variant="ghost" size="sm" icon="copy" class="set-diag__copy" data-testid="diag-copy" onClick=${copy}>${t('复制诊断信息')}<//>
     </div>
     <p class="set-hint">${t('遇到问题时，复制诊断信息并粘贴到 GitHub issue 中，开发者就能看到出错时的情况。诊断信息只在本机生成，不会自动上传；玩家名和房间号会被替换。')}</p>
+    <p class="set-hint set-diag__perf num" data-testid="diag-perf">${perfLine(perf)}</p>
+    <p class="set-hint set-diag__perf num" data-testid="diag-env">env: gpu ${envRef.current.gpu || 'unknown'} | ${envRef.current.viewport || '?'} @${envRef.current.dpr || 1}x | ${envRef.current.cores || '?'} threads</p>
     <div class="set-diag__meta">
       <span class="set-diag__stat">${t('已记录的错误')}<b class=${cx('set-diag__count num', n > 0 && 'is-warn')} data-testid="diag-count">${n}</b></span>
       <span class="set-diag__url">${ISSUES_URL.replace(/^https:\/\//, '')}</span>

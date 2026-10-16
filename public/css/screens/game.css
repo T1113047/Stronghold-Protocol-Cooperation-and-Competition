@@ -597,6 +597,8 @@
 .set-diag__count.is-warn { color: var(--amber); }
 .set-diag__url { min-width: 0; font-size: calc(.13 * var(--t)); color: var(--text-dim); overflow-wrap: anywhere; -webkit-user-select: all; user-select: all; }
 .set-diag__battle-hint { margin-top: -.06rem; }
+/* live performance readout (diag.js perfLine): monospace, wraps — fps / frame times / units and the fallback state */
+.set-diag__perf { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: max(.13rem, 11px); line-height: 1.4; color: var(--text-md); overflow-wrap: anywhere; }
 .set-diag__text {
   box-sizing: border-box; width: 100%; height: max(2rem, 140px); min-height: 120px; resize: vertical;
   padding: max(.1rem, 8px) max(.12rem, 10px);

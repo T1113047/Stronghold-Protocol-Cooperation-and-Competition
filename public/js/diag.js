@@ -188,6 +188,45 @@ function secretMap(pairs) {
  * before 16.4.
  * @param {string} text @param {[string, string][]} pairs [value, placeholder]
  */
+/**
+ * The live render stats of the field view on screen: the engine's fps / frame time / unit count (`kind: 'engine'`), or
+ * `kind: 'fallback'` — the simplified CPU-drawn view, which has no engine stats at all. Read through the dev hook the
+ * field host publishes (`globalThis.__SP_VIEW__`). 'none' = a match screen with no field mounted (title / lobby).
+ * Dev / diagnostics only: no state, safe to call on a timer.
+ * @returns {{ kind: string, fps: number|null, frameMs: number|null, cpuMs: number|null, renderMs: number|null,
+ *   units: number|null, particles: number|null, spine: number|null, board3d: boolean|null, mode: string|null } | null}
+ */
+export function perfSnapshot() {
+  const v = globalThis.__SP_VIEW__;
+  if (!v) return typeof document === 'undefined' ? null : { kind: 'none' };
+  let st = null;
+  try { st = v.raw?.stats?.() || null; } catch { /* the view may already be destroyed */ }
+  const num = (x) => (Number.isFinite(x) ? Math.round(x * 100) / 100 : null);
+  return {
+    kind: v.kind || 'unknown',
+    fps: num(st?.fps), frameMs: num(st?.frameMs), cpuMs: num(st?.cpuMs), renderMs: num(st?.renderMs),
+    units: num(st?.units), particles: num(st?.particles),
+    spine: num(st?.spine?.live ?? st?.spine?.count ?? st?.spine?.active),
+    board3d: st?.board3d ? !!st.board3d.on : null,
+    mode: typeof v.raw?.mode === 'string' ? v.raw.mode : null,
+  };
+}
+
+/**
+ * One plain-text performance line for the diagnostics report and the 问题反馈 box — technical, untranslated (like
+ * `gpu:` / `device:`). A game that feels slow is usually one of: `view fallback` (the render engine never loaded and the
+ * browser draws the board itself), or a low `fps` with a high `cpu` (the page's own simulation / DOM, not the GPU).
+ */
+export function perfLine(p = perfSnapshot()) {
+  if (!p) return 'perf: n/a';
+  if (p.kind === 'none') return 'perf: no field view mounted (title / lobby)';
+  const bits = [`view ${p.kind}`, p.fps != null ? `fps ${p.fps}` : null, p.frameMs != null ? `frame ${p.frameMs} ms` : null,
+    p.cpuMs != null ? `cpu ${p.cpuMs} ms` : null, p.renderMs != null ? `render ${p.renderMs} ms` : null,
+    p.units != null ? `units ${p.units}` : null, p.spine != null ? `spine ${p.spine}` : null,
+    p.mode != null ? `mode ${p.mode}` : null, p.board3d != null ? `board3d ${p.board3d ? 'on' : 'off'}` : null];
+  return `perf: ${bits.filter(Boolean).join(' | ')}`;
+}
+
 export function redact(text, pairs) {
   const map = secretMap(pairs);
   const list = [...map.keys()].sort((a, b) => b.length - a.length);
@@ -253,7 +292,8 @@ const join = (...parts) => parts.filter((p) => p != null && p !== '' && p !== fa
  * error log newest first) and, with `battle`, a ```json block of its spec. Secrets of `state` are whole tokens in the
  * prose and exact string values in the JSON.
  * @param {{ state: any, env?: any, settings?: any, battle?: any, entries?: any[], dropped?: number, total?: number,
- *   now?: number, pageStart?: number, version?: string, traffic?: ReturnType<typeof trafficSummary> | null }} input
+ *   now?: number, pageStart?: number, version?: string, traffic?: ReturnType<typeof trafficSummary> | null,
+ *   perf?: ReturnType<typeof perfSnapshot> | null }} input
  */
 export function buildDiagnostics(input) {
   const { state = {}, env = {}, settings = null, battle = null, traffic: trafficTotals = null } = input;
@@ -281,6 +321,7 @@ export function buildDiagnostics(input) {
     lines.push(`battle: ${join(b.kind, b.fieldId ? `field ${b.fieldId}` : null, b.authoritative ? 'authoritative' : b.watch ? 'watching' : null,
       b.done ? 'done' : b.loading ? 'loading' : 'running', b.paused ? 'paused' : null, Number.isFinite(b.speed) ? `${b.speed}x` : null)}`);
   }
+  if (input.perf) lines.push(perfLine(input.perf));
   if (settings) {
     lines.push(`settings: ${join(`quality ${settings.quality}`, settings.damageNumbers ? 'damage numbers' : null, settings.officialDamageNumbers ? 'official damage numbers' : null, settings.ammoCount ? 'ammo count' : null, settings.muted ? 'muted' : null)}`);
   }
@@ -343,5 +384,5 @@ export function browserEnv() {
  * @param {{ state: any, settings?: any, attachBattle?: boolean }} opts
  */
 export function diagnosticsText({ state, settings = null, attachBattle = false }) {
-  return buildDiagnostics({ state, settings, env: browserEnv(), battle: attachBattle ? currentBattle() : null, traffic: trafficSummary() });
+  return buildDiagnostics({ state, settings, env: browserEnv(), battle: attachBattle ? currentBattle() : null, traffic: trafficSummary(), perf: perfSnapshot() });
 }

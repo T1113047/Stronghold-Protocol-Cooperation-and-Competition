@@ -250,7 +250,8 @@ export class MatchConfront {
     return { target: this.confrontTargets.get(ps.playerId) ?? null, group, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget() };
   }
 
-  /** An AI player's submission: fill the budget from its group, most expensive fitting monster first. */
+  /** An AI player's submission, and the one a player who never submits gets at the window's end: fill the budget from
+   *  its group, most expensive fitting monster first (the client's 自动选择 button does exactly this). */
   botConfront(ps) {
     if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster' || this.confrontSubs.has(ps.playerId)) return;
     const groups = this.confrontGroups();
@@ -263,8 +264,7 @@ export class MatchConfront {
       left -= r.value;
       picks.push({ enemyKey: r.key, gate: picks.length % 2 ? 'upper' : 'lower' });
     }
-    const position = VERSUS_CONFRONT.positions[Math.floor(this.rngConfront() * VERSUS_CONFRONT.positions.length)] || 'mid';
-    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: groups.length, position, picks, ratio: this.confrontRatio(), budget });
+    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: groups.length, position: 'mid', picks, ratio: this.confrontRatio(), budget });
     this.markPublic();
   }
 

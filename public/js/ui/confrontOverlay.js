@@ -74,6 +74,27 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const mine = conf.subs ? conf.subs[myId] : null;
   const submitted = !!mine;
   const foesPicked = mates.every((p) => targets[p.playerId]);
+  /**
+   * 自动选择: fill the budget the way the AI does (most expensive monster that still fits, walking the group by value),
+   * on the currently chosen group (the first when none is chosen). The player tweaks from there — and a player who never
+   * submits gets exactly this at the window's end (server confront.js botConfront / finishConfront).
+   */
+  const autoPick = () => {
+    if (submitted || busy) return;
+    const gi = group != null ? group : (groups.length ? 1 : 0);
+    if (!gi) return;
+    const list = (groups[gi - 1] || []).slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
+    const out = [];
+    let left = budget;
+    for (const r of list) {
+      if (r.value > left) continue;
+      left -= r.value;
+      out.push({ enemyKey: r.key, gate: out.length % 2 ? 'upper' : 'lower' });
+    }
+    setGroup(gi);
+    setPicks(out);
+    setPosition('mid');
+  };
 
   return html`<div class="spov confov" role="dialog" aria-label=${t('对抗期')}>
     <div class="spov__veil" aria-hidden="true"></div>
@@ -96,6 +117,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
               ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已提交')}</span>`
               : html`<span class="spov__turntxt">${t('已用价值 {spent}/{budget}', { spent, budget })}</span>`)
             : null}
+          ${stage === 'monster' && !submitted ? html`<${Button} variant="secondary" size="md" title=${t('按价值自动挑满预算，之后可以手动调整')} onClick=${autoPick}>${t('自动选择')}<//>` : null}
           ${stage === 'monster' && !submitted && group != null ? html`<${Button} variant="primary" size="lg" icon="check" loading=${busy}
             disabled=${picks.length === 0} onClick=${() => onConfirm(group, position, picks)}>${t('提交（{n} 只 · {spent}/{budget}）', { n: picks.length, spent, budget })}<//>` : null}
         </div>

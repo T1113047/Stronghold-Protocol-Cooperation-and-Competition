@@ -1268,5 +1268,9 @@
   "卫戍协议 2V2 模式": "Stronghold Protocol 2V2",
   "我方": "Our team",
   "对面": "Opponent",
-  "对面队伍血量": "Opponent team's HP"
+  "对面队伍血量": "Opponent team's HP",
+  "自动选择": "Auto-select",
+  "按价值自动挑满预算，之后可以手动调整": "Fills the budget by value automatically — tweak it afterwards",
+  "已离开，AI 接管": "Left the match — AI takeover",
+  "{name}博士已离开，由 AI 接管": "Dr. {name} left — the AI takes the seat over"
 }

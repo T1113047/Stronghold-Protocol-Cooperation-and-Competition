@@ -269,6 +269,22 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus: a player who never submits gets the auto-selection when the window ends', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 141, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached step 1');
+    const budget = m.confrontBudget();
+    assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
+    assert.equal(m.confrontStage, 'monster', 'step 2 opened');
+    // nobody submits: let the window run out
+    assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'the window closed');
+    const sub = m.confront && m.confront.get('p_0');
+    assert.ok(sub && sub.picks.length > 0, 'the silent player got an automatic set');
+    assert.ok(m.confrontSpent(sub.picks) <= budget, 'it stays within the budget');
+    assert.equal(sub.position, 'mid', 'the same default the 自动选择 button uses');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: ticker lines stay inside the team they belong to', () => {
     // four HUMANS (sendTo skips AI seats, so the recipients have to be real)
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seed: 131, fake: true, seats: [

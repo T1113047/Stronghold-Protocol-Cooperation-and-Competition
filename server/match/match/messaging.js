@@ -52,6 +52,36 @@ export class MatchMessaging {
   }
 
   markPublic() { this._pubDirty = true; }
+
+  /** 2V2: the opponent is revealed from the Final Assault (R14+) on and at the settlement; hidden before. */
+  _publicRevealed() { return !this.isVersus || this.phase === 'RESULT' || this.round >= this.gd.bossRound; }
+
+  /**
+   * A team's public view (2V2, before the reveal): the OPPONENT is hidden — their player rows become stubs
+   * (`hidden: true`), and their fields, per-team setup and 联防 entries are dropped. The full `base` view in solo/coop
+   * or after the reveal.
+   */
+  _teamPublicView(base, team) {
+    if (this._publicRevealed()) return base;
+    const same = (pid) => this.teamIdOf(this.players.get(pid)) === team;
+    const out = {
+      ...base,
+      players: base.players.map((row) => (same(row.playerId) ? row : {
+        playerId: row.playerId, seat: row.seat, name: row.name, isBot: row.isBot, team: row.team, connected: row.connected, alive: row.alive, hidden: true,
+      })),
+      fields: (base.fields || []).filter((f) => f.players.some(same)),
+    };
+    if (out.teamBans) out.teamBans = out.teamBans[team] ? { [team]: out.teamBans[team] } : {};
+    if (out.rerollVotes) out.rerollVotes = out.rerollVotes[team] ? { [team]: out.rerollVotes[team] } : {};
+    if (out.rerollVote) out.rerollVote = null;
+    if (out.unite) out.unite = { helpers: (out.unite.helpers || []).filter(same), leakers: (out.unite.leakers || []).filter(same) };
+    if (out.draft && out.draft.picks) {
+      out.draft = { ...out.draft,
+        picks: Object.fromEntries(Object.entries(out.draft.picks).filter(([pid]) => same(pid))),
+        skipsLeft: Object.fromEntries(Object.entries(out.draft.skipsLeft || {}).filter(([pid]) => same(pid))) };
+    }
+    return out;
+  }
   /**
    * A player's state changed: its m.private and (throttled, deduplicated) m.public (level, board, bonds…) — in a boss
    * round's prep also its pair partner's m.private, which shows this board on its other half (bossMate, item 51).
@@ -101,13 +131,31 @@ export class MatchMessaging {
       return;
     }
     this._pubDirty = false;
-    let view;
-    try { view = this.publicView(); } catch (e) { this.reportError('publicView', e); return; }
-    const { serverNow, ...rest } = view;
-    const json = JSON.stringify(rest);
-    if (!force && json === this._lastPubJson) return;
-    this._lastPubJson = json;
+    let base;
+    try { base = this.publicView(); } catch (e) { this.reportError('publicView', e); return; }
+    if (!this.isVersus) {
+      const { serverNow, ...rest } = base;
+      void serverNow;
+      const json = JSON.stringify(rest);
+      if (!force && json === this._lastPubJson) return;
+      this._lastPubJson = json;
+      this._lastPubAt = now;
+      this.broadcast(base);
+      return;
+    }
+    // 2V2: a per-team view (the opponent hidden until the Final Assault / the settlement); spectator seats see the full one
+    if (!this._lastPubJsonByTeam) this._lastPubJsonByTeam = new Map();
+    let sent = false;
+    for (const t of this.matchTeamIds()) {
+      const view = this._teamPublicView(base, t);
+      const json = JSON.stringify(view);
+      if (!force && json === this._lastPubJsonByTeam.get(t)) continue;
+      this._lastPubJsonByTeam.set(t, json);
+      sent = true;
+      for (const ps of this.order) if (this.teamIdOf(ps) === t) this.sendTo(ps.playerId, view);
+    }
+    if (!sent && !force) return;
     this._lastPubAt = now;
-    this.broadcast(view);
+    for (const sp of this.spectators.values()) this.sendTo(sp.playerId, base);
   }
 }

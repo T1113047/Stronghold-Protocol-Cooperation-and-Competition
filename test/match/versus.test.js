@@ -59,7 +59,7 @@ describe('versus (2V2) match: team model', () => {
     const m = h.m;
     // watch every 联防 as it opens: each plan's helpers + leakers must all be on ONE team (never a cross-team 联防)
     const groups = [];
-    h.onBroadcast.push((msg) => {
+    h.onSend.push((pid, msg) => {
       if (msg.t !== 'm.public' || msg.phase !== PHASE.UNITE || !Array.isArray(m.unitePlans)) return;
       for (const pl of m.unitePlans) groups.push([...pl.helpers, ...pl.leakers].map((p) => m.teamIdOf(p)));
     });
@@ -74,7 +74,7 @@ describe('versus (2V2) match: team model', () => {
     h.autoHumans();
     const m = h.m;
     let checked = false;
-    h.onBroadcast.push((msg) => {
+    h.onSend.push((pid, msg) => {
       if (msg.t !== 'm.public' || (m.phase !== PHASE.FINAL_ASSAULT && m.phase !== PHASE.HIDDEN_CORE)) return;
       if (checked || !Array.isArray(m.bossPairs) || !m.bossPairs.length) return;
       checked = true;
@@ -110,9 +110,9 @@ describe('versus (2V2) match: team model', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 31, fake: true }).start();
     const m = h.m;
     assert.ok([4, 5, 6].includes(m.contestStartRound), `contestStartRound ${m.contestStartRound}`);
-    assert.ok(h.lastBc('m.public')?.contestStartRound === m.contestStartRound, 'published in m.public');
+    assert.ok(h.lastTo('p_0', 'm.public')?.contestStartRound === m.contestStartRound, 'published in m.public');
     let spCards = null;
-    h.onBroadcast.push((msg) => {
+    h.onSend.push((pid, msg) => {
       if (msg.t === 'm.public' && msg.phase === PHASE.SP_DRAFT && m.sp && Array.isArray(m.sp.cards) && spCards == null) spCards = m.sp.cards.length;
     });
     h.autoHumans();
@@ -158,6 +158,24 @@ describe('versus (2V2) match: team model', () => {
     assert.equal(m.bossId, boss0, 'boss stays shared');
     assert.notDeepEqual(m.bansOf(0).drawn.slice().sort(), bans0, "team 0's bans changed");
     assert.deepEqual(m.bansOf(1).drawn.slice().sort(), bans1, "team 1's bans unchanged");
+  });
+
+  test('versus: the opponent is hidden before R14 and revealed at the Final Assault', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 71, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    h.toPrep(1);
+    const pub = h.lastTo('p_0', 'm.public');
+    assert.ok(pub, 'p_0 got an m.public');
+    const teamOf = (r) => m.teamIdOf(m.players.get(r.playerId));
+    const opp = pub.players.filter((r) => teamOf(r) === 1);
+    assert.ok(opp.length > 0 && opp.every((r) => r.hidden === true), 'opponent rows hidden before R14');
+    assert.ok(pub.players.filter((r) => teamOf(r) === 0).every((r) => !r.hidden), 'own rows visible');
+    // reached the Final Assault: everything is revealed
+    h.drive(() => m.phase === PHASE.FINAL_ASSAULT, { maxSteps: 3e6 });
+    const pub2 = h.lastTo('p_0', 'm.public');
+    assert.ok(pub2 && pub2.players.filter((r) => teamOf(r) === 1).every((r) => r.hidden !== true), 'opponent revealed at R14');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
   test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();

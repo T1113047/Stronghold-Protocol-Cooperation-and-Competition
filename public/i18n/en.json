@@ -1264,5 +1264,6 @@
   "未选择": "Not chosen",
   "双方都选好了，马上开始定制怪物": "Both sides are set — customizing starts",
   "对手被随机分配：先选的先得，队友自动拿剩下的那一个": "First come, first served — your teammate automatically takes the opponent that is left",
-  "出怪位置": "Spawn position"
+  "出怪位置": "Spawn position",
+  "卫戍协议 2V2 模式": "Stronghold Protocol 2V2"
 }

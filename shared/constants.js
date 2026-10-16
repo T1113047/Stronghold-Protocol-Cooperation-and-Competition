@@ -6,6 +6,15 @@ export const PROTOCOL_VERSION = 1;
 /** Release version shown to players (title screen, server banner, /healthz). Kept equal to package.json "version"
  * (test/version.test.js); PROTOCOL_VERSION above is the separate wire-format number. */
 export const APP_VERSION = '0.2.6';
+/**
+ * This fork's own build label: the 2V2 mode's version on top of the upstream release it is built from. The FIRST public
+ * test build is `V0.0.1-0.2.6` (2V2 mode V0.0.1 on upstream 0.2.6). `APP_VERSION` itself stays the upstream release
+ * (test/version.test.js ties it to package.json / package-lock / CHANGELOG), so the fork carries its number beside it
+ * (title screen, lobby, server banner). The name is an i18n msgid (public/i18n/*.json).
+ */
+export const FORK_VERSION = 'V0.0.1';
+export const FORK_LABEL = `${FORK_VERSION}-${APP_VERSION}`;
+export const FORK_NAME = N_('卫戍协议 2V2 模式');
 /** A development build (the public `dev` branch): the title screen, the boot banner and the README say so, and
  * tools/package.mjs refuses to build a release zip from it without --allow-dev. */
 export const DEV_BUILD = /-dev$/.test(APP_VERSION);

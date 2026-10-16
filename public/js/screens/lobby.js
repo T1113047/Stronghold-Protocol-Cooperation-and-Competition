@@ -13,7 +13,7 @@
 
 import { ResumeMatchButton } from '../ui/resumeMatch.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, ROOM_MODES, modeIdFor, ERR } from '../../../shared/constants.js';
+import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, ROOM_MODES, modeIdFor, ERR, FORK_LABEL } from '../../../shared/constants.js';
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
 import { GuideButton } from '../ui/guide.js';
@@ -325,7 +325,7 @@ export function LobbyScreen() {
         </div>
       </div>
       <div class="topbar__center">
-        <${MicroLabel} tone="mint">SIMULATION PROTOCOL SELECT<//>
+        <${MicroLabel} tone="mint">SIMULATION PROTOCOL SELECT · ${FORK_LABEL}<//>
         <h1 class="topbar__title">${t('选择模拟协议')}</h1>
       </div>
       <div class="topbar__right">

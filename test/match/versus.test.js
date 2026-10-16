@@ -208,6 +208,50 @@ describe('versus (2V2) match: team model', () => {
     assert.equal(m.bandTaken('band_x', 'ai_3'), true, "…but their own teammate's does");
   });
 
+  test('versus: a setup reroll keeps the briefing countdown and never blocks the confirm', () => {
+    const seats = [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'ai_2', name: 'B0', isBot: true, connected: true, team: 1 },
+      { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
+    ];
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats, seed: 151, fake: true }).start();
+    const m = h.m;
+    assert.equal(m.phase, PHASE.INFO_CHECK);
+    const before = m.deadline;
+    assert.equal(m.requestSetupReroll('p_0', m.setupRevision).ok, true);
+    assert.ok(m._anySetupVote(), 'the vote is open');
+    assert.equal(m.deadline, before, 'the countdown stays up while the vote runs');
+    assert.equal(m.handle('p_1', { t: 'g.infoReady', setupRevision: m.setupRevision }).ok, true, 'a teammate may still confirm');
+    const vote = m._anySetupVote();
+    assert.equal(m.voteSetupReroll(m.players.get('p_1'), vote.id, true).ok, true, 'the teammate agrees');
+    assert.equal(m.setupRevision, 1, 'the reroll landed');
+    assert.ok(!m._anySetupVote(), 'the vote closed');
+    assert.ok(m.deadline > h.sched.now(), 'a fresh window is armed for the re-confirmations');
+    assert.equal(m.handle('p_0', { t: 'g.infoReady', setupRevision: m.setupRevision }).ok, true);
+    assert.equal(m.handle('p_1', { t: 'g.infoReady', setupRevision: m.setupRevision }).ok, true);
+    assert.ok(h.drive(() => m.phase !== PHASE.INFO_CHECK, { maxSteps: 3e6 }), 'the briefing advanced');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: a reroll vote nobody answers expires and the briefing still advances', () => {
+    const seats = [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'ai_2', name: 'B0', isBot: true, connected: true, team: 1 },
+      { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
+    ];
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats, seed: 152, fake: true }).start();
+    const m = h.m;
+    assert.equal(m.requestSetupReroll('p_0', m.setupRevision).ok, true);
+    assert.ok(m._anySetupVote(), 'the vote is open');
+    h.sched.advance(60_000);
+    h.sched.runNext();
+    assert.ok(!m._anySetupVote(), 'the window expired the vote');
+    assert.equal(m.phase, PHASE.BAND_DRAFT, 'the briefing advanced instead of hanging');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: the briefing window is 45 s and can still end early', () => {
     // two humans (a lone human + AI runs untimed, so the window would not be armed at all)
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seed: 122, fake: true, seats: [

@@ -4,7 +4,7 @@
 // 2V2 ('versus', design 2026-10-17): the reroll is PER TEAM — a team rerolls only its OWN disabled core bonds (the
 // stage / boss / 特训敌人 stay shared), with that team's humans' consent, and the two teams' rerolls are independent.
 // Installed on Match.prototype like the other method containers. The lobby authorizes host-only actions.
-import { PHASE, ERR } from '../../../shared/constants.js';
+import { PHASE, ERR, VERSUS_INFO_SECONDS } from '../../../shared/constants.js';
 import { createRng, deriveSeed } from '../../sim/rng.js';
 import { setupMatchWaves } from '../waves.js';
 import { drawDisabledBonds, SharedPool } from '../pool.js';
@@ -74,10 +74,9 @@ export class MatchSetupVote {
     this._setSetupVote(team, vote);
     this.cancel(this._infoAdvanceTimer);
     this._infoAdvanceTimer = null;
-    this.setDeadline(0);
-    // The vote runs in its OWN window: a voter who never answers (or disconnects) must not freeze INFO_CHECK, which is
-    // left without a countdown while a vote is open.
-    vote.timer = this.later(ms, () => { if (this._setupVoteOf(team) === vote) this.cancelSetupVote(team); });
+    // Keep a VISIBLE countdown while the vote runs: the phase deadline becomes the vote's own window, and its expiry
+    // cancels the vote. (Clearing it here made the clock vanish and the briefing look hung.)
+    this.setDeadline(ms / 1000, () => { if (this._setupVoteOf(team) === vote) this.cancelSetupVote(team); });
     if (voters.length <= 1) return this.completeSetupReroll(team);
     this.markPublic();
     this.flush(true);
@@ -186,6 +185,8 @@ export class MatchSetupVote {
       this.markPublic();
       for (const ps of this.order) this.markPrivate(ps);
       this.flush(true);
+      // a fresh setup needs re-confirming: give it a new window, so the briefing can never wait forever on it
+      this.setDeadline(VERSUS_INFO_SECONDS, () => this.enterBandDraft());
       this.maybeEndInfo();
       return OK;
     }

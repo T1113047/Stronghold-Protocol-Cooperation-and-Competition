@@ -15,7 +15,8 @@ export class MatchIntents {
     switch (msg.t) {
       case 'g.infoReady':
         if (this.phase !== PHASE.INFO_CHECK) return fail(ERR.WRONG_PHASE);
-        if (this._anySetupVote()) return fail(ERR.WRONG_PHASE, 'setup reroll vote in progress');
+        // a running reroll vote does NOT block confirming the briefing (only the advance waits for the vote to end):
+        // refusing here made the ready button feel broken while a teammate was still deciding.
         if ((msg.setupRevision ?? 0) !== this.setupRevision) return fail(ERR.BAD_TARGET, 'setup changed; confirm the current revision');
         if (!ps.infoReady) { ps.infoReady = true; this.markPublic(); this.maybeEndInfo(); }
         return OK;

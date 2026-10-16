@@ -718,6 +718,13 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .confrow__route { display: flex; gap: .03rem; }
 .confrow__gate { padding: .02rem .05rem; font-size: calc(.11 * var(--t)); border-radius: .05rem; border: 1px solid var(--line-3); background: transparent; color: var(--text-md); cursor: pointer; }
 .confrow__gate.is-on { background: var(--mint-400); color: #06210f; border-color: var(--mint-400); }
+/* 队列: default gate 下路 — TAP the row to switch it, PRESS AND HOLD to drag it in the order */
+.confov__tip { font-size: calc(.12 * var(--t)); margin: 0 0 .06rem; }
+.confrow { cursor: pointer; touch-action: none; user-select: none; transition: border-color var(--t-fast), transform var(--t-fast); }
+.confrow__gate2 { min-width: .62rem; text-align: center; padding: .02rem .05rem; font-size: calc(.12 * var(--t)); font-weight: 700; border: 1px solid #c4583d; color: #ffab97; background: rgba(196, 88, 61, .12); }
+.confrow.is-upper .confrow__gate2 { border-color: #3d78c4; color: #8cc6ff; background: rgba(61, 120, 196, .12); }
+.confrow.is-drag { border-color: var(--mint-400); box-shadow: 0 0 .18rem rgba(23, 249, 183, .35); transform: scale(1.02); }
+.confrow.is-over { border-color: var(--gold); box-shadow: 0 0 .18rem rgba(246, 163, 41, .4); }
 .confrow__order { display: flex; gap: .02rem; }
 .confrow__order button { background: transparent; border: none; color: var(--text-md); cursor: pointer; padding: .02rem; }
 .confov__empty, .confov__hint { padding: .2rem; text-align: center; }

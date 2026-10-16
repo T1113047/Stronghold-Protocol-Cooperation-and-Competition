@@ -7,7 +7,7 @@
 //     together at one position of the wave (靠前/靠中/靠后 = 25/50/75 % of the round's monster count). Submitting early is
 //     fine; the step always runs its window out.
 // Texts go through t() (docs/I18N.md).
-import { useEffect, useState } from '../../vendor/hooks.module.js';
+import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, MicroLabel } from '../ui/components.js';
 import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl } from '../ui/assetUrls.js';
@@ -15,7 +15,6 @@ import { useStore } from '../store.js';
 import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
-const GATES = ['upper', 'lower'];
 const POSITIONS = [['front', '靠前'], ['mid', '靠中'], ['back', '靠后']];
 /**
  * The squad this browser last submitted (module-level: the overlay unmounts between rounds, the page does not). The
@@ -67,15 +66,54 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const remaining = Math.max(0, budget - spent);
   const fits = (rec) => !busy && rec.value <= remaining;
   const add = (rec) => { if (fits(rec)) setPicks((p) => [...p, { enemyKey: rec.key, gate: 'lower' }]); };
-  const setGate = (i, g) => setPicks((p) => p.map((x, k) => (k === i ? { ...x, gate: g } : x)));
   const remove = (i) => setPicks((p) => p.filter((_, k) => k !== i));
-  const move = (i, d) => setPicks((p) => {
-    const j = i + d;
-    if (j < 0 || j >= p.length) return p;
+  // 队列交互: a placed monster defaults to 下路 — TAP it to switch the gate, PRESS AND HOLD it to drag it in the order.
+  // (The up/down buttons and the per-row gate buttons are gone: both actions live on the row itself.)
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const press = useRef({ i: null, timer: null, x: 0, y: 0, armed: false });
+  const toggleGate = (i) => setPicks((p) => p.map((x, k) => (k === i ? { ...x, gate: x.gate === 'lower' ? 'upper' : 'lower' } : x)));
+  const moveTo = (from, to) => setPicks((p) => {
+    if (from === to || from < 0 || to < 0 || from >= p.length || to >= p.length) return p;
     const c = p.slice();
-    [c[i], c[j]] = [c[j], c[i]];
+    const [x] = c.splice(from, 1);
+    c.splice(to, 0, x);
     return c;
   });
+  const rowDown = (e, i) => {
+    if (submitted) return;
+    const s = press.current;
+    clearTimeout(s.timer);
+    s.i = i;
+    s.x = e.clientX;
+    s.y = e.clientY;
+    s.armed = false;
+    s.timer = setTimeout(() => { if (press.current.i === i) { press.current.armed = true; setDragIdx(i); setOverIdx(i); } }, 380);
+  };
+  const listMove = (e) => {
+    const s = press.current;
+    if (s.i == null) return;
+    if (!s.armed) {
+      if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 12) { clearTimeout(s.timer); s.i = null; }
+      return;
+    }
+    if (e.cancelable) e.preventDefault();
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const row = el && typeof el.closest === 'function' ? el.closest('[data-qidx]') : null;
+    if (row) setOverIdx(Number(row.getAttribute('data-qidx')));
+  };
+  const listUp = () => {
+    const s = press.current;
+    clearTimeout(s.timer);
+    if (s.i != null) {
+      if (s.armed) { if (overIdx != null && overIdx !== s.i) moveTo(s.i, overIdx); }
+      else toggleGate(s.i);
+    }
+    s.i = null;
+    s.armed = false;
+    setDragIdx(null);
+    setOverIdx(null);
+  };
   const mine = conf.subs ? conf.subs[myId] : null;
   const submitted = !!mine;
   const foesPicked = mates.every((p) => targets[p.playerId]);
@@ -94,7 +132,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     for (const r of list) {
       if (r.value > left) continue;
       left -= r.value;
-      out.push({ enemyKey: r.key, gate: out.length % 2 ? 'upper' : 'lower' });
+      out.push({ enemyKey: r.key, gate: 'lower' });
     }
     setGroup(gi);
     setPicks(out);
@@ -124,7 +162,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
       if (used.has(r.key) || r.value > left) continue;
       left -= r.value;
       used.add(r.key);
-      out.push({ enemyKey: r.key, gate: out.length % 2 ? 'upper' : 'lower' });
+      out.push({ enemyKey: r.key, gate: 'lower' });
     }
     if (!out.length) return;
     setGroup(idx);
@@ -206,19 +244,19 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
         </section>
         <section class="confov__placed">
           <h3 class="confov__h">${t('已放置（出怪顺序）')} <span class="num">${picks.length} · ${spent}/${budget}</span></h3>
-          ${picks.length ? html`<ol class="confov__list">
+          <p class="confov__tip t-dim">${t('点一下换门 · 长按拖动排序（默认下路）')}</p>
+          ${picks.length ? html`<ol class="confov__list" onPointerMove=${listMove} onPointerUp=${listUp} onPointerCancel=${listUp} onPointerLeave=${listUp}>
             ${picks.map((p, i) => {
               const rec = sel.find((r) => r.key === p.enemyKey) || { key: p.enemyKey, name: p.enemyKey, value: 0 };
-              return html`<li key=${`${p.enemyKey}:${i}`} class="confrow">
+              return html`<li key=${`${p.enemyKey}:${i}`} data-qidx=${i}
+                  class=${cx('confrow', p.gate === 'upper' && 'is-upper', dragIdx === i && 'is-drag', overIdx === i && dragIdx != null && dragIdx !== i && 'is-over')}
+                  title=${t('点击换门 · 长按拖动排序')} onPointerDown=${(e) => rowDown(e, i)}>
                 <span class="confrow__idx num">${i + 1}</span>
                 <span class="confrow__icon"><${Img} src=${enemyIconUrl(m, rec.key)} fallback=${html`<${GIcon} name="target" />`} /></span>
                 <span class="confrow__name">${rec.name}</span>
-                <span class="confrow__route">${GATES.map((g) => html`<button key=${g} type="button" class=${cx('confrow__gate', p.gate === g && 'is-on')}
-                  disabled=${submitted} onClick=${() => setGate(i, g)} title=${t('从{route}出', { route: t(g === 'upper' ? '上路' : '下路') })}>${t(g === 'upper' ? '上路' : '下路')}</button>`)}</span>
+                <span class="confrow__gate2">${t(p.gate === 'upper' ? '上路' : '下路')}</span>
                 <span class="confrow__order">
-                  <button type="button" disabled=${submitted || i === 0} onClick=${() => move(i, -1)} aria-label=${t('上移')}><${Icon} name="chevronUp" /></button>
-                  <button type="button" disabled=${submitted || i === picks.length - 1} onClick=${() => move(i, 1)} aria-label=${t('下移')}><${Icon} name="chevronDown" /></button>
-                  <button type="button" disabled=${submitted} onClick=${() => remove(i)} aria-label=${t('移除')}><${Icon} name="close" /></button>
+                  <button type="button" disabled=${submitted} onPointerDown=${(e) => e.stopPropagation()} onClick=${() => remove(i)} aria-label=${t('移除')}><${Icon} name="close" /></button>
                 </span>
               </li>`;
             })}

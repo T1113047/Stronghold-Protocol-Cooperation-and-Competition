@@ -685,7 +685,11 @@ export class UnitView {
   // ---- loading ---------------------------------------------------------------------------------------------
 
   _frameColor() {
-    if (this.isEnemy) return this.isBoss ? ENEMY_FRAME.boss : this.tier >= 2 ? ENEMY_FRAME.elite : ENEMY_FRAME.normal;
+    if (this.isEnemy) {
+      // 2V2 对抗期: the opponent PLACED this one — a pale red frame marks it (the P<n> badge under it names who sent it)
+      if (Number.isInteger(this.info.confrontSeat)) return 0xff9a86;
+      return this.isBoss ? ENEMY_FRAME.boss : this.tier >= 2 ? ENEMY_FRAME.elite : ENEMY_FRAME.normal;
+    }
     if (ICE_TOKENS.has(this.info.defId)) return ICE_FRAME;
     if (this.golden) return 0xffc600;
     return TIER_COLORS[this.tier] || TIER_COLORS[1];
@@ -897,6 +901,16 @@ export class UnitView {
     this.ctx.layers.groundFx.addChild(this.blockIcon);
     this.countText = null;
     this.ammoText = null;          // 设置「弹药数量」: the magazine's count under the ammo bar (_updateAmmoCount)
+    // 2V2 对抗期: an enemy the OPPONENT placed carries a P<n> badge under its feet (its frame is pale red too, see
+    // _frameColor) — display only, driven by the spawn's confrontSeat.
+    this.sentText = null;
+    if (this.isEnemy && Number.isInteger(this.info.confrontSeat)) {
+      this.sentText = new P.Text(`P${this.info.confrontSeat + 1}`, {
+        fontFamily: 'Bender, Oxanium, sans-serif', fontSize: 20, fontWeight: '700', fill: '#ff9a86', stroke: '#2a0f0c', strokeThickness: 5,
+      });
+      this.sentText.anchor.set(0.5);
+      this.hud.addChild(this.sentText);
+    }
     this.itemPips = [];
   }
 
@@ -1607,6 +1621,11 @@ export class UnitView {
     if (this.countText && this.countText.visible) {
       this.countText.scale.set(clamp(s / 90, 0.5, 1.2));
       this.countText.position.set(x + s * 0.32, this.screen.y - s * 0.12);
+    }
+    if (this.sentText) {
+      // the 对抗期 badge sits under the enemy's feet (2V2: the opponent placed it)
+      this.sentText.scale.set(clamp(s / 90, 0.5, 1.2));
+      this.sentText.position.set(x, this.screen.y + s * 0.52);
     }
     for (let i = 0; i < this.itemPips.length; i++) {
       const pip = this.itemPips[i];

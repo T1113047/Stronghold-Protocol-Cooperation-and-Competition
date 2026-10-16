@@ -438,6 +438,8 @@ describe('versus (2V2) match: team model', () => {
     assert.ok(m.confrontSpent(picks) <= budget, 'the picks stay within the budget');
     const r = m.submitConfront(me, { group: 6, position: 'mid', picks });
     assert.equal(r && r.ok, true, JSON.stringify(r));
+    // the placed monsters carry the SENDER's seat for the client's marker (display only)
+    assert.equal(m.confrontSubs.get('p_0').seat, me.seat, 'the submission remembers who sent it');
     // the window is FIXED: submitting early does not end step 2
     assert.equal(m.phase, PHASE.CONFRONT, 'the sides stay in step until step 2 runs out');
     assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'combat starts once the window is up');

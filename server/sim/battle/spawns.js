@@ -28,7 +28,7 @@ export class BattleSpawns {
     for (let i = 0; i < count; i++) {
       const p = {
         time: Math.max(0, fin(s.time, 0)) + i * interval, enemyKey: s.enemyKey, routeIndex: s.routeIndex ?? 0, route: s.route ?? null,
-        mods: s.mods ?? null, sourcePlayerId: s.sourcePlayerId ?? null, bounty: s.bounty ?? null, tag: s.tag ?? null,
+        mods: s.mods ?? null, sourcePlayerId: s.sourcePlayerId ?? null, confrontSeat: s.confrontSeat ?? null, bounty: s.bounty ?? null, tag: s.tag ?? null,
         ownerPlayerId: s.ownerPlayerId ?? null, pos: s.pos ?? null, seq: ++this._spawnSeq, countInTotal: s.countInTotal,
       };
       p.counted = p.countInTotal ?? (!(def && def.notCountInTotal) && p.tag !== 'boss' && p.tag !== 'part');
@@ -129,6 +129,7 @@ export class BattleSpawns {
     e.tag = opts.tag ?? null;
     e.bounty = opts.bounty ?? null;
     e.sourcePlayerId = opts.sourcePlayerId ?? null;
+    e.confrontSeat = opts.confrontSeat ?? null;   // display only: the 对手 placed this one (P<n> outline), never billed
     e.ownerId = opts.ownerPlayerId ?? this._ownerForTile(start);
     e.spawnX = e.x; e.spawnY = e.y;
     e.spawnSeq = ++this._spawnSeq;

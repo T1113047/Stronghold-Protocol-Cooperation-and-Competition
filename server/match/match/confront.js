@@ -247,7 +247,7 @@ export class MatchConfront {
       out.push({ enemyKey: p.enemyKey, gate: p.gate === 'upper' ? 'upper' : 'lower' });
     }
     if (this.confrontSpent(out) > this.confrontBudget()) return null;
-    return { target: this.confrontTargets.get(ps.playerId) ?? null, group, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget() };
+    return { target: this.confrontTargets.get(ps.playerId) ?? null, group, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget(), seat: ps.seat };
   }
 
   /** An AI player's submission, and the one a player who never submits gets at the window's end: fill the budget from
@@ -264,7 +264,7 @@ export class MatchConfront {
       left -= r.value;
       picks.push({ enemyKey: r.key, gate: picks.length % 2 ? 'upper' : 'lower' });
     }
-    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: groups.length, position: 'mid', picks, ratio: this.confrontRatio(), budget });
+    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: groups.length, position: 'mid', picks, ratio: this.confrontRatio(), budget, seat: ps.seat });
     this.markPublic();
   }
 
@@ -355,11 +355,13 @@ export class MatchConfront {
       const rest = c - (take.get(i) || 0);
       if (rest > 0) kept.push(rest === c ? s : { ...s, count: rest });
     });
-    // 3) the placed monsters, together at the chosen position
+    // 3) the placed monsters, together at the chosen position. `confrontSeat` is DISPLAY only (the target's client
+    //    outlines them and prints P<n> under them) — `sourcePlayerId` stays untouched, it drives the 联防 leak billing.
     const mods = roundMods(scale);
     const start = this._confrontInsertTime(spawns, sub.position);
+    const sentBy = Number.isInteger(sub.seat) ? sub.seat : null;
     sub.picks.forEach((p, i) => {
-      kept.push({ time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate), mods: { ...mods }, ownerPlayerId: ps.playerId });
+      kept.push({ time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate), mods: { ...mods }, ownerPlayerId: ps.playerId, confrontSeat: sentBy });
     });
     return kept;
   }

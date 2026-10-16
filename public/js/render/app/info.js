@@ -50,6 +50,9 @@ export function renderInfo(u) {
     // 0.2.0 补位: the replaced operator's charId of a chess fighting as its stand-in (UnitInfo.standInFor; spine / avatar /
     // name are already the stand-in's) — the detail card and the view's data lookups (attack interval, splash FX) follow it
     standInFor: typeof u.standInFor === 'string' && u.standInFor ? u.standInFor : undefined,
+    // 2V2 对抗期: the seat that PLACED this enemy (spawn `confrontSeat`) — UnitView outlines it pale red and prints its
+    // P<n> badge under it. Display only; the leak billing keeps using sourcePlayerId / ownerId.
+    confrontSeat: Number.isInteger(u.confrontSeat) ? u.confrontSeat : undefined,
     // 0.2.0 自选编队: the pick of a DIY slot's unit (UnitInfo.diy { charId, skillIndex, uniEquipId }; spine / avatar / name
     // are already the operator's) — the detail card composes the operator from it, the data lookups follow it
     diy: u.diy && typeof u.diy === 'object' && typeof u.diy.charId === 'string'

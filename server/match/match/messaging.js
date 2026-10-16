@@ -70,10 +70,11 @@ export class MatchMessaging {
       drawnDisabledBonds: bans.drawn.slice(),
       bannedChess: bans.banned.slice(),
     };
-    if (this._publicRevealed()) return { ...base, ...own };
+    const sp = this.isVersus && this.phase === 'SP_DRAFT' && this.sp ? { sp: this.spViewFor(team) } : null;
+    if (this._publicRevealed()) return { ...base, ...own, ...(sp || {}) };
     const same = (pid) => this.teamIdOf(this.players.get(pid)) === team;
     const out = {
-      ...base, ...own,
+      ...base, ...own, ...(sp || {}),
       players: base.players.map((row) => (same(row.playerId) ? row : {
         playerId: row.playerId, seat: row.seat, name: row.name, isBot: row.isBot, team: row.team, connected: row.connected, alive: row.alive, hidden: true,
       })),

@@ -47,15 +47,18 @@ export function normalizeSp(sp, players = []) {
   if (!isObj(sp)) return null;
   const ids = (Array.isArray(players) ? players : []).filter(isObj).map((p) => p.playerId);
   const order = Array.isArray(sp.order) && sp.order.length ? sp.order.filter((x) => typeof x === 'string') : ids;
-  const cards = (Array.isArray(sp.cards) ? sp.cards : []).slice(0, 6).map((c, idx) => {
+  // 2V2: the server sends only the viewer's team's cards and keeps their ORIGINAL indexes (the pick travels back as
+  // g.choice with that index, so it must survive the normalisation); a payload without idx falls back to the position.
+  const cards = (Array.isArray(sp.cards) ? sp.cards : []).slice(0, 6).map((c, i) => {
     const card = typeof c === 'string' ? { id: c } : isObj(c) ? { ...c } : {};
-    return { ...card, idx, takenBy: typeof card.takenBy === 'string' ? card.takenBy : null };
+    return { ...card, idx: Number.isInteger(card.idx) ? card.idx : i, takenBy: typeof card.takenBy === 'string' ? card.takenBy : null };
   });
   const takenBy = new Map(); // idx → playerId
   const pickOf = new Map(); // playerId → idx
   const src = sp.picks;
+  const knownIdx = new Set(cards.map((c) => c.idx));
   const add = (pid, idx) => {
-    if (typeof pid !== 'string' || !Number.isInteger(idx) || idx < 0 || idx >= cards.length) return;
+    if (typeof pid !== 'string' || !Number.isInteger(idx) || !knownIdx.has(idx)) return;
     takenBy.set(idx, pid);
     pickOf.set(pid, idx);
   };
@@ -72,6 +75,8 @@ export function normalizeSp(sp, players = []) {
     name: typeof sp.name === 'string' && sp.name ? sp.name : null,
     desc: typeof sp.desc === 'string' && sp.desc ? sp.desc : null,
     untimed: !!sp.untimed,
+    // 2V2: true while the OTHER team decides (the two teams alternate, so a team that finished its picks first waits)
+    waiting: !!sp.waiting,
     cards, order, turnPid, pickOf, takenBy, pickedCount: pickOf.size,
   };
 }

@@ -171,12 +171,9 @@ export class MatchViews {
       };
     }
     if (this.phase === PHASE.SP_DRAFT && this.sp) {
-      const s = this.sp;
-      v.sp = {
-        family: s.family, name: s.name, desc: s.desc, eventId: s.eventId,
-        cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPool.canGain(c.id) })), order: s.order.slice(),
-        turn: this.spTurn(), picks: { ...s.picks }, taken: { ...s.taken }, untimed: !!s.untimed,
-      };
+      // 2V2: m.public carries ONLY the viewer's team's draw (spViewFor, filled per team by messaging.js
+      // _teamPublicView) — the opponent's cards, order and picks never leave the server.
+      if (!this.isVersus) v.sp = this.spViewFor(0);
     }
     if (this.phase === PHASE.UNITE && this.unitePlan) v.unite = { helpers: this.unitePlan.helpers.map((p) => p.playerId), leakers: this.unitePlan.leakers.map((p) => p.playerId) };
     // SETTLE after a 联防: its outcome as data (settle.js uniteResultView; GitHub #235, PR #112) — { through, helpers,
@@ -187,6 +184,52 @@ export class MatchViews {
       v.uniteResult = { through: ur.through, helpers: ur.helpers.slice(), leakers: ur.leakers.slice(), losses: { ...ur.losses } };
     }
     return v;
+  }
+
+  /**
+   * m.public.sp as ONE team sees it (2V2), or the whole shared draw in solo/co-op:
+   *   * `cards` — the viewer's team's own draw only, with their original indexes (a pick sent back to `g.choice` maps to
+   *     the right card: the client keeps a card's `idx` when the server set one);
+   *   * `order` / `picks` / `taken` — that team's own members only;
+   *   * `turn` — the team's current picker, null while the OTHER team decides, with `waiting` saying so. The two teams
+   *     alternate, so the team that took its last card first waits here for the other one.
+   * The opponent's pool is therefore never published (messaging.js _teamPublicView installs this per team).
+   * @param {number} team
+   */
+  spViewFor(team) {
+    const s = this.sp;
+    if (!s) return null;
+    const cardsOf = (list) => list.map((c) => {
+      const v = cardView(c); // cardView copies only the public fields, so the pool tag stays server-side
+      v.soldOut = c.kind === 'item' && !this.itemPool.canGain(c.id);
+      return v;
+    });
+    const infoOf = (t) => (s.teams && s.teams.get(t)) || {};
+    if (!this.isVersus) {
+      const info = infoOf(0);
+      return {
+        family: info.family ?? null, name: info.name ?? null, desc: info.desc ?? null, eventId: info.eventId ?? null,
+        cards: cardsOf(s.cards), order: s.order.slice(), turn: this.spTurn(), waiting: false,
+        picks: { ...s.picks }, taken: { ...s.taken }, untimed: !!s.untimed,
+      };
+    }
+    const info = infoOf(team);
+    const cards = s.cards.filter((c) => c.poolTeam === team);
+    const own = new Set(cards.map((c) => c.idx));
+    const picks = {};
+    for (const [pid, idx] of Object.entries(s.picks)) if (own.has(idx)) picks[pid] = idx;
+    const taken = {};
+    for (const [idx, pid] of Object.entries(s.taken)) if (own.has(Number(idx))) taken[idx] = pid;
+    const curPid = this.spTurn();
+    const curTeam = curPid ? this.teamIdOf(this.players.get(curPid)) : null;
+    return {
+      family: info.family ?? null, name: info.name ?? null, desc: info.desc ?? null, eventId: info.eventId ?? null,
+      cards: cardsOf(cards),
+      order: s.order.filter((pid) => this.teamIdOf(this.players.get(pid)) === team),
+      turn: curTeam === team ? curPid : null,
+      waiting: !!curPid && curTeam !== team,
+      picks, taken, untimed: !!s.untimed,
+    };
   }
 
   /**

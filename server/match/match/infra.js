@@ -97,10 +97,11 @@ export class MatchInfra {
   /**
    * Whether a bond can matter in this match: not in the mode's static inactive list (标准: 拉特兰 / 阿戈尔 / 卡西米尔 /
    * 奥术 … never activate, research 02 §2.1) and still with chess in the pool. 机变 tactic cards whose every target bond
-   * is dead are not offered (choices.js).
+   * is dead are not offered (choices.js). 2V2: `team` given, only that team's pool counts (each team is offered its own
+   * 机变 cards, so a 驰援 card of a bond only the opponent can use must not appear).
    */
-  bondLive(bondId) {
-    return !this.gd.modeInactiveBonds.has(bondId) && this.bondInPool(bondId);
+  bondLive(bondId, team = null) {
+    return !this.gd.modeInactiveBonds.has(bondId) && this.bondInPool(bondId, team);
   }
   humans() { return this.order.filter((p) => !p.isBot && !p.left); }
 

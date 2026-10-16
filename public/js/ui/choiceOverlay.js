@@ -188,6 +188,7 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
         </div>
         <div class="spov__turn">
           ${personal ? html`<span class="spov__turntxt is-mine">${t('从候选中选择一项战术特训')}</span>`
+            : sp.waiting ? html`<span class="spov__turntxt"><${Icon} name="hourglass" />${t('等待对面一队选择')}</span>`
             : mine != null ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已完成选择')}</span>`
             : myTurn ? html`<span class="spov__turntxt is-mine">${t('当前轮到你决策')}</span>`
             : html`<span class="spov__turntxt">${t('{turnName} 正在决策…', { turnName })}<${Icon} name="hourglass" /></span>`}

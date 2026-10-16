@@ -14,22 +14,88 @@ import { OK, fail, DELAYS } from './common.js';
 /** Cards of the personal choice (PRTS 卫戍协议：盟约 下半 §法术 教鞭: "于3个战术特训的悬赏任务中选择一项"). */
 const PERSONAL_OFFER_SIZE = 3;
 
+/**
+ * Cards each team is offered in the 2V2 机变 draft: co-op's shared 6-card draw halves to 3 per team, so a team's two
+ * teammates pick from their OWN 3 (the user's rule) instead of all four seats sharing one 3-card draw.
+ */
+export const VERSUS_SP_CARDS = 3;
+
 export class MatchSpDraft {
   enterSpDraft() {
-    const draft = generateDraft(this.gd, this.rngDraft, this.round, { stageId: this.stageId, bondAvailable: (bondId) => this.bondLive(bondId), itemAvailable: id => this.itemPool.canGain(id), cardCount: this.isVersus ? 3 : null });
     const alive = this.alivePlayers();
-    if (!draft || !alive.length) { this.enterPrep(); return; }
+    if (!alive.length) { this.enterPrep(); return; }
+    // 2V2: every team drafts its own 机变 — 3 cards from its own live bonds / pool; solo/co-op keep the single shared
+    // draw (6 cards, 3 in solo) that every seat picks from in turn order.
+    let cards;
+    let teams;
+    let head = null; // the single shared draw's family/name/desc (solo/co-op; 2V2 keeps them per team instead)
+    if (this.isVersus) {
+      cards = [];
+      teams = new Map();
+      for (const team of this.matchTeamIds()) {
+        const d = this.spDraw(team);
+        if (!d) continue;
+        const base = cards.length;
+        for (const [i, c] of d.cards.entries()) cards.push({ ...c, idx: base + i, poolTeam: team });
+        teams.set(team, { family: d.family, name: d.name, desc: d.desc, eventId: d.eventId });
+      }
+      if (!cards.length) { this.enterPrep(); return; }
+    } else {
+      const d = this.spDraw(null);
+      if (!d) { this.enterPrep(); return; }
+      cards = d.cards;
+      head = { family: d.family, name: d.name, desc: d.desc, eventId: d.eventId };
+      teams = new Map([[0, { ...head }]]);
+    }
     this.phase = PHASE.SP_DRAFT;
-    let order = alive.map((p) => p.playerId);
-    if (!this.isSolo) this.rngDraft.shuffle(order);
-    // 「AI 队友最后选择」 (GitHub #338): humans before AI seats, after the same shuffle (MatchPhases.humansFirst)
-    order = this.humansFirst(order);
-    // untimed: solo and any single-human match (soloUntimed); the co-op order / 6 cards stay
+    // 2V2: the two teams decide IN STEP — the turn order alternates one member of each team (each team's own internal
+    // order), so neither team gets a head start and the two countdowns stay in sync; the team that takes its last card
+    // first waits for the other (the overlay says so). 「AI 队友最后选择」 still puts an AI teammate after its human
+    // teammate, inside its own team. solo/co-op keep the one shared order.
+    let order;
+    if (this.isVersus) {
+      const perTeam = this.matchTeamIds().map((team) => {
+        const ids = alive.filter((p) => this.teamIdOf(p) === team).map((p) => p.playerId);
+        if (!this.isSolo) this.rngDraft.shuffle(ids);
+        return this.humansFirst(ids);
+      });
+      const slots = Math.max(0, ...perTeam.map((ids) => ids.length));
+      order = [];
+      for (let i = 0; i < slots; i++) for (const ids of perTeam) if (ids[i]) order.push(ids[i]);
+    } else {
+      const ids = alive.map((p) => p.playerId);
+      if (!this.isSolo) this.rngDraft.shuffle(ids);
+      order = this.humansFirst(ids);
+    }
+    // untimed: solo and any single-human match (soloUntimed)
     const untimed = this.soloUntimed;
-    this.sp = { ...draft, order, idx: 0, picks: {}, taken: {}, untimed, turnDeadline: 0 };
+    this.sp = { ...(head || {}), cards, teams, order, idx: 0, picks: {}, taken: {}, untimed, turnDeadline: 0 };
     this.setDeadline(0);
     this.startSpTurn();
     this.markPublic();
+  }
+
+  /**
+   * One 机变 draw (choices.js generateDraft): the shared one for solo/co-op, one per team in 2V2 (VERSUS_SP_CARDS each,
+   * from that team's own live bonds — a 驰援 card of a bond only the opponent can use must not appear).
+   * @param {number|null} team
+   */
+  spDraw(team) {
+    return generateDraft(this.gd, this.rngDraft, this.round, {
+      stageId: this.stageId,
+      bondAvailable: (bondId) => this.bondLive(bondId, team),
+      itemAvailable: (id) => this.itemPool.canGain(id),
+      cardCount: this.isVersus ? VERSUS_SP_CARDS : null,
+    });
+  }
+
+  /** The 机变 cards a player may pick: their own team's in 2V2, the whole draw otherwise. */
+  spCardsFor(ps) {
+    const s = this.sp;
+    if (!s) return [];
+    if (!this.isVersus) return s.cards;
+    const team = this.teamIdOf(ps);
+    return s.cards.filter((c) => c.poolTeam === team);
   }
 
   spTurn() {
@@ -49,7 +115,8 @@ export class MatchSpDraft {
       if (ps && ps.alive && s.picks[ps.playerId] == null) break;
       s.idx++;
     }
-    const available = s.cards.filter(c => this.spCardAvailable(c)).map(c => c.idx);
+    const cur = this.players.get(this.spTurn());
+    const available = this.spCardsFor(cur).filter(c => this.spCardAvailable(c)).map(c => c.idx);
     if (s.idx >= s.order.length || !available.length) { this.setDeadline(0); this.later(0, () => this.finishSpDraft()); return; }
     const token = ++this._turnToken;
     if (!s.untimed) {
@@ -59,7 +126,7 @@ export class MatchSpDraft {
         if (this.phase !== PHASE.SP_DRAFT || token !== this._turnToken) return;
         const ps = this.players.get(this.spTurn());
         if (!ps) return;
-        const avail = s.cards.filter(c => this.spCardAvailable(c)).map(c => c.idx);
+        const avail = this.spCardsFor(ps).filter(c => this.spCardAvailable(c)).map(c => c.idx);
         if (!avail.length) { this.finishSpDraft(); return; }
         this._applyCard(ps, avail[Math.floor(this.rngDraft() * avail.length)]);
       });
@@ -67,7 +134,6 @@ export class MatchSpDraft {
     } else {
       this.setDeadline(0);
     }
-    const cur = this.players.get(this.spTurn());
     if (cur && cur.botControlled) this.scheduleSpBot();
     this.markPublic();
   }
@@ -78,9 +144,9 @@ export class MatchSpDraft {
       if (this.phase !== PHASE.SP_DRAFT || token !== this._turnToken || !this.sp) return;
       const ps = this.players.get(this.spTurn());
       if (!ps || !ps.botControlled) return;
-      const avail = this.sp.cards.filter(c => this.spCardAvailable(c)).map(c => c.idx);
+      const avail = this.spCardsFor(ps).filter(c => this.spCardAvailable(c)).map(c => c.idx);
       if (!avail.length) return;
-      this._applyCard(ps, botPickCard(this, ps, this.sp.cards, avail));
+      this._applyCard(ps, botPickCard(this, ps, this.spCardsFor(ps), avail));
     });
   }
 
@@ -90,6 +156,8 @@ export class MatchSpDraft {
     if (this.sp.picks[ps.playerId] != null) return fail(ERR.ALREADY);
     if (this.spTurn() !== ps.playerId) return fail(ERR.NOT_YOUR_TURN);
     if (!Number.isInteger(idx) || idx < 0 || idx >= this.sp.cards.length) return fail(ERR.BAD_TARGET);
+    // 2V2: a seat may only take a card of its OWN team's pool (the opponent's stays hidden and untouchable)
+    if (this.isVersus && this.sp.cards[idx].poolTeam !== this.teamIdOf(ps)) return fail(ERR.BAD_TARGET);
     if (!this.spCardAvailable(this.sp.cards[idx])) return fail(ERR.SOLD_OUT);
     this._applyCard(ps, idx);
     return OK;

@@ -106,19 +106,39 @@ describe('versus (2V2) match: team model', () => {
     }
   });
 
-  test('versus: contest start round is drawn from R4/R5/R6, published, and the 机变 draft offers 3 cards', () => {
+  test('versus: the 机变 draft gives EACH TEAM its own 3 cards (the two teams take turns)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 31, fake: true }).start();
     const m = h.m;
     assert.ok([4, 5, 6].includes(m.contestStartRound), `contestStartRound ${m.contestStartRound}`);
     assert.ok(h.lastTo('p_0', 'm.public')?.contestStartRound === m.contestStartRound, 'published in m.public');
-    let spCards = null;
+    let seen = false;
     h.onSend.push((pid, msg) => {
-      if (msg.t === 'm.public' && msg.phase === PHASE.SP_DRAFT && m.sp && Array.isArray(m.sp.cards) && spCards == null) spCards = m.sp.cards.length;
+      if (msg.t === 'm.public' && msg.phase === PHASE.SP_DRAFT && m.sp) seen = true;
     });
     h.autoHumans();
-    h.drive(() => h.ended != null || spCards != null, { maxSteps: 3e6 });
-    assert.ok(spCards != null, 'reached an 机变 draft');
-    assert.ok(spCards <= 3, `机变 cards offered = ${spCards}, want ≤ 3`);
+    h.drive(() => h.ended != null || seen, { maxSteps: 3e6 });
+    assert.ok(seen, 'reached an 机变 draft');
+    const s = m.sp;
+    const poolOf = (t) => s.cards.filter((c) => c.poolTeam === t);
+    assert.equal(poolOf(0).length, 3, 'team 0 is offered its own 3 cards');
+    assert.equal(poolOf(1).length, 3, 'team 1 is offered its own 3 cards');
+    assert.equal(s.cards.length, 6, 'the two pools together hold 6 cards');
+    // the two teams take turns: a member of each, slot by slot
+    assert.deepEqual(s.order.map((pid) => m.teamIdOf(m.players.get(pid))), [0, 1, 0, 1]);
+    // a seat may only pick from its OWN team's pool
+    const own = m.spCardsFor(m.players.get('p_0'));
+    assert.equal(own.length, 3);
+    assert.ok(own.every((c) => c.poolTeam === 0), "p_0's pool holds its own team's cards only");
+    const oppIdx = poolOf(1)[0].idx;
+    assert.ok(m.pickCard(m.players.get('p_0'), oppIdx).error, 'taking the other team\'s card is refused');
+    // the published view is per team: own cards/order/picks only, and 'waiting' while the other team decides
+    const v0 = m.spViewFor(0);
+    const v1 = m.spViewFor(1);
+    assert.ok(v0.cards.every((c) => poolOf(0).some((x) => x.idx === c.idx)), "team 0's view never shows team 1's cards");
+    assert.equal(v0.order.length, 2, "team 0's order holds its own two members");
+    assert.ok((v0.turn != null) !== (v1.turn != null), 'exactly one team holds the pick');
+    if (v0.turn == null) assert.equal(v0.waiting, true, 'the waiting team says so');
+    if (v1.turn == null) assert.equal(v1.waiting, true, 'the waiting team says so');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 

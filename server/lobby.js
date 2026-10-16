@@ -553,6 +553,32 @@ export class Lobby {
     return OK;
   }
 
+  /** Put an AI teammate into a specific free seat (room.addBot and the 2V2 start-up fill share this). */
+  _seatBot(room, idx) {
+    const used = new Set(room.seats.filter((s) => s && s.isBot).map((s) => s.name));
+    const name = BOT_NAMES.find((n) => !used.has(n)) || `AI·${idx + 1}`;
+    let playerId;
+    do playerId = 'ai_' + randomBytes(4).toString('hex'); while (room.seatOf(playerId));
+    room.seats[idx] = { seat: idx, playerId, name, isBot: true, ready: true, connected: true, left: false };
+  }
+
+  /**
+   * 2V2 ('versus') is a FIXED 2v2: every empty seat is handed to an AI teammate when the match starts, so a room with
+   * two (or even one) humans plays out with AI filling the rest instead of being refused. Non-versus rooms keep their
+   * seats exactly as the host arranged them.
+   * @returns {number} how many seats were filled
+   */
+  _fillEmptySeatsWithBots(room) {
+    if (room.mode !== 'versus') return 0;
+    let filled = 0;
+    for (let idx = 0; idx < room.seats.length; idx++) {
+      if (room.seats[idx]) continue;
+      this._seatBot(room, idx);
+      filled++;
+    }
+    return filled;
+  }
+
   addBot(session) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
@@ -562,11 +588,7 @@ export class Lobby {
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo rooms cannot have AI teammates');
     const idx = room.freeSeat();
     if (idx < 0) return fail(ERR.ROOM_FULL);
-    const used = new Set(room.seats.filter((s) => s && s.isBot).map((s) => s.name));
-    const name = BOT_NAMES.find((n) => !used.has(n)) || `AI·${idx + 1}`;
-    let playerId;
-    do playerId = 'ai_' + randomBytes(4).toString('hex'); while (room.seatOf(playerId));
-    room.seats[idx] = { seat: idx, playerId, name, isBot: true, ready: true, connected: true, left: false };
+    this._seatBot(room, idx);
     this.broadcastState(room);
     return OK;
   }
@@ -637,6 +659,12 @@ export class Lobby {
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     if (room.match) return fail(ERR.ROOM_STARTED);
+    // 2V2 ('versus'): the mode is a FIXED 2v2 — empty seats become AI teammates here, so a room with fewer than four
+    // humans simply plays out with AI fill instead of being refused (they are ready at once, the check below passes).
+    if (room.mode === 'versus') {
+      const filled = this._fillEmptySeatsWithBots(room);
+      if (filled) this.log.info(`[lobby] ${room.code} filled ${filled} empty seat(s) with AI at start`);
+    }
     const humans = room.activeHumans();
     for (const s of humans) {
       if (s.playerId !== room.hostId && (!s.connected || !s.ready)) return fail(ERR.NOT_READY);

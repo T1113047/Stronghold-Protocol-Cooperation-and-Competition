@@ -131,9 +131,30 @@ export class MatchPlatform {
   onLeave(playerId) {
     const ps = this.players.get(playerId);
     if (!ps || ps.isBot || ps.left || this.disposed) return;
+    // 2V2 ('versus'): a human who quits MID-MATCH hands the seat to the AI (AI 托管) instead of being eliminated — a
+    // friend's browser dying, or someone stepping away, must not decide the match. The seat keeps shopping, drafting and
+    // fighting on its own; the roster stays full (so the one-to-one 对抗期 pairing keeps working).
+    if (this.isVersus && this.phase !== PHASE.LOBBY && !this.ended) {
+      this.guard(() => {
+        this._dropFromSetupVotes(playerId);
+        this.cancelSetupVote(this.teamIdOf(ps));
+        ps.connected = false;
+        ps.autoplay = true;
+        this.watchers.delete(playerId);
+        this._resume();
+        if (this.clientCombat) this._authorityLost(ps, 'left');
+        this.toast(ps, 'warn', '已离开，AI 接管');
+        this.tickerText(msg('{name}博士已离开，由 AI 接管', { name: ps.name }), FLOW_TICKER_PRIORITY);
+        this.markPublic();
+      });
+      return;
+    }
     this.guard(() => {
       ps.left = true;
-      this.cancelSetupVote();
+      // a leaver must not strand a pending setup-reroll vote (INFO_CHECK has no countdown while one is open):
+      // drop them from it, then void the vote of THEIR team only (the other team's stays)
+      this._dropFromSetupVotes(playerId);
+      this.cancelSetupVote(this.setupVotes ? this.teamIdOf(ps) : 0);
       ps.connected = false;
       ps.autoplay = false;
       this.watchers.delete(playerId);

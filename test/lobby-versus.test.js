@@ -115,6 +115,18 @@ describe('lobby: 2V2 (versus) rooms', () => {
     assert.equal('team' in seatOf(state, c.id), false);
   });
 
+  test('a versus room starts with fewer humans: the empty seats are filled with AI', async () => {
+    const c = await pool.player('Host');
+    await c.request({ t: 'room.create', mode: 'versus', difficulty: 'NORMAL' });
+    await c.waitFor('room.state', (s) => s.mode === 'versus');
+    // no room.addBot at all: the host starts alone and the three empty seats must come back as AI teammates
+    assert.equal((await c.request({ t: 'room.start' })).t, 'ok');
+    const opts = RecordingMatch.last.opts;
+    assert.equal(opts.seats.length, MAX_SEATS);
+    assert.deepEqual(opts.seats.map((s) => s.isBot), [false, true, true, true], 'the host plus three AI');
+    assert.deepEqual(opts.seats.map((s) => s.team), [0, 0, 1, 1], 'the fixed 2v2 layout');
+  });
+
   test('an unknown mode is rejected', async () => {
     const c = await pool.player('Host');
     await c.hello('Host');
@@ -123,8 +135,7 @@ describe('lobby: 2V2 (versus) rooms', () => {
     assert.equal(r.code, ERR.BAD_MSG);
   });
 
-  test('room.swapSeats moves a player between the teams (the host only)', async () => {
-    const c = await pool.player('Host');
+  test('room.swapSeats moves a player between the teams (the host only)', async () => {    const c = await pool.player('Host');
     await c.request({ t: 'room.create', mode: 'versus', difficulty: 'NORMAL' });
     await c.waitFor('room.state', (s) => s.mode === 'versus');
     await c.request({ t: 'room.addBot' }); // seat 1, team 0

@@ -18,13 +18,35 @@ export class MatchSetupVote {
   _anySetupVote() { return this.setupVotes ? ([...this.setupVotes.values()][0] || null) : this.setupVote; }
 
   _setSetupVote(team, vote) {
+    const prev = this._setupVoteOf(team);
+    if (prev && prev !== vote && prev.timer) { this.cancel(prev.timer); prev.timer = null; }
     if (this.setupVotes) { if (vote) this.setupVotes.set(team, vote); else this.setupVotes.delete(team); }
     else this.setupVote = vote;
   }
 
-  /** The humans whose consent a team's reroll needs (2V2: that team; solo/coop: every human). */
+  /** The window a reroll vote runs in when INFO_CHECK itself has no countdown left (never leave the phase unstoppable). */
+  _setupVoteWindowMs() { return Math.max(5000, (Number(this.gd.timer('infoCheck')) || 25) * 1000); }
+
+  /**
+   * A human left: drop them from every pending reroll vote. A voter who cannot answer must never freeze INFO_CHECK — the
+   * vote completes when everyone still in has agreed, is cancelled when nobody is left, and keeps its own timer otherwise.
+   */
+  _dropFromSetupVotes(playerId) {
+    const teams = this.setupVotes ? [...this.setupVotes.keys()] : (this.setupVote ? [0] : []);
+    for (const team of teams) {
+      const vote = this._setupVoteOf(team);
+      if (!vote || !vote.voters.includes(playerId)) continue;
+      vote.voters = vote.voters.filter((id) => id !== playerId);
+      vote.agreed.delete(playerId);
+      if (!vote.voters.length) { this.cancelSetupVote(team); continue; }
+      if (vote.voters.every((id) => vote.agreed.has(id))) this.completeSetupReroll(team);
+    }
+  }
+
+  /** The humans whose consent a team's reroll needs (2V2: that team; solo/coop: every human). A seat with nobody at the
+   *  keyboard (disconnected, or left and AI-run) does not vote. */
   _rerollHumans(team) {
-    const humans = this.humans();
+    const humans = this.humans().filter((p) => p.connected !== false);
     return this.setupVotes ? humans.filter((p) => this.teamIdOf(p) === team) : humans;
   }
 
@@ -40,17 +62,22 @@ export class MatchSetupVote {
     const now = this.sched.now();
     if (now - this._lastSetupVoteAt < 300) return fail(ERR.RATE);
     this._lastSetupVoteAt = now;
-    this._setSetupVote(team, {
+    const ms = this.deadline > 0 ? Math.max(1, this.deadline - now) : this._setupVoteWindowMs();
+    const vote = {
       id: ++this._setupVoteSeq,
       team,
       proposerId: playerId,
       voters: voters.map((p) => p.playerId),
       agreed: new Set([playerId]),
-      remainingMs: this.deadline > 0 ? Math.max(1, this.deadline - now) : 0,
-    });
+      remainingMs: ms,
+    };
+    this._setSetupVote(team, vote);
     this.cancel(this._infoAdvanceTimer);
     this._infoAdvanceTimer = null;
     this.setDeadline(0);
+    // The vote runs in its OWN window: a voter who never answers (or disconnects) must not freeze INFO_CHECK, which is
+    // left without a countdown while a vote is open.
+    vote.timer = this.later(ms, () => { if (this._setupVoteOf(team) === vote) this.cancelSetupVote(team); });
     if (voters.length <= 1) return this.completeSetupReroll(team);
     this.markPublic();
     this.flush(true);
@@ -84,18 +111,26 @@ export class MatchSetupVote {
   }
 
   cancelSetupVote(team) {
+    // `team` omitted (a player left / the match is winding down): every pending vote goes
+    const teams = team == null
+      ? (this.setupVotes ? [...this.setupVotes.keys()] : (this.setupVote ? [0] : []))
+      : [team];
+    for (const t of teams) this._cancelSetupVoteOf(t);
+  }
+
+  _cancelSetupVoteOf(team) {
     const vote = this._setupVoteOf(team);
     if (!vote) return;
     this._setSetupVote(team, null);
     if (this.phase === PHASE.INFO_CHECK && !this.disposed && !this.ended && !this._anySetupVote()) {
-      if (vote.remainingMs > 0) {
-        this.deadline = this.sched.now() + vote.remainingMs;
-        this._phaseTimer = this.later(vote.remainingMs, () => {
-          this._phaseTimer = null;
-          this.enterBandDraft();
-        });
-      }
-      this.maybeEndInfo();
+      // A vote must never strand the briefing — and it already consumed its own window — so this goes straight in on the
+      // next tick (no countdown to re-arm, no waiting for the players to re-confirm).
+      this.setDeadline(0);
+      this.cancel(this._infoAdvanceTimer);
+      this._infoAdvanceTimer = this.later(0, () => {
+        this._infoAdvanceTimer = null;
+        if (this.phase === PHASE.INFO_CHECK && !this._anySetupVote()) this.enterBandDraft();
+      });
       this.markPublic();
       this.flush(true);
     }

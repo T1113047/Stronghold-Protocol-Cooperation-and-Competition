@@ -13,6 +13,17 @@
   transition: border-color var(--t-med), background var(--t-med);
 }
 .dorder .pavatar { --pa: .66rem; }
+/* 2V2 ('versus'): every row shows a team-coloured avatar frame and its seat number at the avatar's bottom-right
+   (blue = team 0, red = team 1); the opponent keeps '?' in place of the avatar. */
+.dorder__av { position: relative; display: inline-grid; place-items: center; flex: none; }
+.dorder__p { position: absolute; right: -.05rem; bottom: -.06rem; font-size: calc(.11 * var(--t)); font-weight: 700; padding: 0 .04rem; line-height: 1.3; background: rgba(8, 11, 10, .92); border: 1px solid var(--line-2); }
+.dorder .pavatar--foe { display: grid; place-items: center; font-size: calc(.3 * var(--t)); font-weight: 700; color: var(--text-lo); background: rgba(8, 11, 10, .85); border: 2px solid var(--line-2); }
+.dorder.is-t0 .pavatar { box-shadow: 0 0 0 2px #4aa3ff, 0 0 .16rem rgba(74, 163, 255, .4); }
+.dorder.is-t1 .pavatar { box-shadow: 0 0 0 2px #ff6a4a, 0 0 .16rem rgba(255, 106, 74, .4); }
+.dorder.is-t0 .dorder__p { color: #8cc6ff; border-color: #3d78c4; }
+.dorder.is-t1 .dorder__p { color: #ffab97; border-color: #c4583d; }
+.dorder.is-t0 .dorder__name { color: #8cc6ff; }
+.dorder.is-t1 .dorder__name { color: #ffab97; }
 .dorder__idx { font-size: calc(.22 * var(--t)); color: var(--text-dim); width: .26rem; text-align: center; }
 .dorder__text { display: flex; flex-direction: column; gap: .02rem; min-width: 0; }
 .dorder__name { font-size: calc(.18 * var(--t)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: .06rem; }

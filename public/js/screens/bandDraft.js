@@ -260,11 +260,18 @@ export function BandDraftScreen() {
           const picked = draft.picks.get(p.playerId) || (p.playerId === myId ? myPick : p.bandId) || null;
           const cur = !picked && (solo || draft.turnPid === p.playerId);
           const pband = picked ? gd.band(picked) : null;
-          return html`<div key=${p.playerId} class=${cx('dorder', cur && 'is-cur', picked && 'is-done', p.playerId === myId && 'is-self')}>
+          // 2V2: the opponent is hidden before the Final Assault — its row keeps the seat number and the team colour
+          // only (the same '?' the team panel uses); its pick never reaches us, so it just reads 等待中 / 决策中.
+          const foe = p.hidden === true;
+          const teamCls = p.team === 0 ? 'is-t0' : p.team === 1 ? 'is-t1' : null;
+          return html`<div key=${p.playerId} class=${cx('dorder', cur && 'is-cur', picked && 'is-done', p.playerId === myId && 'is-self', teamCls, foe && 'is-foe')}>
             ${!solo ? html`<span class="dorder__idx num">${i + 1}</span>` : null}
-            <${PlayerAvatar} player=${p} self=${p.playerId === myId} />
+            <span class="dorder__av">
+              ${foe ? html`<span class="pavatar pavatar--foe" aria-hidden="true">?</span>` : html`<${PlayerAvatar} player=${p} self=${p.playerId === myId} />`}
+              <span class="dorder__p num">P${(p.seat ?? 0) + 1}</span>
+            </span>
             <div class="dorder__text">
-              <b class="dorder__name">${p.name || t('博士')}${p.isBot ? html`<span class="dorder__ai">AI</span>` : null}</b>
+              <b class="dorder__name">${foe ? `P${(p.seat ?? 0) + 1}` : (p.name || t('博士'))}${!foe && p.isBot ? html`<span class="dorder__ai">AI</span>` : null}</b>
               <span class="dorder__state">${picked ? html`<span class="t-mint">${pband?.name || t('已选择')}</span>`
                 : cur ? html`<span class="t-gold"><${Icon} name="hourglass" />${t('决策中')}${turnSecs != null ? html`<b class="num dorder__secs">${turnSecs}s</b>` : null}</span>`
                 : html`<span class="t-dim"><${Icon} name="dots" />${t('等待中')}</span>`}</span>

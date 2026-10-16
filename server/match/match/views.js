@@ -78,6 +78,15 @@ export class MatchViews {
         voters: this.setupVote.voters.slice(),
         agreed: [...this.setupVote.agreed],
       } : null,
+      // 2V2: per-team setup visible as maps (each team has its own disabled core bonds / reroll vote); the client shows
+      // its own team's entry. 阶段 3b-3 turns m.public into per-team views so the opponent's entry is hidden.
+      ...(this.setupVotes ? {
+        rerollVotes: Object.fromEntries([...this.setupVotes.entries()].map(([t, v]) => [t, { id: v.id, proposerId: v.proposerId, voters: v.voters.slice(), agreed: [...v.agreed] }])),
+        teamBans: Object.fromEntries(this.matchTeamIds().map((t) => {
+          const b = this.bansOf(t);
+          return [t, { disabledBonds: [...new Set([...b.drawn, ...b.staticOff])].sort(), drawnDisabledBonds: b.drawn.slice(), bannedChess: b.banned.slice() }];
+        })),
+      } : {}),
       factions: this.factions.slice(),
       disabledBonds: [...new Set([...this.disabledBonds, ...this.staticInactiveBonds])].sort(),
       drawnDisabledBonds: this.disabledBonds.slice(),

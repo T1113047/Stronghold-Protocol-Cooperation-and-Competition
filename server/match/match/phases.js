@@ -22,12 +22,12 @@ export class MatchPhases {
   }
 
   maybeEndInfo() {
-    if (this.phase !== PHASE.INFO_CHECK || this.setupVote || this._infoAdvanceTimer) return;
+    if (this.phase !== PHASE.INFO_CHECK || this._anySetupVote() || this._infoAdvanceTimer) return;
     if (this.order.every((p) => p.isBot || p.left || p.infoReady)) {
       this.setDeadline(0);
       this._infoAdvanceTimer = this.later(0, () => {
         this._infoAdvanceTimer = null;
-        if (this.phase === PHASE.INFO_CHECK && !this.setupVote) this.enterBandDraft();
+        if (this.phase === PHASE.INFO_CHECK && !this._anySetupVote()) this.enterBandDraft();
       });
     }
   }

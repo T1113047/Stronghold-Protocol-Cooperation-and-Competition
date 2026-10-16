@@ -144,6 +144,22 @@ describe('versus (2V2) match: team model', () => {
     assert.notDeepEqual([...bansOf(0)].sort(), [...bansOf(1)].sort(), 'the two teams ban different core bonds');
   });
 
+  test('versus: a team reroll changes only its own disabled core bonds (stage/boss shared)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 61, fake: true }).start();
+    const m = h.m;
+    const stage0 = m.stageId;
+    const boss0 = m.bossId;
+    const bans0 = m.bansOf(0).drawn.slice().sort();
+    const bans1 = m.bansOf(1).drawn.slice().sort();
+    // team 0 has a single human (p_0): its proposal completes at once
+    const r = m.requestSetupReroll('p_0', m.setupRevision);
+    assert.equal(r && r.ok, true, JSON.stringify(r));
+    assert.equal(m.stageId, stage0, 'stage stays shared');
+    assert.equal(m.bossId, boss0, 'boss stays shared');
+    assert.notDeepEqual(m.bansOf(0).drawn.slice().sort(), bans0, "team 0's bans changed");
+    assert.deepEqual(m.bansOf(1).drawn.slice().sort(), bans1, "team 1's bans unchanged");
+  });
+
   test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
     const m = h.m;
     assert.equal(m.contestStartRound, null);

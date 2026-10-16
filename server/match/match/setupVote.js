@@ -1,6 +1,8 @@
 // INFO_CHECK full setup reroll: unanimous human consent, keeping the room and player settings.
 // [ASSUMED] Remake convenience: unanimous human vote, pause/resume timer, independent reroll stream and
 // a 300 ms request guard. These are not official mode rules; DESIGN §28.21.
+// 2V2 ('versus', design 2026-10-17): the reroll is PER TEAM — a team rerolls only its OWN disabled core bonds (the
+// stage / boss / 特训敌人 stay shared), with that team's humans' consent, and the two teams' rerolls are independent.
 // Installed on Match.prototype like the other method containers. The lobby authorizes host-only actions.
 import { PHASE, ERR } from '../../../shared/constants.js';
 import { createRng, deriveSeed } from '../../sim/rng.js';
@@ -9,60 +11,83 @@ import { drawDisabledBonds, SharedPool } from '../pool.js';
 import { OK, fail } from './common.js';
 
 export class MatchSetupVote {
+  /** The pending setup-reroll vote of a team (solo/coop: team 0). null when none. */
+  _setupVoteOf(team) { return this.setupVotes ? (this.setupVotes.get(team) || null) : this.setupVote; }
+
+  /** Any pending setup-reroll vote (the INFO_CHECK advance pauses while one is open). */
+  _anySetupVote() { return this.setupVotes ? ([...this.setupVotes.values()][0] || null) : this.setupVote; }
+
+  _setSetupVote(team, vote) {
+    if (this.setupVotes) { if (vote) this.setupVotes.set(team, vote); else this.setupVotes.delete(team); }
+    else this.setupVote = vote;
+  }
+
+  /** The humans whose consent a team's reroll needs (2V2: that team; solo/coop: every human). */
+  _rerollHumans(team) {
+    const humans = this.humans();
+    return this.setupVotes ? humans.filter((p) => this.teamIdOf(p) === team) : humans;
+  }
+
   requestSetupReroll(playerId, revision) {
     if (this.disposed || this.ended || this.phase !== PHASE.INFO_CHECK) return fail(ERR.WRONG_PHASE);
     const ps = this.players.get(playerId);
     if (!ps || ps.isBot || ps.left || !ps.connected) return fail(ERR.NOT_IN_ROOM);
     if (revision !== this.setupRevision) return fail(ERR.BAD_TARGET, 'setup revision changed');
-    if (this.setupVote) return fail(ERR.WRONG_PHASE, 'setup reroll vote in progress');
-    const humans = this.humans();
-    if (humans.some((p) => !p.connected)) return fail(ERR.NOT_READY, 'all humans must be connected to vote');
+    const team = this.setupVotes ? this.teamIdOf(ps) : 0;
+    if (this._setupVoteOf(team)) return fail(ERR.WRONG_PHASE, 'setup reroll vote in progress');
+    const voters = this._rerollHumans(team);
+    if (voters.some((p) => !p.connected)) return fail(ERR.NOT_READY, 'all humans must be connected to vote');
     const now = this.sched.now();
     if (now - this._lastSetupVoteAt < 300) return fail(ERR.RATE);
     this._lastSetupVoteAt = now;
-    this.setupVote = {
+    this._setSetupVote(team, {
       id: ++this._setupVoteSeq,
+      team,
       proposerId: playerId,
-      voters: humans.map((p) => p.playerId),
+      voters: voters.map((p) => p.playerId),
       agreed: new Set([playerId]),
       remainingMs: this.deadline > 0 ? Math.max(1, this.deadline - now) : 0,
-    };
+    });
     this.cancel(this._infoAdvanceTimer);
     this._infoAdvanceTimer = null;
     this.setDeadline(0);
-    if (humans.length === 1) return this.completeSetupReroll();
+    if (voters.length <= 1) return this.completeSetupReroll(team);
     this.markPublic();
     this.flush(true);
     return OK;
   }
 
   voteSetupReroll(ps, voteId, agree) {
-    if (this.phase !== PHASE.INFO_CHECK || !this.setupVote) return fail(ERR.WRONG_PHASE);
-    const vote = this.setupVote;
+    if (this.phase !== PHASE.INFO_CHECK) return fail(ERR.WRONG_PHASE);
+    const team = this.setupVotes ? this.teamIdOf(ps) : 0;
+    const vote = this._setupVoteOf(team);
+    if (!vote) return fail(ERR.WRONG_PHASE);
     if (vote.id !== voteId) return fail(ERR.BAD_TARGET, 'setup vote changed');
     if (!ps.connected || !vote.voters.includes(ps.playerId)) return fail(ERR.NOT_IN_ROOM);
-    if (!agree) { this.cancelSetupVote(); return OK; }
+    if (!agree) { this.cancelSetupVote(team); return OK; }
     vote.agreed.add(ps.playerId);
-    if (vote.voters.every((id) => vote.agreed.has(id))) return this.completeSetupReroll();
+    if (vote.voters.every((id) => vote.agreed.has(id))) return this.completeSetupReroll(team);
     this.markPublic();
     this.flush(true);
     return OK;
   }
 
   cancelSetupReroll(playerId, voteId) {
-    if (this.disposed || this.ended || this.phase !== PHASE.INFO_CHECK || !this.setupVote) return fail(ERR.WRONG_PHASE);
-    if (this.setupVote.id !== voteId) return fail(ERR.BAD_TARGET, 'setup vote changed');
+    if (this.disposed || this.ended || this.phase !== PHASE.INFO_CHECK) return fail(ERR.WRONG_PHASE);
     const ps = this.players.get(playerId);
     if (!ps || ps.left || !ps.connected) return fail(ERR.NOT_IN_ROOM);
-    this.cancelSetupVote();
+    const team = this.setupVotes ? this.teamIdOf(ps) : 0;
+    const vote = this._setupVoteOf(team);
+    if (!vote || vote.id !== voteId) return fail(ERR.BAD_TARGET, 'setup vote changed');
+    this.cancelSetupVote(team);
     return OK;
   }
 
-  cancelSetupVote() {
-    const vote = this.setupVote;
+  cancelSetupVote(team) {
+    const vote = this._setupVoteOf(team);
     if (!vote) return;
-    this.setupVote = null;
-    if (this.phase === PHASE.INFO_CHECK && !this.disposed && !this.ended) {
+    this._setSetupVote(team, null);
+    if (this.phase === PHASE.INFO_CHECK && !this.disposed && !this.ended && !this._anySetupVote()) {
       if (vote.remainingMs > 0) {
         this.deadline = this.sched.now() + vote.remainingMs;
         this._phaseTimer = this.later(vote.remainingMs, () => {
@@ -76,24 +101,59 @@ export class MatchSetupVote {
     }
   }
 
-  completeSetupReroll() {
+  completeSetupReroll(team) {
+    const versus = !!this.setupVotes;
     let prepared;
     try {
-      const rng = createRng(deriveSeed(this.seed, `reroll-setup:${this.setupRevision + 1}`));
-      const setup = setupMatchWaves(this.gd, rng);
-      const stage = setup.stageId ? this.gd.stage(setup.stageId) : null;
-      const bans = drawDisabledBonds(this.gd, rng);
-      const pool = new SharedPool(this.gd, { banned: bans.banned });
-      if (!pool.entries.size) throw new Error('rerolled chess pool is empty');
-      const off = new Set([...bans.drawn, ...bans.staticOff]);
-      const stocks = this.order.map((ps) => ps.buildDiyStock(off));
-      prepared = { setup, stage, bans, pool, stocks };
+      if (versus) {
+        // 2V2: reroll ONLY this team's disabled core bonds; the stage / boss / factions stay SHARED (design 2026-10-17)
+        const n = (this.teamRerolls.get(team) || 0) + 1;
+        const rng = createRng(deriveSeed(this.seed, `reroll-bans:${team}:${n}`));
+        const bans = drawDisabledBonds(this.gd, rng, { core: 5, addon: this.gd.bans(this.gd.difficulty).addon });
+        const pool = new SharedPool(this.gd, { banned: bans.banned });
+        if (!pool.entries.size) throw new Error('rerolled chess pool is empty');
+        const off = new Set([...bans.drawn, ...bans.staticOff]);
+        const stocks = new Map();
+        for (const ps of this.order) if (this.teamIdOf(ps) === team) stocks.set(ps.playerId, ps.buildDiyStock(off));
+        prepared = { n, bans, pool, stocks };
+      } else {
+        const rng = createRng(deriveSeed(this.seed, `reroll-setup:${this.setupRevision + 1}`));
+        const setup = setupMatchWaves(this.gd, rng);
+        const stage = setup.stageId ? this.gd.stage(setup.stageId) : null;
+        const bans = drawDisabledBonds(this.gd, rng);
+        const pool = new SharedPool(this.gd, { banned: bans.banned });
+        if (!pool.entries.size) throw new Error('rerolled chess pool is empty');
+        const off = new Set([...bans.drawn, ...bans.staticOff]);
+        const stocks = this.order.map((ps) => ps.buildDiyStock(off));
+        prepared = { setup, stage, bans, pool, stocks };
+      }
     } catch (e) {
       this.reportError('reroll setup', e);
-      this.cancelSetupVote();
+      this.cancelSetupVote(team);
       return fail(ERR.INTERNAL);
     }
     // All data-dependent work succeeds before any opening or player state changes.
+    if (versus) {
+      const { n, bans, pool, stocks } = prepared;
+      this.teamRerolls.set(team, n);
+      this.teamBans.set(team, bans);
+      this.pools.set(team, pool);
+      for (const [pid, s] of stocks) {
+        const ps = this.players.get(pid);
+        if (!ps) continue;
+        ps.diyStock = s.stock;
+        ps.diyBanned = s.banned;
+        ps.invalidateDeployMap();
+        ps.infoReady = ps.botControlled;
+      }
+      this.setupRevision++;
+      this._setSetupVote(team, null);
+      this.markPublic();
+      for (const ps of this.order) this.markPrivate(ps);
+      this.flush(true);
+      this.maybeEndInfo();
+      return OK;
+    }
     const { setup, stage, bans, pool, stocks } = prepared;
     this.stageId = setup.stageId;
     this.stage = stage;

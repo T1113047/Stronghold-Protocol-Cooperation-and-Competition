@@ -385,6 +385,10 @@ export class Match {
     this._infoAdvanceTimer = null;
     this.setupRevision = 0;
     this.setupVote = null;
+    /** 2V2: one pending setup-reroll vote per team (Map<teamId, vote>); null in solo/coop (the scalar setupVote). */
+    this.setupVotes = this.isVersus ? new Map() : null;
+    /** 2V2: per-team reroll counter for the seeded draw (Map<teamId, n>); null in solo/coop. */
+    this.teamRerolls = this.isVersus ? new Map() : null;
     this._setupVoteSeq = 0;
     this._lastSetupVoteAt = -Infinity;
     this._turnTimer = null;

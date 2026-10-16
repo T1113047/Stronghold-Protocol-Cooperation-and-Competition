@@ -349,6 +349,7 @@ export class Lobby {
       case 'room.addBot': return this.addBot(session);
       case 'room.removeBot': return this.removeBot(session, msg);
       case 'room.kick': return this.kick(session, msg);
+      case 'room.swapSeats': return this.swapSeats(session, msg);
       case 'room.start': return this.start(session);
       case 'room.rerollSetup': return this.rerollSetup(session, msg);
       case 'room.cancelReroll': return this.rerollSetup(session, msg, true);
@@ -604,6 +605,30 @@ export class Lobby {
       else { kicked.notice = 'kicked'; kicked.pendingResult = replay; }
     }
     this.log.info(`[lobby] ${room.code} ${target.name} removed by the host`);
+    return OK;
+  }
+
+  /**
+   * room.swapSeats { a, b } (2V2, host, before the match): swap the occupants of two seats — a player dragged between
+   * the two teams changes team (the team follows the seat index, teamOfSeat). Either seat may be empty (a move).
+   */
+  swapSeats(session, { a, b }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.mode !== 'versus') return fail(ERR.BAD_TARGET, 'not a 2V2 room');
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    if (a === b) return OK;
+    this.dropReplay(room, session.playerId);
+    const sA = room.seats[a];
+    const sB = room.seats[b];
+    room.seats[a] = sB;
+    room.seats[b] = sA;
+    if (room.seats[a]) room.seats[a].seat = a;
+    if (room.seats[b]) room.seats[b].seat = b;
+    // moving a human un-readies the humans that changed team (the host's start still counts as the host's ready)
+    for (const s of [room.seats[a], room.seats[b]]) if (s && !s.isBot) s.ready = false;
+    this.broadcastState(room);
     return OK;
   }
 

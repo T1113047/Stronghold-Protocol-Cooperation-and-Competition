@@ -62,10 +62,18 @@ export class MatchMessaging {
    * or after the reveal.
    */
   _teamPublicView(base, team) {
-    if (this._publicRevealed()) return base;
+    // 2V2: the top-level disabled bonds / banned chess are the VIEWER'S team's (each team has its own 3 available
+    // cores); the opponent's are in `teamBans`, masked before the reveal.
+    const bans = this.bansOf(team);
+    const own = {
+      disabledBonds: [...new Set([...bans.drawn, ...bans.staticOff])].sort(),
+      drawnDisabledBonds: bans.drawn.slice(),
+      bannedChess: bans.banned.slice(),
+    };
+    if (this._publicRevealed()) return { ...base, ...own };
     const same = (pid) => this.teamIdOf(this.players.get(pid)) === team;
     const out = {
-      ...base,
+      ...base, ...own,
       players: base.players.map((row) => (same(row.playerId) ? row : {
         playerId: row.playerId, seat: row.seat, name: row.name, isBot: row.isBot, team: row.team, connected: row.connected, alive: row.alive, hidden: true,
       })),

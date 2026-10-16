@@ -99,11 +99,20 @@ export function inviteLink(code) {
  */
 export { copyText };
 
-function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot, onKick }) {
+function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot, onKick, drag = false, onDrop = null }) {
   const coop = room.mode !== 'solo';
+  // 2V2: drag an occupied seat onto another to swap them (the host only); dropping across the teams changes team
+  const [over, setOver] = useState(false);
+  const dropProps = {
+    draggable: !!(drag && seat),
+    onDragStart: (e) => { try { e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move'; } catch { /* ignore */ } },
+    onDragOver: (e) => { if (drag) { e.preventDefault(); if (!over) setOver(true); } },
+    onDragLeave: () => { if (over) setOver(false); },
+    onDrop: (e) => { if (!drag || !onDrop) return; e.preventDefault(); setOver(false); let from = NaN; try { from = Number(e.dataTransfer.getData('text/plain')); } catch { /* ignore */ } if (Number.isInteger(from) && from !== index) onDrop(from, index); },
+  };
   if (!seat) {
     const canAdd = coop && facts.isHost;
-    return html`<article class="seat seat--empty" style=${`--seat-i:${index}`}>
+    return html`<article class=${`seat seat--empty${over ? ' is-dragover' : ''}`} style=${`--seat-i:${index}`} ...${dropProps}>
       <header class="seat__head"><span class="seat__no num">P${index + 1}</span><${MicroLabel}>SEAT ${String(index + 1).padStart(2, '0')}<//></header>
       <div class="seat__art seat__art--empty">
         <div class="seat__radar" aria-hidden="true"></div>
@@ -122,8 +131,8 @@ function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot,
   const offline = seat.connected === false && !seat.isBot;
   // The host never needs to toggle ready: starting the match readies them (server rule).
   const state = offline ? 'offline' : seat.ready || seat.isBot ? 'ready' : isHostSeat ? 'host' : 'waiting';
-  return html`<article class=${`seat brackets${isMe ? ' is-me' : ''}${isHostSeat ? ' is-host' : ''}${seat.isBot ? ' is-bot' : ''} is-${state}${seat.team != null ? ` seat--team-${seat.team}` : ''}`}
-      style=${`--seat-i:${index}`}>
+  return html`<article class=${`seat brackets${isMe ? ' is-me' : ''}${isHostSeat ? ' is-host' : ''}${seat.isBot ? ' is-bot' : ''} is-${state}${seat.team != null ? ` seat--team-${seat.team}` : ''}${over ? ' is-dragover' : ''}`}
+      style=${`--seat-i:${index}`} ...${dropProps}>
     <header class="seat__head">
       <span class="seat__no num">P${index + 1}</span>
       <${MicroLabel}>SEAT ${String(index + 1).padStart(2, '0')}<//>
@@ -171,7 +180,7 @@ function SpectatorBar({ facts, myId, busy, onRemove, onSit }) {
   </section>`;
 }
 
-function InviteBox({ code, name, difficulty }) {
+function InviteBox({ code, name, difficulty, versus = false }) {
   const copy = async (what) => {
     // the copied link carries an invitation line (#103): 「{name}邀请你加入卫戍协议：盟约【{difficulty}】」
     const invite = t('{name}邀请你加入卫戍协议：盟约【{difficulty}】', { name: name ?? '', difficulty: DIFFICULTY_NAMES[difficulty] ? t(DIFFICULTY_NAMES[difficulty]) : '' });
@@ -180,7 +189,7 @@ function InviteBox({ code, name, difficulty }) {
     else toast(t('复制失败，请手动复制'), 'warn');
   };
   return html`<div class="invite brackets">
-    <div class="invite__label"><${Icon} name="key" /><span>${t('同盟密钥')}</span><${MicroLabel}>ALLIANCE KEY<//></div>
+    <div class="invite__label"><${Icon} name="key" /><span>${versus ? t('房间密钥') : t('同盟密钥')}</span><${MicroLabel}>${versus ? 'ROOM KEY' : 'ALLIANCE KEY'}<//></div>
     <div class="invite__code num selectable" aria-label=${t('同盟密钥 {code}', { code })}>${[...String(code)].map((ch, i) => html`<span key=${i}>${ch}</span>`)}</div>
     <div class="invite__btns">
       <${Button} size="sm" icon="copy" onClick=${() => copy('code')}>${t('复制密钥')}<//>
@@ -233,6 +242,7 @@ export function RoomScreen() {
   if (!room) return null;
   const online = conn.status === 'online';
   const coop = room.mode !== 'solo';
+  const versus = room.mode === 'versus';
   const facts = roomFacts(room, me.playerId);
   const myReady = !!facts.mine?.ready;
   const info = difficultyInfo(room.mode, room.difficulty);
@@ -261,6 +271,8 @@ export function RoomScreen() {
   };
   const setDifficulty = (difficulty) => run('diff', () => net.request('room.setDifficulty', { difficulty }));
   const setAiLast = (on) => run('ailast', () => net.request('room.setAiPicksLast', { on }));
+  // 2V2: swap two seats (drag an avatar between the teams; the team follows the seat index)
+  const swapSeats = (from, to) => run('swap', () => net.request('room.swapSeats', { a: from, b: to }));
   // spectator seats: the host frees one; a spectator takes a free player seat with room.join of this room
   const removeSpectator = (playerId) => run(`rs${playerId}`, () => net.request('room.removeSpectator', { playerId }));
   const sit = () => run('sit', () => net.request('room.join', { code: room.code }));
@@ -293,7 +305,7 @@ export function RoomScreen() {
       ? html`<span class="t-mint">${t('*模拟协议已就绪，准许进入模拟')}</span>`
     : facts.isHost
       ? facts.canStart
-        ? html`<span class="t-mint">${t('*同盟人数达标，准许进入模拟')}</span>`
+        ? html`<span class="t-mint">${versus ? t('*对抗人数达标，准许进入模拟') : t('*同盟人数达标，准许进入模拟')}</span>`
         : html`<span class="t-lo">${t('等待所有博士准备就绪')}</span>`
       : myReady
         ? html`<span class="t-mint">${t('已就绪 · 等待创建者开始模拟')}</span>`
@@ -314,17 +326,28 @@ export function RoomScreen() {
         <${GuideButton} class="room-guide" variant="secondary" label=${t('玩法说明')} />
       </div>
       <div class="topbar__center">
-        <${MicroLabel} tone="mint">${coop ? 'ALLIANCE LOBBY' : 'SOLO SIMULATION'}<//>
-        <h1 class="topbar__title">${coop ? t('同盟模拟') : t('独立模拟')}<span class="topbar__sep"></span><${DifficultyTag} difficulty=${room.difficulty} size="lg" /></h1>
+        <${MicroLabel} tone="mint">${versus ? 'VERSUS LOBBY' : coop ? 'ALLIANCE LOBBY' : 'SOLO SIMULATION'}<//>
+        <h1 class="topbar__title">${versus ? t('对抗模拟') : coop ? t('同盟模拟') : t('独立模拟')}<span class="topbar__sep"></span><${DifficultyTag} difficulty=${room.difficulty} size="lg" /></h1>
       </div>
       <div class="topbar__right">
-        ${coop ? html`<${InviteBox} code=${room.code} name=${me.name} difficulty=${room.difficulty} />` : html`<div class="solo-note"><${MicroLabel}>SINGLE OPERATOR<//><span>${t('仅限 1 名博士')}</span></div>`}
+        ${coop ? html`<${InviteBox} code=${room.code} name=${me.name} difficulty=${room.difficulty} versus=${versus} />` : html`<div class="solo-note"><${MicroLabel}>SINGLE OPERATOR<//><span>${t('仅限 1 名博士')}</span></div>`}
       </div>
     </header>
 
-    <main class=${`seats${coop ? '' : ' seats--solo'}`}>
-      ${facts.seats.map((s, i) => html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
-        myId=${me.playerId} busy=${busy} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick} />`)}
+    <main class=${`seats${coop ? '' : ' seats--solo'}${versus ? ' seats--versus' : ''}`}>
+      ${versus
+        ? [0, 1].map((tm) => html`<section key=${tm} class=${`tframe tframe--${tm === 0 ? 'blue' : 'red'}`}>
+            <header class="tframe__head"><span class="tframe__dot" aria-hidden="true"></span>${t('队伍 {n}', { n: tm + 1 })}</header>
+            <div class="tframe__seats">
+              ${facts.seats.slice(tm * 2, tm * 2 + 2).map((s, k) => {
+                const i = tm * 2 + k;
+                return html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
+                  myId=${me.playerId} busy=${busy} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick} drag=${facts.isHost} onDrop=${swapSeats} />`;
+              })}
+            </div>
+          </section>`)
+        : facts.seats.map((s, i) => html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
+          myId=${me.playerId} busy=${busy} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick} />`)}
       ${coop ? null : html`<aside class="solo-brief brackets">
         <${MicroLabel} tone="mint">BRIEFING<//>
         <h2>${DIFFICULTY_NAMES[room.difficulty] ? t(DIFFICULTY_NAMES[room.difficulty]) : ''}<span class="num t-dim"> ${info.code}</span></h2>

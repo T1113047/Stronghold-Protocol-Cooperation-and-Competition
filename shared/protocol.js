@@ -394,6 +394,8 @@ export const C2S = {
   // the host removes another human before the match (server/lobby.js kick; community report #17); playerId = the one the
   // host confirmed — a seat that changed hands meanwhile is refused
   'room.kick': { seat: (v) => isInt(v, 0, MAX_SEATS - 1), playerId: isId },
+  // 2V2: swap two seats before the match (the host drags an avatar between the teams; the team follows the seat index)
+  'room.swapSeats': { a: (v) => isInt(v, 0, MAX_SEATS - 1), b: (v) => isInt(v, 0, MAX_SEATS - 1) },
   'room.start': {},
   'room.rerollSetup': { setupRevision: (v) => isInt(v, 0, 2 ** 31) },
   'room.cancelReroll': { voteId: (v) => isInt(v, 1, 2 ** 31) },

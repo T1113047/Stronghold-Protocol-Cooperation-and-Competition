@@ -122,4 +122,37 @@ describe('lobby: 2V2 (versus) rooms', () => {
     assert.equal(r.t, 'error');
     assert.equal(r.code, ERR.BAD_MSG);
   });
+
+  test('room.swapSeats moves a player between the teams (the host only)', async () => {
+    const c = await pool.player('Host');
+    await c.request({ t: 'room.create', mode: 'versus', difficulty: 'NORMAL' });
+    await c.waitFor('room.state', (s) => s.mode === 'versus');
+    await c.request({ t: 'room.addBot' }); // seat 1, team 0
+    await c.waitFor('room.state', (s) => s.seats.filter(Boolean).length === 2);
+    // seat 0 (host, team 0) ↔ seat 2 (empty, team 1): the host changes team
+    assert.equal((await c.request({ t: 'room.swapSeats', a: 0, b: 2 })).t, 'ok');
+    const state = await c.waitFor('room.state', (s) => s.seats[2]?.playerId === c.id);
+    assert.equal(seatOf(state, c.id).team, 1, 'the team follows the seat index');
+    assert.equal(state.seats[0], null);
+    assert.deepEqual(state.seats.map((s) => (s ? s.team : null)), [null, 0, 1, null]);
+  });
+
+  test('room.swapSeats is refused for a non-host and outside a 2V2 room', async () => {
+    const host = await pool.player('Host');
+    await host.request({ t: 'room.create', mode: 'versus', difficulty: 'NORMAL' });
+    const st = await host.waitFor('room.state', (s) => s.mode === 'versus');
+    const guest = await pool.player('Guest');
+    await guest.request({ t: 'room.join', code: st.code });
+    await guest.waitFor('room.state', (s) => s.code === st.code && s.seats.some((x) => x?.playerId === guest.id));
+    const notHost = await guest.request({ t: 'room.swapSeats', a: 0, b: 1 });
+    assert.equal(notHost.t, 'error');
+    assert.equal(notHost.code, ERR.NOT_HOST);
+
+    const coop = await pool.player('Other');
+    await coop.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
+    await coop.waitFor('room.state', (s) => s.mode === 'coop');
+    const bad = await coop.request({ t: 'room.swapSeats', a: 0, b: 1 });
+    assert.equal(bad.t, 'error');
+    assert.equal(bad.code, ERR.BAD_TARGET);
+  });
 });

@@ -77,6 +77,14 @@ export const VERSUS_CONFRONT = Object.freeze({
   groups: 6,
   positions: Object.freeze(['front', 'mid', 'back']),
   budgetMul: 2,
+  /**
+   * 2V2 kill bounty: every monster the opponent PLACES pays its killer, sized from the value table in real time —
+   * `coins = round(value(enemy) / value(whole wave) × the round's income × killIncomeShare)`, min 1. With 1.0, clearing
+   * every monster a team sent in a round pays back at most ONE round of income (the share of the wave their budget can
+   * cover: ~20 % at the 10 % contest round, ~100 % at the 50 % cap) — i.e. the compensation tracks the extra threat.
+   * Raise it (1.5–2) for a softer game.
+   */
+  killIncomeShare: 1,
 });
 /**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).

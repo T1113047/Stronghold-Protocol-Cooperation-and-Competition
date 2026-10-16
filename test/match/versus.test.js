@@ -352,6 +352,25 @@ describe('versus (2V2) match: team model', () => {
     assert.equal(h.bc.filter((msg) => msg.t === 'm.ticker').length, 1, 'the team-less line is a broadcast');
   });
 
+  test('versus: a monster the opponent places pays its killer a bounty sized from the value table', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 161, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 对抗期');
+    assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
+    const g = m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const picks = [];
+    let left = m.confrontBudget();
+    for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 3) break; }
+    assert.ok(picks.length > 0);
+    // the bounty tracks the value table and the round's income: at least 1 gold, and the whole placement stays near it
+    const income = Number(m.gd.income(m.round)) || 0;
+    const each = picks.map((p) => m.confrontBounty(p.enemyKey));
+    assert.ok(each.every((b) => b >= 1), `every placed monster pays at least 1: ${each.join(',')}`);
+    assert.ok(each.reduce((s, n) => s + n, 0) <= 2 * income + picks.length, `the bounty stays near the round's income: ${each.join('+')} vs ${income}`);
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 6, position: 'mid', picks }).ok, true);
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: each team has its own disabled core bonds (3 available)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 51, fake: true }).start();
     const m = h.m;

@@ -136,6 +136,21 @@ export class MatchConfront {
     return v;
   }
 
+  /**
+   * The kill bounty one placed monster pays (`VERSUS_CONFRONT.killIncomeShare`): its value as a share of the round's
+   * whole wave, times the round's income — so the total of a team's placements pays at most `killIncomeShare` rounds of
+   * income, i.e. the compensation tracks how much value they actually threw. Read live from the value table every round.
+   * @param {string} enemyKey
+   */
+  confrontBounty(enemyKey) {
+    const en = (this.data && this.data.enemies) || {};
+    const scale = this.confrontScale();
+    const wave = Math.max(1, this.confrontWaveValue());
+    const income = Number(this.gd.income(this.round)) || 0;
+    const share = Number(VERSUS_CONFRONT.killIncomeShare) > 0 ? Number(VERSUS_CONFRONT.killIncomeShare) : 1;
+    return Math.max(1, Math.round((confrontValue(en[enemyKey], scale) / wave) * income * share));
+  }
+
   /** The alive, seated members of a team. */
   _aliveOf(team) { return this.order.filter((p) => p.alive && !p.left && this.teamIdOf(p) === team); }
 
@@ -361,7 +376,13 @@ export class MatchConfront {
     const start = this._confrontInsertTime(spawns, sub.position);
     const sentBy = Number.isInteger(sub.seat) ? sub.seat : null;
     sub.picks.forEach((p, i) => {
-      kept.push({ time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate), mods: { ...mods }, ownerPlayerId: ps.playerId, confrontSeat: sentBy });
+      kept.push({
+        time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate),
+        mods: { ...mods }, ownerPlayerId: ps.playerId, confrontSeat: sentBy,
+        // 经济补助: killing a monster the opponent placed pays its killer (the sim's bounty mechanic — the killer's
+        // player, a 联防 helper included); anyone the death cannot be credited to pays the wave's owner instead.
+        bounty: { coins: this.confrontBounty(p.enemyKey), ownerPlayerId: ps.playerId },
+      });
     });
     return kept;
   }

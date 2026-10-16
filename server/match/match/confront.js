@@ -151,6 +151,16 @@ export class MatchConfront {
     return Math.max(1, Math.round((confrontValue(en[enemyKey], scale) / wave) * income * share));
   }
 
+  /**
+   * The bounty a whole placement pays (the sum of its monsters' `confrontBounty`) — what the 悬赏名单 shows next to the
+   * pair ("赏金 +N"), and exactly what the sim will credit as those monsters die.
+   */
+  confrontBountyOf(picks) {
+    let n = 0;
+    for (const p of picks || []) n += this.confrontBounty(p && p.enemyKey);
+    return n;
+  }
+
   /** The alive, seated members of a team. */
   _aliveOf(team) { return this.order.filter((p) => p.alive && !p.left && this.teamIdOf(p) === team); }
 
@@ -379,6 +389,9 @@ export class MatchConfront {
       kept.push({
         time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate),
         mods: { ...mods }, ownerPlayerId: ps.playerId, confrontSeat: sentBy,
+        // 狩猎模拟: a placed monster leaks FOR FREE — `countInTotal: false` is exactly that (the flag drives both the
+        // LP charge and the 完美作战 counter), so only killing it matters: the bounty below pays the killer.
+        countInTotal: false,
         // 经济补助: killing a monster the opponent placed pays its killer (the sim's bounty mechanic — the killer's
         // player, a 联防 helper included); anyone the death cannot be credited to pays the wave's owner instead.
         bounty: { coins: this.confrontBounty(p.enemyKey), ownerPlayerId: ps.playerId },

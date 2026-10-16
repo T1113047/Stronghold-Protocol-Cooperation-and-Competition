@@ -87,9 +87,9 @@ const MODE_CARDS = [
     points: [N_('1–{n} 名博士 · 可由 AI 队友补位'), N_('联防阶段 · 最终攻势合并生命值')], pointParams: { n: MAX_SEATS },
   },
   {
-    id: 'versus', name: N_('对抗模拟 2V2'), en: 'VERSUS SIMULATION 2V2', icon: 'sword',
-    desc: N_('两支双人小队同时模拟；从抽中的回合起进入对抗期，可干预对面的出怪，最后比较剩余时间定胜负。'),
-    points: [N_('固定 2V2（共 {n} 席，可由 AI 补位）'), N_('每队 3 个核心盟约 · 对抗期干预对面出怪')], pointParams: { n: MAX_SEATS },
+    id: 'versus', name: N_('狩猎模拟 2V2'), en: 'HUNT SIMULATION 2V2', icon: 'sword',
+    desc: N_('两支双人小队同时模拟；休整期后进入悬赏期，给对面派去猎物，击杀猎物为己方赢得赏金。'),
+    points: [N_('固定 2V2（共 {n} 席，可由 AI 补位）'), N_('每队 3 个核心盟约 · 悬赏期给对面加猎物')], pointParams: { n: MAX_SEATS },
   },
 ];
 

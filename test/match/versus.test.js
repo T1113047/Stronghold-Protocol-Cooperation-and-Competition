@@ -371,6 +371,35 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus 狩猎: placed monsters leak for free, pay a bounty, and the lists are revealed after the phase', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 171, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
+    const g = m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const picks = [];
+    let left = m.confrontBudget();
+    for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 2) break; }
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 6, position: 'mid', picks }).ok, true);
+    // while the phase runs the opponent's board stays hidden
+    const during = m._teamPublicView(m.publicView(), 0).confront;
+    assert.ok(!during.subs['ai_2'], 'the opponent is hidden during the 悬赏期');
+    // the applied wave: placed monsters are free (no LP, no 完美作战 break) and carry a kill bounty
+    const sub = m.confrontSubs.get('p_0');
+    const out = m.applyConfront([{ time: 0, enemyKey: 'enemy_1005_yokai', count: 1, routeIndex: 0, interval: 0 }], sub, m.players.get('ai_2'));
+    const placed = out.filter((s) => s.confrontSeat != null);
+    assert.ok(placed.length > 0, 'the placed monsters are in the wave');
+    assert.ok(placed.every((s) => s.countInTotal === false), 'a leaked placed monster costs no target HP');
+    assert.ok(placed.every((s) => s.bounty && s.bounty.coins >= 1), `each carries a bounty: ${placed.map((s) => s.bounty && s.bounty.coins).join(',')}`);
+    assert.equal(m.confrontBountyOf(sub.picks), sub.picks.reduce((n, p) => n + m.confrontBounty(p.enemyKey), 0), 'the shown total is the sum of the kills');
+    // once the phase closes, BOTH teams' boards are revealed (the 悬赏名单)
+    assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'the window closed');
+    const after = m._teamPublicView(m.publicView(), 0).confront;
+    assert.ok(after.subs['ai_2'] && after.subs['ai_2'].coins >= 1, "the opponent's board and bounty are revealed");
+    assert.ok(after.subs['p_0'].coins >= 1, 'and so is the own one');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: each team has its own disabled core bonds (3 available)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 51, fake: true }).start();
     const m = h.m;

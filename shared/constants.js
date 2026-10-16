@@ -14,7 +14,7 @@ export const APP_VERSION = '0.2.6';
  */
 export const FORK_VERSION = 'V0.0.1';
 export const FORK_LABEL = `${FORK_VERSION}-${APP_VERSION}`;
-export const FORK_NAME = N_('卫戍协议 2V2 模式');
+export const FORK_NAME = N_('卫戍协议：狩猎模拟');
 /** A development build (the public `dev` branch): the title screen, the boot banner and the README say so, and
  * tools/package.mjs refuses to build a release zip from it without --allow-dev. */
 export const DEV_BUILD = /-dev$/.test(APP_VERSION);
@@ -115,7 +115,7 @@ export const PHASE = Object.freeze({
 
 export const PHASE_NAMES = {
   LOBBY: N_('等待中'), INFO_CHECK: N_('确认本局信息'), BAND_DRAFT: N_('选择策略'), BATTLE_CHECK: N_('协议启动'),
-  ROUND_START: N_('回合开始'), SP_DRAFT: N_('机变阶段'), PREP: N_('休整期'), CONFRONT: N_('对抗期'), COMBAT: N_('作战中'), UNITE: N_('联防阶段'),
+  ROUND_START: N_('回合开始'), SP_DRAFT: N_('机变阶段'), PREP: N_('休整期'), CONFRONT: N_('悬赏期'), COMBAT: N_('作战中'), UNITE: N_('联防阶段'),
   SETTLE: N_('结算'), FINAL_ASSAULT: N_('最终攻势'), HIDDEN_CORE: N_('隐秘核心'), RESULT: N_('模拟结束'),
 };
 

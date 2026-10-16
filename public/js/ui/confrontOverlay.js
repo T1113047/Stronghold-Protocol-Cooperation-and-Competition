@@ -175,12 +175,12 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     onConfirm(group, position, picks);
   };
 
-  return html`<div class="spov confov" role="dialog" aria-label=${t('对抗期')}>
+  return html`<div class="spov confov" role="dialog" aria-label=${t('悬赏期')}>
     <div class="spov__veil" aria-hidden="true"></div>
     <div class="spov__inner">
       <header class="spov__head">
         <div class="spov__titles">
-          <${MicroLabel} tone="mint">CONFRONTATION // ${t('对抗期')}</${MicroLabel}>
+          <${MicroLabel} tone="mint">BOUNTY PHASE // ${t('悬赏期')}</${MicroLabel}>
           ${stage === 'target'
             ? html`<h2 class="spov__title">${t('选择你要针对的对手')}
                 <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 对手以 ? 显示，只看编号', { r: conf.round })}</span></h2>`
@@ -275,9 +275,8 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
 }
 
 /**
- * The clash: once both sides have locked their interventions the pairs hit each other on screen — the own team's
- * attacker (avatar + P number) against the opponent it aimed at (a '?' frame, P number only) with the monsters it
- * throws. Display only: it fades out by itself and never blocks the battle that starts behind it.
+ * The 悬赏名单: once the bounty phase closes (both sides locked, the battles about to start) BOTH teams' boards are
+ * revealed — who sent what at whom, and what killing it pays. Display only: it fades out by itself.
  * @param {{ pub:any }} props
  */
 export function ConfrontClash({ pub }) {
@@ -288,37 +287,45 @@ export function ConfrontClash({ pub }) {
   const round = conf && conf.round;
   useEffect(() => {
     setShown(true);
-    const h = setTimeout(() => setShown(false), 2800);
+    const h = setTimeout(() => setShown(false), 5200);
     return () => clearTimeout(h);
   }, [round]);
   if (!conf || conf.active || !conf.subs || !shown) return null;
   const players = pub.players || [];
   const me = players.find((p) => p.playerId === myId) || null;
   const myTeam = me ? me.team : null;
-  const mates = players.filter((p) => p.team != null && p.team === myTeam);
-  const rows = mates.map((p) => ({ attacker: p, sub: conf.subs[p.playerId] })).filter((r) => r.sub && r.sub.target && (r.sub.picks || []).length);
+  const rows = players
+    .filter((p) => p.team != null && conf.subs[p.playerId] && (conf.subs[p.playerId].picks || []).length)
+    .map((p) => ({ atk: p, sub: conf.subs[p.playerId], mine: myTeam != null && p.team === myTeam }));
   if (!rows.length) return null;
-  const side = (p) => (p && p.team === 1 ? 'red' : 'blue');
   const pNoOf = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '?');
-  return html`<div class="confclash" aria-hidden="true">
+  const side = (p) => (p && p.team === 1 ? 'red' : 'blue');
+  const groups = [rows.filter((r) => r.mine), rows.filter((r) => !r.mine)].filter((l) => l.length);
+  return html`<div class="confclash" role="dialog" aria-label=${t('悬赏名单')}>
     <div class="confclash__inner">
-      ${rows.map((r) => {
-        const foe = players.find((p) => p.playerId === r.sub.target) || null;
-        return html`<div key=${r.attacker.playerId} class="confclash__row">
-          <span class=${cx('confclash__side', `confclash__side--${side(r.attacker)}`)}>
-            <${PlayerAvatar} player=${r.attacker} size="sm" />
-            <span class="confclash__p num">${pNoOf(r.attacker)}</span>
-          </span>
-          <span class="confclash__mid">
-            ${(r.sub.picks || []).slice(0, 8).map((pk, i) => html`<${Img} key=${`${pk.enemyKey}:${i}`} src=${enemyIconUrl(gd.m, pk.enemyKey)} fallback=${html`<${GIcon} name="target" />`} />`)}
-            <span class="confclash__vs">✕</span>
-          </span>
-          <span class=${cx('confclash__side', `confclash__side--${side(foe)}`)}>
-            <span class="confclash__q">?</span>
-            <span class="confclash__p num">${pNoOf(foe)}</span>
-          </span>
-        </div>`;
-      })}
+      <header class="confclash__head"><${MicroLabel} tone="gold">BOUNTY LIST // ${t('悬赏名单')}</${MicroLabel}></header>
+      ${groups.map((list, gi) => html`<section key=${gi} class=${cx('confclash__team', `confclash__team--${gi === 0 ? 'mine' : 'foe'}`)}>
+        <span class="confclash__teamtag">${gi === 0 ? t('我方') : t('对面')}</span>
+        ${list.map((r) => {
+          const foe = players.find((p) => p.playerId === r.sub.target) || null;
+          return html`<div key=${r.atk.playerId} class="confclash__row">
+            <span class=${cx('confclash__side', `confclash__side--${side(r.atk)}`)}>
+              <${PlayerAvatar} player=${r.atk} size="sm" />
+              <span class="confclash__p num">${pNoOf(r.atk)}</span>
+            </span>
+            <span class="confclash__mid">
+              ${(r.sub.picks || []).slice(0, 8).map((pk, i) => html`<${Img} key=${`${pk.enemyKey}:${i}`} src=${enemyIconUrl(gd.m, pk.enemyKey)} fallback=${html`<${GIcon} name="target" />`} />`)}
+              <span class="confclash__vs">→</span>
+            </span>
+            <span class=${cx('confclash__side', `confclash__side--${side(foe)}`)}>
+              <span class="confclash__q">?</span>
+              <span class="confclash__p num">${pNoOf(foe)}</span>
+            </span>
+            <span class="confclash__coin num">${t('赏金 +{n}', { n: r.sub.coins || 0 })}</span>
+          </div>`;
+        })}
+      </section>`)}
+      <p class="confclash__tip">${t('击杀对面派来的猎物，赏金归己方')}</p>
     </div>
   </div>`;
 }

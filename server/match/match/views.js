@@ -95,7 +95,7 @@ export class MatchViews {
         // not lock the new one (that made the second 对抗期 unselectable); afterwards the applied set feeds the clash.
         const src = this.phase === PHASE.CONFRONT ? (this.confrontSubs || new Map()) : (this.confront || new Map());
         const subs = {};
-        for (const [pid, s] of src) subs[pid] = s ? { group: s.group, position: s.position || null, picks: s.picks || [], target: s.target || null } : null;
+        for (const [pid, s] of src) subs[pid] = s ? { group: s.group, position: s.position || null, picks: s.picks || [], target: s.target || null, coins: this.confrontBountyOf(s.picks) } : null;
         return {
           confront: {
             active: this.phase === PHASE.CONFRONT,

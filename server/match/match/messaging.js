@@ -98,8 +98,9 @@ export class MatchMessaging {
         picks: Object.fromEntries(Object.entries(out.draft.picks).filter(([pid]) => same(pid))),
         skipsLeft: Object.fromEntries(Object.entries(out.draft.skipsLeft || {}).filter(([pid]) => same(pid))) };
     }
-    if (out.confront) {
-      // 2V2 对抗期: only the OWN team's targeting and submissions — who the opponents aim at stays hidden
+    if (out.confront && this.phase === 'CONFRONT') {
+      // 2V2 悬赏期: only the OWN team's targeting and submissions WHILE the phase runs — who the opponents aim at stays
+      // hidden. Once it closes (the battles are about to start) both teams are exposed: that is the 悬赏名单 popup.
       const keep = (pid) => this.teamIdOf(this.players.get(pid)) === team;
       const targets = {};
       for (const [pid, t] of Object.entries(out.confront.targets || {})) if (keep(pid)) targets[pid] = t;

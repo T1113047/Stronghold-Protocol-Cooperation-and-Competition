@@ -17,6 +17,11 @@ import { t } from '../../../shared/i18n.js';
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 const GATES = ['upper', 'lower'];
 const POSITIONS = [['front', '靠前'], ['mid', '靠中'], ['back', '靠后']];
+/**
+ * The squad this browser last submitted (module-level: the overlay unmounts between rounds, the page does not). The
+ * 沿用上轮 button refits these kinds to the CURRENT round's budget — values and the groups' membership move per round.
+ */
+let lastSquad = null;
 
 /** P1 / P2 … of a player row (the seat number) — how the panel tells hidden opponents apart. */
 const pNo = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '');
@@ -95,6 +100,31 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     setPicks(out);
     setPosition('mid');
   };
+  /** 沿用上轮: the kinds this browser submitted last time, in the same order, refitted to THIS round's budget. */
+  const reuse = () => {
+    if (submitted || busy || !lastSquad || !lastSquad.keys.length) return;
+    const gi = groups.findIndex((g) => g.some((r) => r.key === lastSquad.keys[0]));
+    const idx = gi >= 0 ? gi + 1 : (group != null ? group : 1);
+    if (!idx) return;
+    const list = groups[idx - 1] || [];
+    const out = [];
+    let left = budget;
+    for (const key of lastSquad.keys) {
+      const rec = list.find((r) => r.key === key);
+      if (!rec || rec.value > left) continue;
+      left -= rec.value;
+      out.push({ enemyKey: key, gate: lastSquad.gates[out.length] || (out.length % 2 ? 'upper' : 'lower') });
+    }
+    if (!out.length) return;
+    setGroup(idx);
+    setPicks(out);
+    setPosition(lastSquad.position || 'mid');
+  };
+  const confirm = () => {
+    if (!picks.length) return;
+    lastSquad = { keys: picks.map((p) => p.enemyKey), gates: picks.map((p) => p.gate), position };
+    onConfirm(group, position, picks);
+  };
 
   return html`<div class="spov confov" role="dialog" aria-label=${t('对抗期')}>
     <div class="spov__veil" aria-hidden="true"></div>
@@ -118,8 +148,9 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
               : html`<span class="spov__turntxt">${t('已用价值 {spent}/{budget}', { spent, budget })}</span>`)
             : null}
           ${stage === 'monster' && !submitted ? html`<${Button} variant="secondary" size="md" title=${t('按价值自动挑满预算，之后可以手动调整')} onClick=${autoPick}>${t('自动选择')}<//>` : null}
+          ${stage === 'monster' && !submitted && lastSquad ? html`<${Button} variant="secondary" size="md" title=${t('沿用上一轮的编队（按本轮预算重新装填）')} onClick=${reuse}>${t('沿用上轮')}<//>` : null}
           ${stage === 'monster' && !submitted && group != null ? html`<${Button} variant="primary" size="lg" icon="check" loading=${busy}
-            disabled=${picks.length === 0} onClick=${() => onConfirm(group, position, picks)}>${t('提交（{n} 只 · {spent}/{budget}）', { n: picks.length, spent, budget })}<//>` : null}
+            disabled=${picks.length === 0} onClick=${confirm}>${t('提交（{n} 只 · {spent}/{budget}）', { n: picks.length, spent, budget })}<//>` : null}
         </div>
       </header>
 

@@ -1272,5 +1272,7 @@
   "自动选择": "Auto-select",
   "按价值自动挑满预算，之后可以手动调整": "Fills the budget by value automatically — tweak it afterwards",
   "已离开，AI 接管": "Left the match — AI takeover",
-  "{name}博士已离开，由 AI 接管": "Dr. {name} left — the AI takes the seat over"
+  "{name}博士已离开，由 AI 接管": "Dr. {name} left — the AI takes the seat over",
+  "沿用上轮": "Reuse last round",
+  "沿用上一轮的编队（按本轮预算重新装填）": "Reuse last round's squad (refitted to this round's budget)"
 }

@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { APP_VERSION, DEV_BUILD, FORK_LABEL } from '../../shared/constants.js';
+import { APP_VERSION, DEV_BUILD, FORK_LABEL, FORK_NAME } from '../../shared/constants.js';
 import { limitKeyOf } from '../net.js';
 import { applyPendingUpdate } from '../update.js';
 import { ROOT } from './config.js';
@@ -66,7 +66,7 @@ export function isProcessEntry(metaUrl) {
 /** Print the boot banner of a started server. @param {{ url: string, host: string, port: number }} srv */
 export function printBanner(srv) {
   console.log(`\n  卫戍协议：盟约 · Stronghold Protocol: Alliance v${APP_VERSION}`);
-  console.log(`  ${FORK_LABEL} 卫戍协议 2V2 模式 · Cooperation and Competition (fork)`);
+  console.log(`  ${FORK_LABEL} ${FORK_NAME} · Hunt Simulation (fork)`);
   if (DEV_BUILD) console.log('  ! 开发版（dev 分支）：不稳定，请勿用于公开服务器 · development build — unstable, not for public servers');
   console.log(`  Local:   ${srv.url}`);
   if (srv.host === '0.0.0.0' || srv.host === '::') {

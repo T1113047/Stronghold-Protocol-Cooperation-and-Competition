@@ -38,8 +38,9 @@ function randomIntent(rng, m, ps) {
     case 'g.confront': {
       const keys = Object.keys(DATA.enemies || {});
       const ek = keys.length ? rng.pick(keys) : 'enemy_1000_gopro_2';
-      return { t, group: 1 + rng.int(6), picks: Array.from({ length: rng.int(4) }, () => ({ enemyKey: ek, routeIndex: rng.int(4) })) };
+      return { t, group: 1 + rng.int(6), position: rng.pick(['front', 'mid', 'back']), picks: Array.from({ length: rng.int(4) }, () => ({ enemyKey: ek, gate: rng() < 0.5 ? 'upper' : 'lower' })) };
     }
+    case 'g.confrontTarget': return { t, targetPlayerId: rng() < 0.8 ? rng.pick([...m.players.keys()]) : `p_${'a'.repeat(8)}` };
     case 'g.emote': return { t, id: rng.pick(EMOTES) };
     case 'g.watch': return { t, fieldId: rng.pick(['n:p_0', 'n:p_1', 'n:ai_0', 'u', 'b1', 'b2', 'zz', '']) };
     case 'g.autoplay': return { t, on: rng() < 0.05 };

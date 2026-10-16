@@ -90,8 +90,16 @@ export class MatchMessaging {
       fields: (base.fields || []).filter((f) => f.players.some(same)),
     };
     if (out.teamBans) out.teamBans = out.teamBans[team] ? { [team]: out.teamBans[team] } : {};
-    if (out.rerollVotes) out.rerollVotes = out.rerollVotes[team] ? { [team]: out.rerollVotes[team] } : {};
-    if (out.rerollVote) out.rerollVote = null;
+    if (out.rerollVotes) {
+      const mine = out.rerollVotes[team] || null;
+      out.rerollVotes = mine ? { [team]: mine } : {};
+      // 2V2: the client reads the SOLO/coop scalar `rerollVote` — hand it the VIEWER's team's vote. Without this the
+      // 重刷本局 click started a server-side vote nobody could see (its consent buttons never rendered), so the
+      // briefing looked frozen until the vote window ran out. The other team's vote stays hidden.
+      out.rerollVote = mine;
+    } else if (out.rerollVote) {
+      out.rerollVote = null;
+    }
     if (out.unite) out.unite = { helpers: (out.unite.helpers || []).filter(same), leakers: (out.unite.leakers || []).filter(same) };
     if (out.draft && out.draft.picks) {
       out.draft = { ...out.draft,

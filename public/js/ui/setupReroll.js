@@ -14,17 +14,24 @@ export function SetupReroll({ pub }) {
   const vote = pub.rerollVote;
   const host = myId === hostId;
   const players = pub.players || [];
+  // 2V2: the reroll is PER TEAM (a team redraws only its OWN disabled core bonds), so any member of the team may start
+  // it — not just the room host — and only that team's own sockets gate the button. `rerollVotes` only exists in 2V2.
+  const versus = pub.rerollVotes !== undefined;
+  const myTeam = players.find((p) => p.playerId === myId)?.team;
+  const teamPlayers = myTeam == null ? players : players.filter((p) => p.team === myTeam);
+  const canStart = versus || host;
   const me = players.find((p) => p.playerId === myId && p.status !== 'left');
-  const allConnected = players.every((p) => p.isBot || p.status === 'left' || p.connected);
+  const allConnected = teamPlayers.every((p) => p.isBot || p.status === 'left' || p.connected);
   const voter = !!vote?.voters.includes(myId);
   const agreed = !!vote?.agreed.includes(myId);
+  const canCancel = !!vote && (versus ? voter : host);
   const send = async (fn) => {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     try { await fn(); } finally { pending.current = false; setBusy(false); }
   };
-  if (!vote && (!host || !me)) return null;
+  if (!vote && (!canStart || !me)) return null;
   return html`<section class="brief-reroll" aria-label=${t('重刷本局')} aria-live="polite">
     <div class="brief-reroll__text">
       <strong>${vote ? t('重刷本局投票：{agreed}/{total}', { agreed: vote.agreed.length, total: vote.voters.length }) : t('重刷本局')}</strong>
@@ -42,7 +49,7 @@ export function SetupReroll({ pub }) {
         onClick=${() => send(() => actions.rerollVote(vote.id, true))}>${agreed ? t('已同意') : t('同意重刷')}<//>
         <${Button} variant="danger" disabled=${busy || !online}
           onClick=${() => send(() => actions.rerollVote(vote.id, false))}>${t('拒绝重刷')}<//>` : null}
-      ${vote && host && me ? html`<${Button} disabled=${busy || !online}
+      ${vote && canCancel && me ? html`<${Button} disabled=${busy || !online}
         onClick=${() => send(() => actions.cancelReroll(vote.id))}>${t('取消投票')}<//>` : null}
     </div>
   </section>`;

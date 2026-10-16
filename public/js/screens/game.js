@@ -256,8 +256,13 @@ function MatchScreen() {
   const uniteLocal = phase === PHASE.UNITE && battleState && battleState.uniteLeft ? battleState.uniteLeft : null;
   const leaker = phase === PHASE.UNITE && Array.isArray(pub?.unite?.leakers) && pub.unite.leakers.includes(myId);
   const localLeft = leaker && uniteLocal ? (uniteLocal[myId] ?? 0) : undefined;
+  // 2V2 ('versus'): the own row and the top bar show the TEAM's shared HP pool — priv.lp is only a split of it, so
+  // showing that made the avatar snap back to a stale, smaller number while the leaks were coming in.
+  const myRow = Array.isArray(pub?.players) ? pub.players.find((p) => p && p.playerId === myId) : null;
+  const myTeam = myRow ? myRow.team : null;
+  const ownLp = pub?.teamLps && myTeam != null && Number.isFinite(pub.teamLps[myTeam]) ? pub.teamLps[myTeam] : priv?.lp;
   const liveLpNow = liveLp(lpBaseRef.current, {
-    phase, round: pub?.round, lp: priv?.lp, statsLeaks: priv?.stats?.leaks, alive,
+    phase, round: pub?.round, lp: ownLp, statsLeaks: priv?.stats?.leaks, alive,
     leaks: ownLeaks(localLeaks, meP?.pendingLp), cap: gd.config?.lpCapPerRound,
     uniteLeft: leaker ? uniteRemaining(localLeft, meP?.uniteLeft) : null,
   });
@@ -1481,7 +1486,7 @@ function MatchScreen() {
       </div>
 
       <${TeamPanel} pub=${pub} myId=${myId} watching=${watchingNow} bubbles=${bubbles} onWatch=${watchPlayer} cap=${gd.config?.lpCapPerRound ?? 10} uniteLocal=${uniteLocal}
-        self=${Number.isFinite(priv?.lp) ? { lp: priv.lp, pending: liveLpNow.pending, unite: liveLpNow.unite, left: liveLpNow.left } : null}
+        self=${Number.isFinite(ownLp) ? { lp: ownLp, pending: liveLpNow.pending, unite: liveLpNow.unite, left: liveLpNow.left } : null}
         observe=${cc ? { canObserve: (p) => observeTarget(p, pub, myId, { observing: watchingOther, ownDone: localDone }), observing: watchingOther, onBack: backHome } : null} />
 
       <div class="gm__effects"><${EffectsList} effects=${watchingOther && field ? (field.effects ?? null) : priv?.effects} /></div>

@@ -904,7 +904,14 @@ export class UnitView {
     // 2V2 对抗期: an enemy the OPPONENT placed carries a P<n> badge under its feet (its frame is pale red too, see
     // _frameColor) — display only, driven by the spawn's confrontSeat.
     this.sentText = null;
+    this.sentRing = null;
     if (this.isEnemy && Number.isInteger(this.info.confrontSeat)) {
+      // 狩猎模拟: a monster the OPPOSITE team sent carries a pale-red ground ring (and the P<n> badge under it)
+      // — `_frameColor` only tints the model-less fallback portrait, so the ring is what actually reads on the field.
+      this.sentRing = new P.Graphics();
+      this.sentRing.lineStyle(4, 0xff9a86, 0.95);
+      this.sentRing.drawCircle(0, 0, 1);
+      this.ctx.layers.groundFx.addChild(this.sentRing);
       this.sentText = new P.Text(`P${this.info.confrontSeat + 1}`, {
         fontFamily: 'Bender, Oxanium, sans-serif', fontSize: 20, fontWeight: '700', fill: '#ff9a86', stroke: '#2a0f0c', strokeThickness: 5,
       });
@@ -1623,9 +1630,15 @@ export class UnitView {
       this.countText.position.set(x + s * 0.32, this.screen.y - s * 0.12);
     }
     if (this.sentText) {
-      // the 对抗期 badge sits under the enemy's feet (2V2: the opponent placed it)
+      // the 狩猎模拟 badge sits under the enemy's feet (the opponent placed it)
       this.sentText.scale.set(clamp(s / 90, 0.5, 1.2));
       this.sentText.position.set(x, this.screen.y + s * 0.52);
+      this.sentText.alpha = alpha;
+    }
+    if (this.sentRing) {
+      this.sentRing.position.set(x, this.screen.y);
+      this.sentRing.scale.set(s * 0.38, s * 0.19);
+      this.sentRing.alpha = alpha * 0.9;
     }
     for (let i = 0; i < this.itemPips.length; i++) {
       const pip = this.itemPips[i];

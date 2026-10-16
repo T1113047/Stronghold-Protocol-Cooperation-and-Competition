@@ -234,6 +234,29 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus: a team reroll vote reaches its OWN team\'s view only', () => {
+    const seats = [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'p_2', name: 'B0', isBot: false, connected: true, team: 1 },
+      { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
+    ];
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats, seed: 153, fake: true }).start();
+    const m = h.m;
+    assert.equal(m.requestSetupReroll('p_0', m.setupRevision).ok, true);
+    const base = m.publicView();
+    // The client reads the SOLO/coop scalar `rerollVote`; in 2V2 it must carry the VIEWER's team's vote, or the consent
+    // buttons render for nobody and the 重刷本局 click looks like it did nothing.
+    const mine = m._teamPublicView(base, 0);
+    assert.ok(mine.rerollVote, 'team 0 sees its own open vote');
+    assert.deepEqual(mine.rerollVote.voters.slice().sort(), ['p_0', 'p_1']);
+    assert.deepEqual(Object.keys(mine.rerollVotes), ['0'], 'the per-team map is scoped to the own team');
+    const foes = m._teamPublicView(base, 1);
+    assert.equal(foes.rerollVote, null, 'team 1 does not see team 0\'s vote');
+    assert.deepEqual(foes.rerollVotes, {}, 'nor its entry in the map');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: a reroll vote nobody answers expires and the briefing still advances', () => {
     const seats = [
       { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },

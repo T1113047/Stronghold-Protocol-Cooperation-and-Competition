@@ -681,12 +681,15 @@ export class Lobby {
     return this.startMatch(room, key);
   }
 
-  /** Host authorization stays in the lobby; the match owns the vote and setup. */
+  /** Solo/coop: host authorization stays in the lobby; the match owns the vote and setup. 2V2: each team rerolls only
+   *  its OWN disabled core bonds, so any human of a team may propose it (the match still needs that team's humans to
+   *  agree, and the vote only ever touches the proposer's team). */
   rerollSetup(session, msg, cancel = false) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (room.spectatorOf(session.playerId)) return fail(ERR.SPECTATOR);
-    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    const versus = !!(room.match && room.match.setupVotes);
+    if (!versus && room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     const method = cancel ? 'cancelSetupReroll' : 'requestSetupReroll';
     if (!room.match || typeof room.match[method] !== 'function') return fail(ERR.WRONG_PHASE);
     return this.callMatch(room, method, session.playerId, cancel ? msg.voteId : msg.setupRevision) || fail(ERR.INTERNAL);

@@ -298,6 +298,14 @@ export class Match {
     this.rngBots = rng('bots');
     this.rngMeta = rng('meta');
 
+    /**
+     * 2V2 ('versus'): the round the Competition starts — drawn once per match from R4/R5/R6 with the seeded rng
+     * (docs: 开发日志 §5.1). null in solo/coop. Exposed as m.public.contestStartRound.
+     */
+    this.contestStartRound = this.isVersus
+      ? [4, 5, 6][Math.floor(rng('contest-start')() * 3)]
+      : null;
+
     /** @type {Map<string, PlayerState>} */
     this.players = new Map();
     const seen = new Set();

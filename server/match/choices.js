@@ -136,11 +136,13 @@ function itemCard(gd, id) {
  * Build the draft cards for an SP round.
  * @returns {{ family: string, name: string, desc: string, eventId: string|null, cards: object[] } | null}
  */
-export function generateDraft(gd, rng, round, { stageId = null, bondAvailable = null, itemAvailable = null } = {}) {
+export function generateDraft(gd, rng, round, { stageId = null, bondAvailable = null, itemAvailable = null, cardCount = null } = {}) {
   const sch = scheduleFor(gd, round);
   const fams = Array.isArray(sch.families) && sch.families.length ? sch.families.map((f) => [f.family, f.weight]) : [['supply', 1]];
   let family = weightedPick(rng, fams) || 'supply';
-  const n = Number.isInteger(sch.cards) && sch.cards > 0 ? Math.min(sch.cards, 6) : formatCount(gd);
+  // 2V2 ('versus'): the 机变 draft offers 3 cards instead of 6 (the user's rule; `cardCount` wins over the schedule)
+  const n = Number.isInteger(cardCount) && cardCount > 0 ? Math.min(cardCount, 6)
+    : (Number.isInteger(sch.cards) && sch.cards > 0 ? Math.min(sch.cards, 6) : formatCount(gd));
   const opts = { stageId, bondAvailable, round, itemAvailable };
   let cards = buildCards(gd, rng, family, n, sch, opts);
   if (!cards.length && family !== 'supply') { family = 'supply'; cards = buildCards(gd, rng, family, n, sch, opts); }

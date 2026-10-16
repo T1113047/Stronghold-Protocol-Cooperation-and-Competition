@@ -140,6 +140,8 @@ export class MatchViews {
     } else if (this.bossPool) {
       v.bossHp = { hp: Math.max(0, Math.round(this.bossPool.hp)), max: Math.round(this.bossPool.maxHp) };
     }
+    // 2V2: the drawn round where the Competition starts (R4/R5/R6; m.public.contestStartRound)
+    if (this.contestStartRound != null) v.contestStartRound = this.contestStartRound;
     if (this.phase === PHASE.BAND_DRAFT && this.draft) {
       const d = this.draft;
       // turnSeconds: the length of a turn (the countdown gauge's total; 0 when untimed) — deadline = turnDeadline

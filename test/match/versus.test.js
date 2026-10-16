@@ -105,4 +105,33 @@ describe('versus (2V2) match: team model', () => {
       assert.equal(p.victory, want, `${p.playerId} victory ${p.victory}, want ${want}`);
     }
   });
+
+  test('versus: contest start round is drawn from R4/R5/R6, published, and the 机变 draft offers 3 cards', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 31, fake: true }).start();
+    const m = h.m;
+    assert.ok([4, 5, 6].includes(m.contestStartRound), `contestStartRound ${m.contestStartRound}`);
+    assert.ok(h.lastBc('m.public')?.contestStartRound === m.contestStartRound, 'published in m.public');
+    let spCards = null;
+    h.onBroadcast.push((msg) => {
+      if (msg.t === 'm.public' && msg.phase === PHASE.SP_DRAFT && m.sp && Array.isArray(m.sp.cards) && spCards == null) spCards = m.sp.cards.length;
+    });
+    h.autoHumans();
+    h.drive(() => h.ended != null || spCards != null, { maxSteps: 3e6 });
+    assert.ok(spCards != null, 'reached an 机变 draft');
+    assert.ok(spCards <= 3, `机变 cards offered = ${spCards}, want ≤ 3`);
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('co-op keeps the 6-card 机变 draft and no contest round', () => {
+    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
+    const m = h.m;
+    assert.equal(m.contestStartRound, null);
+    let spCards = null;
+    h.onBroadcast.push((msg) => {
+      if (msg.t === 'm.public' && msg.phase === PHASE.SP_DRAFT && m.sp && Array.isArray(m.sp.cards) && spCards == null) spCards = m.sp.cards.length;
+    });
+    h.autoHumans();
+    h.drive(() => h.ended != null || spCards != null, { maxSteps: 3e6 });
+    assert.ok(spCards == null || spCards > 3, `co-op 机变 cards ${spCards} should stay > 3`);
+  });
 });

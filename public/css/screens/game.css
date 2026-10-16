@@ -318,7 +318,7 @@
 .team__row.is-t1 .pavatar { box-shadow: 0 0 0 2px #ff6a4a, 0 0 .16rem rgba(255, 106, 74, .4); }
 .team__row.is-t0 .team__seat { color: #8cc6ff; border-color: #3d78c4; }
 .team__row.is-t1 .team__seat { color: #ffab97; border-color: #c4583d; }
-.pavatar--foe { display: grid; place-items: center; font-size: calc(var(--pa, .8rem) * .58); line-height: 1; font-weight: 700; color: var(--text-lo); background: rgba(8, 11, 10, .85); }
+.pavatar--foe { display: grid; place-items: center; font-size: calc(var(--pa, .8rem) * .58); line-height: 1; padding-top: .14em; font-weight: 700; color: var(--text-lo); background: rgba(8, 11, 10, .85); }
 .team__row.is-foe .team__name { color: var(--text-lo); }
 .team__you { position: absolute; right: -.08rem; top: -.08rem; width: .22rem; height: .22rem; display: grid; place-items: center; background: var(--mint-500); color: var(--text-on-mint); clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%); }
 .team__you .icon { width: .14rem; height: .14rem; }

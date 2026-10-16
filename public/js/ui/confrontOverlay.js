@@ -8,7 +8,7 @@
 //     fine; the step always runs its window out.
 // Texts go through t() (docs/I18N.md).
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { html, Button, Icon, MicroLabel } from '../ui/components.js';
+import { html, Button, Icon, MicroLabel, Countdown } from '../ui/components.js';
 import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
@@ -191,6 +191,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
             : (submitted ? t('你已提交，等待时间走完') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）'))}</p>
         </div>
         <div class="spov__turn">
+          ${Number(pub?.deadline) > 0 ? html`<${Countdown} deadline=${pub.deadline} size="sm" />` : null}
           ${stage === 'monster'
             ? (submitted
               ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已提交')}</span>`

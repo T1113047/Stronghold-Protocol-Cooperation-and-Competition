@@ -60,6 +60,11 @@ export const VERSUS_ITEM_PAGER = 'chess_item_4_01_e_a';
  */
 export const VERSUS_LOW_LP = 21;
 /**
+ * 2V2: the briefing (确认本局信息) window in seconds — longer than the official 25 s guard because four humans read the
+ * same setup together; it still ends as soon as every player is ready (phases.js maybeEndInfo).
+ */
+export const VERSUS_INFO_SECONDS = 45;
+/**
  * 对抗期 tunables (2V2): the target-selection window (s; ends early once every alive player holds a target), the
  * monster window (s; FIXED — submitting early does not end it), the number of monster groups offered, the insertion
  * positions (share of the round's monster count: 25 / 50 / 75 %) and the budget multiplier — a player may place

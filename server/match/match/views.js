@@ -91,7 +91,9 @@ export class MatchViews {
       // submission. The budget and every card value carry this round's scaling. The view carries the OWN TEAM's entries
       // only — the opponent's are masked by messaging.js _teamPublicView (the panel shows them as '?').
       ...(this.isVersus && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? (() => {
-        const src = this.confrontSubs && this.confrontSubs.size ? this.confrontSubs : (this.confront || new Map());
+        // while the 对抗期 runs, only what THIS round has collected counts — a previous round's applied submission must
+        // not lock the new one (that made the second 对抗期 unselectable); afterwards the applied set feeds the clash.
+        const src = this.phase === PHASE.CONFRONT ? (this.confrontSubs || new Map()) : (this.confront || new Map());
         const subs = {};
         for (const [pid, s] of src) subs[pid] = s ? { group: s.group, position: s.position || null, picks: s.picks || [], target: s.target || null } : null;
         return {

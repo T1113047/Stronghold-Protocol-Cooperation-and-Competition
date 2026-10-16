@@ -212,8 +212,9 @@ export class MatchConfront {
     this.setDeadline(0);
     this.confrontStage = 'monster';
     // step 2 never ends early: submitting only marks the player done, the sides stay in step until the window is up.
-    // The window is set even in a single-human match (soloUntimed): it IS the step's only way to end.
-    this.setDeadline(VERSUS_CONFRONT.monsterSeconds, () => this.finishConfront());
+    // The window matches THIS round's prep (dynamic) — the same time the players had to prepare — and is always set
+    // (it IS the step's only way to end, even in a single-human match).
+    this.setDeadline(this.gd.prepTime(this.round) ?? VERSUS_CONFRONT.monsterSeconds, () => this.finishConfront());
     for (const ps of this.alivePlayers()) if (ps.botControlled) this.botConfront(ps);
     this.markPublic();
   }

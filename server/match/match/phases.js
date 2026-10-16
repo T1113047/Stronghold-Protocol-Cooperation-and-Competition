@@ -4,7 +4,7 @@
 // round start).
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
-import { PHASE, ERR } from '../../../shared/constants.js';
+import { PHASE, ERR, VERSUS_INFO_SECONDS } from '../../../shared/constants.js';
 import { buildNormalWave, buildBossWave } from '../waves.js';
 import { botPickBand } from '../bot.js';
 import { OK, fail, DELAYS, BAND_TURN_SECONDS } from './common.js';
@@ -13,8 +13,10 @@ export class MatchPhases {
   enterInfoCheck() {
     this.phase = PHASE.INFO_CHECK;
     for (const ps of this.order) if (ps.botControlled) ps.infoReady = true;
-    // solo: no time limit (the player confirms); co-op: the official 25 s guard
-    this.setDeadline(this.soloUntimed ? 0 : this.gd.timer('infoCheck'), () => this.enterBandDraft());
+    // solo: no time limit (the player confirms); co-op: the official 25 s guard; 2V2: 45 s (VERSUS_INFO_SECONDS) —
+    // either way it ends the moment every player is ready (maybeEndInfo).
+    const secs = this.isVersus ? VERSUS_INFO_SECONDS : this.gd.timer('infoCheck');
+    this.setDeadline(this.soloUntimed ? 0 : secs, () => this.enterBandDraft());
     this.markPublic();
     for (const ps of this.order) this.markPrivate(ps);
     this.flush(true);
@@ -135,7 +137,15 @@ export class MatchPhases {
    */
   bandTaken(bandId, playerId) {
     const picks = this.draft?.picks || {};
-    for (const [pid, id] of Object.entries(picks)) if (pid !== playerId && id === bandId) return true;
+    const ps = this.players.get(playerId);
+    const team = ps ? this.teamIdOf(ps) : 0;
+    for (const [pid, id] of Object.entries(picks)) {
+      if (pid === playerId || id !== bandId) continue;
+      // 2V2 ('versus'): only a TEAMMATE's pick blocks a strategy — the two teams may run the very same one (and never
+      // see each other's anyway: the per-team view masks the opponent's picks).
+      if (this.isVersus && this.teamIdOf(this.players.get(pid)) !== team) continue;
+      return true;
+    }
     return false;
   }
 

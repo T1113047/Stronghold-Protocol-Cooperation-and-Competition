@@ -144,7 +144,7 @@ export class MatchPlatform {
         this._resume();
         if (this.clientCombat) this._authorityLost(ps, 'left');
         this.toast(ps, 'warn', '已离开，AI 接管');
-        this.tickerText(msg('{name}博士已离开，由 AI 接管', { name: ps.name }), FLOW_TICKER_PRIORITY);
+        this.tickerText(msg('{name}博士已离开，由 AI 接管', { name: ps.name }), FLOW_TICKER_PRIORITY, this.teamIdOf(ps));
         this.markPublic();
       });
       return;

@@ -37,18 +37,25 @@ export class MatchMessaging {
     if (!tpl) return;
     const text = tpl.replace(/\{(\d)\}/g, (_, i) => (args[Number(i)] != null ? String(args[Number(i)]) : ''));
     const msg = { t: 'm.ticker', text, id: b.id, type, priority: Number(b.priority) || 0, playerId, args: args.map((a) => String(a ?? '')) };
-    if (to) this.sendTo(to, msg);
-    else this.broadcast(msg);
+    if (to) { this.sendTo(to, msg); return; }
+    // 2V2 ('versus'): the two teams are SEPARATE games sharing one clock — a line about a player (its name is in the
+    // text) reaches that player's team only. No playerId: a match-wide notice, which both teams may see.
+    const team = this.isVersus && playerId ? this.teamIdOf(this.players.get(playerId)) : null;
+    if (team != null) { for (const ps of this.order) if (this.teamIdOf(ps) === team) this.sendTo(ps.playerId, msg); return; }
+    this.broadcast(msg);
   }
 
   /**
    * A ticker line of the remake's own (type CUSTOM). `priority`: the match-flow notices (隐秘核心已解锁, 联防阶段, a player out
-   * or gone) take FLOW_TICKER_PRIORITY so the strip does not hold them behind shop-level lines; other lines 0.
+   * or gone) take FLOW_TICKER_PRIORITY so the strip does not hold them behind shop-level lines; other lines 0. `team`:
+   * 2V2 only — the line belongs to that team's own game and reaches nobody else.
    */
-  tickerText(text, priority = 0) {
+  tickerText(text, priority = 0, team = null) {
     if (!text) return;
     const w = wireMessage(text);
-    this.broadcast({ t: 'm.ticker', ...w, text: w.text.slice(0, 200), id: null, type: 'CUSTOM', priority: Number(priority) || 0, playerId: null });
+    const msg = { t: 'm.ticker', ...w, text: w.text.slice(0, 200), id: null, type: 'CUSTOM', priority: Number(priority) || 0, playerId: null };
+    if (this.isVersus && team != null) { for (const ps of this.order) if (this.teamIdOf(ps) === team) this.sendTo(ps.playerId, msg); return; }
+    this.broadcast(msg);
   }
 
   markPublic() { this._pubDirty = true; }

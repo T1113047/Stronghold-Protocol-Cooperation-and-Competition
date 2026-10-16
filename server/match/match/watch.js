@@ -71,6 +71,9 @@ export class MatchWatch {
       if (this.fields.length) return fail(ERR.BAD_TARGET, 'no such field');
       const target = this.players.get(fieldId.slice(2));
       if (!target || !target.alive) return fail(ERR.BAD_TARGET);
+      // 2V2 ('versus'): prep scouting is TEAM-ONLY — the opponent's board (their lineup, hand and coming wave) must
+      // never be visible before the Final Assault reveals it.
+      if (this.isVersus && this.teamIdOf(target) !== this.teamIdOf(ps)) return fail(ERR.BAD_TARGET, 'opponent hidden');
       this.watchers.set(ps.playerId, fieldId);
       if (target !== ps) this.watchPref.set(ps.playerId, target.playerId);
       this._notifyPrepScouts(target, { to: ps.playerId });
@@ -99,7 +102,10 @@ export class MatchWatch {
     const ok = (pid) => { const t = typeof pid === 'string' && pid !== ps.playerId ? this.players.get(pid) : null; return !!t && t.alive && !t.left; };
     const pref = this.watchPref.get(ps.playerId);
     if (ok(pref)) return pref;
-    return this.order.find((q) => ok(q.playerId))?.playerId ?? null;
+    // 2V2: an eliminated player follows its OWN team only (never spies on the opponent)
+    const team = this.teamIdOf(ps);
+    const pool = this.isVersus ? this.order.filter((q) => this.teamIdOf(q) === team) : this.order;
+    return pool.find((q) => ok(q.playerId))?.playerId ?? null;
   }
 
   /** The field of the player `ps` follows among `fields` (null when that player has none this phase). */

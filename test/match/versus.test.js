@@ -6,7 +6,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA } from './harness.js';
-import { PHASE, teamOfSeat, VERSUS_LOW_LP } from '../../shared/constants.js';
+import { PHASE, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS } from '../../shared/constants.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
 const vsSeats = () => ([
@@ -195,6 +195,101 @@ describe('versus (2V2) match: team model', () => {
     m._versusPrepGrant();
     assert.ok(m._pagerGranted.has(1), 'the team is marked as served');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: a strategy is unique per TEAM (both teams may run the same one)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 121, fake: true }).start();
+    const m = h.m;
+    m.draft = { picks: { p_0: null, ai_1: 'band_x', ai_2: 'band_x', ai_3: 'band_y' } };
+    assert.equal(m.bandTaken('band_x', 'p_0'), true, "a teammate's pick blocks the strategy");
+    assert.equal(m.bandTaken('band_y', 'p_0'), false, "an opponent's pick does not");
+    // the same strategy may be held by one player of each team — the other team's pick never blocks
+    assert.equal(m.bandTaken('band_x', 'ai_2'), false, "the opposing team's pick does not block either");
+    assert.equal(m.bandTaken('band_x', 'ai_3'), true, "…but their own teammate's does");
+  });
+
+  test('versus: the briefing window is 45 s and can still end early', () => {
+    // two humans (a lone human + AI runs untimed, so the window would not be armed at all)
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seed: 122, fake: true, seats: [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'ai_2', name: 'B0', isBot: true, connected: true, team: 1 },
+      { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
+    ] }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.INFO_CHECK, { maxSteps: 3e6 }), 'reached the briefing');
+    const left = (m.deadline - h.sched.now()) / 1000;
+    assert.ok(Math.abs(left - VERSUS_INFO_SECONDS) < 1, `briefing window ${left}s (want ${VERSUS_INFO_SECONDS})`);
+    // every human ready → it ends at once, long before the window
+    for (const ps of m.players.values()) if (!ps.isBot) m.handle(ps.playerId, { t: 'g.infoReady', setupRevision: m.setupRevision });
+    assert.ok(h.drive(() => m.phase !== PHASE.INFO_CHECK, { maxSteps: 3e6 }), 'the briefing closed early');
+    assert.equal(m.phase, PHASE.BAND_DRAFT);
+  });
+
+  test('versus: prep scouting is team-only (the opponent board stays hidden)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 123, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    h.toPrep(1);
+    const me = m.players.get('p_0');
+    assert.equal(m.watch(me, 'n:ai_1').ok, true, 'a teammate may be scouted');
+    assert.ok(m.watch(me, 'n:ai_2').error, 'an opponent may not (team 1)');
+    assert.ok(m.watch(me, 'n:ai_3').error, 'an opponent may not (team 1)');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: EVERY round\'s 对抗期 is selectable again (a previous round must not lock it)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 124, fake: true }).start();
+    const m = h.m;
+    const me = () => m.players.get('p_0');
+    const opp = () => [...m.players.values()].filter((p) => m.teamIdOf(p) === 1).map((p) => p.playerId);
+    const playOne = () => {
+      assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), `reached the 对抗期 (${m.phase} R${m.round})`);
+      const view = m._teamPublicView(m.publicView(), 0).confront;
+      assert.equal(view.stage, 'target');
+      assert.ok(!view.targets['p_0'], `R${m.round}: no target locked yet`);
+      assert.ok(!view.subs['p_0'], `R${m.round}: nothing submitted yet (a previous round must not lock it)`);
+      assert.equal(m.submitConfrontTarget(me(), { targetPlayerId: opp()[0] }).ok, true);
+      assert.equal(m.confrontStage, 'monster', `R${m.round}: step 2 opens`);
+      const picks = [];
+      let left = m.confrontBudget();
+      for (const r of m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+        if (r.value > left) continue;
+        left -= r.value;
+        picks.push({ enemyKey: r.key, gate: 'lower' });
+        if (picks.length >= 2) break;
+      }
+      assert.equal(m.submitConfront(me(), { group: 6, position: 'mid', picks }).ok, true, `R${m.round}: the monsters are accepted`);
+      assert.ok(h.drive(() => m.phase !== PHASE.CONFRONT, { maxSteps: 3e6 }), 'the window closed');
+      return m.round;
+    };
+    const r1 = playOne();
+    const r2 = playOne();
+    assert.ok(r2 > r1, `played two different rounds (${r1} → ${r2})`);
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: ticker lines stay inside the team they belong to', () => {
+    // four HUMANS (sendTo skips AI seats, so the recipients have to be real)
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seed: 131, fake: true, seats: [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'p_2', name: 'B0', isBot: false, connected: true, team: 1 },
+      { seat: 3, playerId: 'p_3', name: 'B1', isBot: false, connected: true, team: 1 },
+    ] }).start();
+    const m = h.m;
+    h.sent.length = 0;
+    h.bc.length = 0;
+    m.tickerText('team-0 line', 0, 0);       // a line of team 0's own game
+    m.tickerText('team-1 line', 0, 1);
+    m.tickerText('team-1 line again', 0, 1);
+    m.tickerText('everyone');                // no team: a match-wide notice (broadcast to both)
+    const got = (pid) => h.sent.filter(([id, msg]) => id === pid && msg.t === 'm.ticker').length;
+    assert.equal(got('p_0'), 1, "team 0 hears its own line only");
+    assert.equal(got('p_1'), 1, '…as does its teammate');
+    assert.equal(got('p_2'), 2, "team 1 hears its two lines and never team 0's");
+    assert.equal(got('p_3'), 2);
+    assert.equal(h.bc.filter((msg) => msg.t === 'm.ticker').length, 1, 'the team-less line is a broadcast');
   });
 
   test('versus: each team has its own disabled core bonds (3 available)', () => {

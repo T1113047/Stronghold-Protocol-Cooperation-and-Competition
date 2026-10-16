@@ -114,7 +114,7 @@ export class MatchSettle {
         if (!this.teamLps) ps.lp = 0;
         ps.eliminate(this.round);
         this.toast(ps, 'error', '你的目标生命值耗尽，已被淘汰');
-        this.tickerText(msg('{name}博士的目标生命值已耗尽', { name: ps.name }), FLOW_TICKER_PRIORITY);
+        this.tickerText(msg('{name}博士的目标生命值已耗尽', { name: ps.name }), FLOW_TICKER_PRIORITY, this.teamIdOf(ps));
       }
     }
     this.fields = [];

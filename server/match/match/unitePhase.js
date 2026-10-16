@@ -28,7 +28,7 @@ export class MatchUnite {
     this.deadline = this.sched.instant ? 0 : this.sched.now() + Math.round((limit / this.gameSpeed) * 1000);
     this._defaultWatch();
     this.markPublic();
-    this.tickerText(msg('联防阶段：{names} 迎战突破防线的敌人', { names: plans.flatMap((p) => p.helpers).map((p) => p.name) }), FLOW_TICKER_PRIORITY);
+    this._uniteTicker(plans);
     // an AI helper says "合作愉快" once on the open of a 联防 (enabled by default; SP_BOT_EMOTES=0 silences it)
     for (const plan of plans) onStartUnite(this, plan);
     this._uniteLeftKey = null;
@@ -98,7 +98,17 @@ export class MatchUnite {
       this._sendStart(ps.playerId, f, { watch: !own });
     }
     this.markPublic();
-    this.tickerText(msg('联防阶段：{names} 迎战突破防线的敌人', { names: plans.flatMap((p) => p.helpers).map((p) => p.name) }), FLOW_TICKER_PRIORITY);
+    this._uniteTicker(plans);
+  }
+
+  /** The 联防 opening line: in 2V2 each team hears only its OWN battle's helpers (the two teams are separate games). */
+  _uniteTicker(plans) {
+    const text = (list) => msg('联防阶段：{names} 迎战突破防线的敌人', { names: list.map((p) => p.name) });
+    if (!this.isVersus) { this.tickerText(text(plans.flatMap((p) => p.helpers)), FLOW_TICKER_PRIORITY); return; }
+    for (const plan of plans) {
+      if (!plan.helpers.length) continue;
+      this.tickerText(text(plan.helpers), FLOW_TICKER_PRIORITY, this.teamIdOf(plan.helpers[0]));
+    }
   }
 
   /** The running 联防 field of ps's own team, or null (coop: the single field). */

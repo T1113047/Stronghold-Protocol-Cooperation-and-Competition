@@ -80,12 +80,14 @@ export function SpectatorPill({ spectators, myId, isHost, onRemove }) {
  * Phase capsule: prep label, kills n/m (combat/unite), kills + boss HP bar (boss rounds).
  * @param {{ pub:any, hud:any }} props
  */
-export function PhaseCapsule({ pub, hud, miss = null }) {
+export function PhaseCapsule({ pub, hud, miss = null, myTeam = null }) {
   const phase = pub?.phase;
   if (isBossPhase(phase)) {
     // the battle on screen first: its snapshot carries the live pool (the local simulation's own damage on top of the
-    // server's b.pool, or the server's 20 Hz stream); m.public.bossHp refreshes at ~1 Hz and lags the leader's death
-    const boss = hud?.boss || pub.bossHp || null;
+    // server's b.pool, or the server's 20 Hz stream); m.public.bossHp refreshes at ~1 Hz and lags the leader's death.
+    // 2V2: each team fights its OWN boss — the bar is the viewer's team's pool (m.public.bossHpTeams).
+    const teamBoss = myTeam != null && pub?.bossHpTeams ? pub.bossHpTeams[myTeam] : null;
+    const boss = hud?.boss || teamBoss || pub.bossHp || null;
     const frac = bossFrac(boss);
     return html`<div class="capsule capsule--boss" role="status">
       <${Sprite} k="hudPanel/icon_boss" class="capsule__icon" fallback=${html`<${GIcon} name="skull" class="capsule__icon" />`} />
@@ -362,7 +364,17 @@ export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, 
   spectators = null, myId = null, isHost = false, onRemoveSpectator = null }) {
   const phase = pub?.phase;
   const boss = isBossPhase(phase);
-  const lp = boss && Number.isFinite(pub?.teamLp) ? pub.teamLp : Number.isFinite(priv?.lp) ? priv.lp : null;
+  // 2V2 ('versus'): every team holds ONE shared HP pool (m.public.teamLps) — the viewer's own is the big tower, the
+  // opponent's rides beside it (both independent, neither is a merge). Solo/co-op keep the per-player LP.
+  const myTeam = myId != null && Array.isArray(pub?.players) ? (pub.players.find((p) => p && p.playerId === myId)?.team ?? null) : null;
+  const teamLps = pub?.teamLps || null;
+  const myPool = myTeam != null && teamLps ? teamLps[myTeam] : null;
+  const foePool = myTeam != null && teamLps
+    ? Object.keys(teamLps).map(Number).find((t) => t !== myTeam) : null;
+  const foeLp = foePool != null ? teamLps[foePool] : null;
+  const lp = boss && Number.isFinite(pub?.teamLp) ? pub.teamLp
+    : Number.isFinite(myPool) ? myPool
+      : Number.isFinite(priv?.lp) ? priv.lp : null;
   // normal rounds: the leaks of the own battle so far (boss rounds: the team LP above already moves live)
   const pending = !boss && Number.isFinite(lp) && live && live.pending > 0 ? Math.min(lp, live.pending) : 0;
   const hidden = phase === PHASE.HIDDEN_CORE || (Number.isFinite(pub?.lastRound) && pub.round > pub.lastRound);
@@ -402,9 +414,17 @@ export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, 
         <span class="roundbox__label">${t('回合')}</span>
         <b class="roundbox__num num">${roundText}</b>
       </div>
-      <${PhaseCapsule} pub=${pub} hud=${hud} miss=${!boss && Number.isFinite(live?.left) ? live.left : null} />
-      <${LpTower} value=${lp} size="lg" tone=${lowLp ? 'danger' : boss ? 'team' : null} pending=${pending}
-        note=${pending > 0 && live?.unite ? t('联防中') : null} tip=${pendingTip(lp, pending, { unite: !!live?.unite, cap, left: live?.left ?? null })} />
+      <${PhaseCapsule} pub=${pub} hud=${hud} myTeam=${myTeam} miss=${!boss && Number.isFinite(live?.left) ? live.left : null} />
+      ${Number.isFinite(myPool)
+        ? html`<div class="teamlp">
+            <span class="teamlp__one is-mine"><span class="teamlp__tag">${t('我方')}</span>
+              <${LpTower} value=${lp} size="lg" tone=${lowLp ? 'danger' : null} pending=${pending}
+                note=${pending > 0 && live?.unite ? t('联防中') : null} tip=${pendingTip(lp, pending, { unite: !!live?.unite, cap, left: live?.left ?? null })} /></span>
+            ${Number.isFinite(foeLp) ? html`<span class="teamlp__one is-foe"><span class="teamlp__tag">${t('对面')}</span>
+              <${LpTower} value=${foeLp} size="md" tone="foe" tip=${t('对面队伍血量')} /></span>` : null}
+          </div>`
+        : html`<${LpTower} value=${lp} size="lg" tone=${lowLp ? 'danger' : boss ? 'team' : null} pending=${pending}
+            note=${pending > 0 && live?.unite ? t('联防中') : null} tip=${pendingTip(lp, pending, { unite: !!live?.unite, cap, left: live?.left ?? null })} />`}
       <${Tooltip} text=${btn.right.tip} placement="bottom">
         <${CheckBtn} sprite=${btn.right.sprite} cls=${cx('enemybtn', btn.right.grey && 'is-grey')} label=${btn.right.label}
           chev=${btn.right.grey ? null : '▶▶'} disabled=${btn.right.grey && !pen} onClick=${onRight} testid="check-enemy" />

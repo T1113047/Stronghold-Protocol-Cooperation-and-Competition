@@ -164,6 +164,14 @@
 .lp--danger { color: var(--red-premium); }
 .lp--danger .lp__icon { filter: hue-rotate(-140deg) saturate(2.4) brightness(.95); }
 .lp--team { color: var(--mint-glow); }
+/* 2V2: the top bar holds TWO independent bars — the viewer's team pool (big) and the opponent's (red, smaller) */
+.lp--foe { color: #ffab97; }
+.lp--foe .lp__icon { filter: hue-rotate(-115deg) saturate(1.8) brightness(1.05); }
+.teamlp { display: inline-flex; align-items: center; gap: .18rem; }
+.teamlp__one { display: inline-flex; align-items: center; gap: .06rem; }
+.teamlp__tag { font-size: .13rem; letter-spacing: .06em; color: var(--text-lo); }
+.teamlp__one.is-mine .teamlp__tag { color: var(--mint-400); }
+.teamlp__one.is-foe .teamlp__tag { color: #ffab97; }
 /* the running battle's pending loss (LpTower `pending`, user playtest #3 item 2): the number turns red, a −N plate
    pops again on every new leak (keyed), 联防中 while teammates may still save part of it */
 .lp.is-pending .lp__val { color: var(--red-premium); text-shadow: 0 0 .08rem rgba(255, 60, 60, .45); }

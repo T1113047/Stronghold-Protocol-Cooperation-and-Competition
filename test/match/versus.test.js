@@ -234,6 +234,8 @@ describe('versus (2V2) match: team model', () => {
     const teamOf = (r) => m.teamIdOf(m.players.get(r.playerId));
     const opp = pub.players.filter((r) => teamOf(r) === 1);
     assert.ok(opp.length > 0 && opp.every((r) => r.hidden === true), 'opponent rows hidden before R14');
+    // ... but they still carry their TEAM's shared HP pool, so the panel shows a bar on both sides
+    assert.ok(opp.every((r) => Number.isFinite(r.lp) && r.lp > 0), `hidden rows carry their team pool: ${opp.map((r) => r.lp).join('/')}`);
     assert.ok(pub.players.filter((r) => teamOf(r) === 0).every((r) => !r.hidden), 'own rows visible');
     // reached the Final Assault: everything is revealed
     h.drive(() => m.phase === PHASE.FINAL_ASSAULT, { maxSteps: 3e6 });

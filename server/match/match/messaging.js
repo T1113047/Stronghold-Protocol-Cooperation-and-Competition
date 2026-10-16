@@ -76,7 +76,9 @@ export class MatchMessaging {
     const out = {
       ...base, ...own, ...(sp || {}),
       players: base.players.map((row) => (same(row.playerId) ? row : {
-        playerId: row.playerId, seat: row.seat, name: row.name, isBot: row.isBot, team: row.team, connected: row.connected, alive: row.alive, hidden: true,
+        playerId: row.playerId, seat: row.seat, name: row.name, isBot: row.isBot, team: row.team, connected: row.connected, alive: row.alive,
+        // 2V2: the hidden row still carries its TEAM's shared HP pool — the panel's two sides both show a bar
+        lp: this.teamLps ? Math.max(0, this._teamLpOf(row.team)) : row.lp, hidden: true,
       })),
       fields: (base.fields || []).filter((f) => f.players.some(same)),
     };

@@ -87,13 +87,15 @@ export class MatchViews {
           return [t, { disabledBonds: [...new Set([...b.drawn, ...b.staticOff])].sort(), drawnDisabledBonds: b.drawn.slice(), bannedChess: b.banned.slice() }];
         })),
       } : {}),
-      // 2V2 对抗期: the 6 monster groups + each team's submission ('null' = not yet). The opponent's entry is masked
-      // before the reveal (messaging.js _teamPublicView).
+      // 2V2 对抗期: the 6 equal-value monster groups, the round's placement budget + each team's submission ('null' = not
+      // yet). The budget and every card value carry this round's scaling, so they are comparable for both teams. The
+      // opponent's entry is masked before the reveal (messaging.js _teamPublicView).
       ...(this.isVersus && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? {
         confront: {
           active: this.phase === PHASE.CONFRONT,
           round: this.round,
           ratio: this.confrontRatio(),
+          budget: this.confrontBudget(),
           groups: this.confrontGroups().map((g) => g.map((r) => ({ key: r.key, name: r.name, value: r.value }))),
           subs: Object.fromEntries(this.matchTeamIds().map((t) => [t, this.confrontSubs && this.confrontSubs.has(t) ? this.confrontSubs.get(t) : null])),
         },
@@ -122,7 +124,9 @@ export class MatchViews {
         isBot: ps.isBot,
         connected: ps.isBot || (ps.connected && !ps.left),
         alive: ps.alive,
-        lp: Math.max(0, ps.lp),
+        // 2V2: the row carries the TEAM's shared HP pool (both teammates show the same number; the internal ps.lp is
+        // only a split of it); solo/coop keep their own LP.
+        lp: this.teamLps ? Math.max(0, this._teamLpOf(ps.team)) : Math.max(0, ps.lp),
         bandId: ps.bandId,
         shopLevel: ps.shop.level,
         boardCount: ps.deployCount,
@@ -148,6 +152,11 @@ export class MatchViews {
       }),
     };
     if (this.teamLp != null) v.teamLp = Math.max(0, Math.round(this.teamLp));
+    // 2V2: every team's SHARED HP pool (the number both teammates' rows show) — versus only
+    if (this.teamLps) {
+      v.teamLps = {};
+      for (const t of this.matchTeamIds()) v.teamLps[t] = Math.max(0, Math.round(this._teamLpOf(t)));
+    }
     // 最终攻势 / 隐秘核心: when the overtime drain starts (ms epoch; `deadline` is the level's 120 s countdown)
     if ((this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE) && this.overtimeAt) v.overtimeAt = this.overtimeAt;
     if (this.isVersus && this.bossPools) {

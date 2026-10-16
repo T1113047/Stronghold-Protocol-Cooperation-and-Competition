@@ -6,7 +6,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA } from './harness.js';
-import { PHASE, teamOfSeat } from '../../shared/constants.js';
+import { PHASE, teamOfSeat, VERSUS_LOW_LP } from '../../shared/constants.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
 const vsSeats = () => ([
@@ -153,6 +153,50 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus: each team shares ONE HP pool (Σ of its members\' 策略) and dies as a whole', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 91, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.round >= 1 && m.phase !== PHASE.BAND_DRAFT, { maxSteps: 3e6 }), `reached the match (${m.phase})`);
+    const bandSum = (t) => [...m.players.values()].filter((p) => m.teamIdOf(p) === t).reduce((s, p) => s + m.gd.startLp(p.bandId), 0);
+    const pool0 = m.teamHpPool(0);
+    assert.equal(pool0, bandSum(0), "team 0's pool is the sum of its members' band HP");
+    assert.equal(m.teamHpPool(1), bandSum(1), "team 1's pool is the sum of its members' band HP");
+    const pub = h.lastTo('p_0', 'm.public');
+    assert.ok(pub && pub.teamLps, 'm.public carries the per-team pools');
+    assert.equal(pub.teamLps[0], pool0);
+    const rows = pub.players.filter((r) => r.team === 0);
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((r) => r.lp === pool0), 'both teammates\' rows show the shared pool');
+    // damage lands on the POOL, and the members' own lp stay a split of it (Σ = pool, what the invariants expect)
+    m._teamLpLoss(0, 5);
+    assert.equal(m.teamHpPool(0), pool0 - 5, 'the pool took the damage');
+    assert.equal(m.alivePlayers().filter((p) => m.teamIdOf(p) === 0).reduce((s, p) => s + p.lp, 0), pool0 - 5, "the members' lp are a split of the pool");
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: the 寻呼模块 is granted ONCE per team, when its shared pool first drops below 21', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 93, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    h.toPrep(m.contestStartRound);
+    const hasPager = (ps) => [...ps.hand, ...ps.temp].some((p) => p && p.id === 'chess_item_4_01_e_a')
+      || [...ps.board.values()].some((pc) => (pc.items || []).some((it) => it.id === 'chess_item_4_01_e_a'));
+    // team 0 is healthy, team 1 is in trouble: only team 1 takes one
+    m.teamLps.set(0, 60);
+    m.teamLps.set(1, VERSUS_LOW_LP - 1);
+    m._pagerGranted = new Set();
+    m._versusPrepGrant();
+    const t1 = [...m.players.values()].filter((p) => m.teamIdOf(p) === 1);
+    const t0 = [...m.players.values()].filter((p) => m.teamIdOf(p) === 0);
+    assert.ok(t1.every(hasPager), 'the low team took a 寻呼模块');
+    assert.ok(!t0.some(hasPager), 'the healthy team did not');
+    // it is not granted a second time, even while still low
+    m.teamLps.set(1, 1);
+    m._versusPrepGrant();
+    assert.ok(m._pagerGranted.has(1), 'the team is marked as served');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: each team has its own disabled core bonds (3 available)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 51, fake: true }).start();
     const m = h.m;
@@ -207,12 +251,30 @@ describe('versus (2V2) match: team model', () => {
     const groups = m.confrontGroups();
     assert.equal(groups.length, 6, '6 monster groups');
     assert.equal(groups.flat().length, 120, '120 enemies across the groups');
-    const picks = groups[5].slice(0, 3).map((r) => ({ enemyKey: r.key, routeIndex: 0 }));
+    // the whole point of the split: the 6 groups hold the SAME total value, so the choice is never about strength
+    const totals = groups.map((g) => g.reduce((s, r) => s + r.value, 0));
+    assert.ok(Math.max(...totals) / Math.min(...totals) - 1 < 0.01, `group values equal within 1%: ${totals.join('/')}`);
+    // the cap is the round's VALUE BUDGET (not a count): the whole group does not fit, a few monsters do
+    const budget = m.confrontBudget();
+    assert.ok(budget > 0, 'a positive budget');
+    const whole = groups[5].map((x) => ({ enemyKey: x.key, routeIndex: 0 }));
+    assert.ok(m.confrontSpent(whole) > budget, 'the whole group exceeds the contest round budget');
+    assert.ok(m.submitConfront(m.players.get('p_0'), { group: 6, picks: whole }).error, 'an over-budget submission is refused');
+    const picks = [];
+    let left = budget;
+    for (const r of groups[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+      if (r.value > left) continue;
+      left -= r.value;
+      picks.push({ enemyKey: r.key, routeIndex: 0 });
+      if (picks.length >= 3) break;
+    }
+    assert.ok(picks.length > 0, 'at least one monster fits the budget');
+    assert.ok(m.confrontSpent(picks) <= budget, 'the picks stay within the budget');
     const r = m.submitConfront(m.players.get('p_0'), { group: 6, picks });
     assert.equal(r && r.ok, true, JSON.stringify(r));
     assert.equal(m.phase, PHASE.COMBAT, 'combat starts once every team submitted');
     const sub = m.confrontFor(m.players.get('ai_2'));
-    assert.ok(sub && sub.picks.length === 3, "team 1's wave is sabotaged by team 0's 3 picks");
+    assert.ok(sub && sub.picks.length === picks.length, `team 1's wave is sabotaged by team 0's ${picks.length} picks`);
     const subBack = m.confrontFor(m.players.get('p_0'));
     assert.ok(subBack && subBack.picks.length > 0, "team 0's wave is sabotaged by team 1");
     assert.deepEqual(h.logs.error, [], 'no engine errors');

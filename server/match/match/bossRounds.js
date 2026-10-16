@@ -581,12 +581,15 @@ export class MatchBoss {
   _syncTeamLpOf(team) {
     const teamLp = this._teamLpOf(team);
     if (teamLp == null) return;
-    const alive = this.alivePlayers().filter((p) => p.lpAtFinal != null && this.teamIdOf(p) === team);
+    // Weight: the LP the player brought into the merge (the Final Assault sets lpAtFinal); before that — 2V2 shares its
+    // pool from round 1 on — the 策略 HP it started the match with. Σ of the shares stays the pool either way.
+    const weightOf = (p) => Math.max(0, p.lpAtFinal ?? this.gd.startLp(p.bandId));
+    const alive = this.alivePlayers().filter((p) => this.teamIdOf(p) === team);
     if (!alive.length) return;
     const total = Math.max(0, Math.round(teamLp));
-    const base = alive.reduce((s, p) => s + Math.max(0, p.lpAtFinal), 0);
+    const base = alive.reduce((s, p) => s + weightOf(p), 0);
     const rows = alive.map((p) => {
-      const v = base > 0 ? (total * Math.max(0, p.lpAtFinal)) / base : total / alive.length;
+      const v = base > 0 ? (total * weightOf(p)) / base : total / alive.length;
       const n = Math.floor(v + 1e-9);
       return { p, n, frac: v - n };
     });

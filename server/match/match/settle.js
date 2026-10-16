@@ -57,7 +57,10 @@ export class MatchSettle {
       const isLeaker = list.some((pl) => pl.leakers.includes(ps));
       const loss = uniteRan && isLeaker ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
       if (this.uniteResultView) this.uniteResultView.losses[ps.playerId] = loss;
-      ps.lp -= loss;
+      // 2V2: the charge hits the TEAM's shared HP pool (the members' own lp are a split of it, synced below); solo/coop
+      // keep charging the player's own LP.
+      if (this.teamLps) this._teamLpLoss(this.teamIdOf(ps), loss);
+      else ps.lp -= loss;
       ps.stats.lpLost += loss;
       ps.stats.leaks += counted;
       ps.stats.kills += Number(r.killed) || 0;
@@ -105,8 +108,10 @@ export class MatchSettle {
       ps.recompute();
     }
     for (const ps of alive) {
-      if (ps.lp <= 0) {
-        ps.lp = 0;
+      // 2V2: the whole team goes out together when its shared pool runs out (no per-teammate elimination)
+      const drained = this.teamLps ? this._teamLpOf(this.teamIdOf(ps)) <= 0 : ps.lp <= 0;
+      if (drained) {
+        if (!this.teamLps) ps.lp = 0;
         ps.eliminate(this.round);
         this.toast(ps, 'error', '你的目标生命值耗尽，已被淘汰');
         this.tickerText(msg('{name}博士的目标生命值已耗尽', { name: ps.name }), FLOW_TICKER_PRIORITY);

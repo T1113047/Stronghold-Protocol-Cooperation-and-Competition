@@ -35,8 +35,9 @@ export class MatchPrep {
 
   /**
    * 2V2 ('versus') development compensation (design 2026-10-16; 开发日志 §5.2a): from the drawn contest round, every
-   * OTHER round every alive player gains a 小电话 (简易通讯机); a team whose total remaining LP drops below
-   * VERSUS_LOW_LP additionally gains a 寻呼模块 that round (not bound to the every-other rule). Non-versus untouched.
+   * OTHER round every alive player gains a 小电话 (简易通讯机); a team whose SHARED HP pool (m.teamLps) drops below
+   * VERSUS_LOW_LP gains a 寻呼模块 — ONCE per team in the whole match, the teams triggering independently (both may
+   * take it, each only once). Non-versus untouched.
    * [ASSUMED] the grant respects the shared item pool (canGain); exhausted copies are skipped silently.
    */
   _versusPrepGrant() {
@@ -44,16 +45,18 @@ export class MatchPrep {
     const r = this.round;
     const everyOther = r >= this.contestStartRound && (r - this.contestStartRound) % 2 === 0;
     const alive = this.alivePlayers();
-    const lowTeams = new Set();
+    if (!this._pagerGranted) this._pagerGranted = new Set();
+    const granted = new Set();
     for (const t of this.matchTeamIds()) {
-      const lp = alive.filter((p) => this.teamIdOf(p) === t).reduce((s, p) => s + Math.max(0, p.lp), 0);
-      if (lp > 0 && lp < VERSUS_LOW_LP) lowTeams.add(t);
+      if (this._pagerGranted.has(t)) continue;
+      const pool = this.teamHpPool(t);
+      if (pool != null && pool > 0 && pool < VERSUS_LOW_LP) { this._pagerGranted.add(t); granted.add(t); }
     }
-    if (!everyOther && !lowTeams.size) return;
+    if (!everyOther && !granted.size) return;
     const grant = (ps, id) => { if (this.itemPool.canGain(id)) ps.acquireItem(id, { source: 'versus-grant' }); };
     for (const ps of alive) {
       if (everyOther) grant(ps, VERSUS_ITEM_PHONE);
-      if (lowTeams.has(this.teamIdOf(ps))) grant(ps, VERSUS_ITEM_PAGER);
+      if (granted.has(this.teamIdOf(ps))) grant(ps, VERSUS_ITEM_PAGER);
     }
   }
 

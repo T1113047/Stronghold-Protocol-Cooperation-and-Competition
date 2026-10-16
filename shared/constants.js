@@ -45,12 +45,17 @@ export const TEAMS = 2;
  */
 export const VERSUS_ITEM_PHONE = 'chess_item_2_06_e_a';
 export const VERSUS_ITEM_PAGER = 'chess_item_4_01_e_a';
-export const VERSUS_LOW_LP = 11;
 /**
- * 对抗期 tunables (2V2): the per-team decision window (s), the number of monster groups offered, and the most monsters
- * a team may place in one round (a cap; the round's share also caps it).
+ * 2V2: the shared HP pool (m.teamLps = Σ of the two members' 策略 HP) below which a team takes its ONE 寻呼模块 of the
+ * match (prep.js _versusPrepGrant). The pool starts around 44–90, so 21 is a real "in trouble" line.
  */
-export const VERSUS_CONFRONT = Object.freeze({ turnSeconds: 20, groups: 6, maxPicks: 12 });
+export const VERSUS_LOW_LP = 21;
+/**
+ * 对抗期 tunables (2V2): the per-team decision window (s), the number of monster groups offered, and the budget
+ * multiplier — a team may place monsters whose combined VALUE is at most `round's wave value × ratio × budgetMul`
+ * (confront.js confrontBudget). There is no count cap: the budget (and the group's own size) bounds the placement.
+ */
+export const VERSUS_CONFRONT = Object.freeze({ turnSeconds: 20, groups: 6, budgetMul: 2 });
 /**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
  * Non-versus rooms keep the flat, team-less seat model (null).

@@ -1,19 +1,18 @@
 // 对抗期 overlay (2V2, PHASE.CONFRONT): pick one of the 6 monster groups (VERSUS_CONFRONT.groups; each enemy of the pool
-// with its icon, name and value) and place up to `maxPicks` of its monsters in spawn order, each on a gate/route. The
-// confirm sends `g.confront { group, picks }` (server/match/match/confront.js). Only the OWN team's submission is shown
-// (the opponent's is hidden by the m.public isolation until the Final Assault).
+// with its icon, name and value AT THIS ROUND'S SCALING) and place monsters from it in spawn order, each on a gate/route.
+// The cap is a VALUE BUDGET (server confront.js confrontBudget): no count limit, only Σ value ≤ budget. The confirm sends
+// `g.confront { group, picks }`. Only the OWN team's submission is shown (the opponent's is hidden by the m.public
+// isolation until the Final Assault).
 // Texts go through t() (docs/I18N.md).
 import { useEffect, useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, MicroLabel } from '../ui/components.js';
 import { Img, GIcon, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
-import { t, N_ } from '../../../shared/i18n.js';
+import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
-const MAX_PICKS = 12;
 const ROUTE_OF = ['上路', '中路', '下路', '空路'];
-const GROUP_NAMES = [N_('最小威胁'), N_('低威胁'), N_('中低威胁'), N_('中高威胁'), N_('高威胁'), N_('最大威胁')];
 
 /** A small enemy chip: icon + name + value (used in the group cards and the placement panel). */
 function EnemyChip({ m, rec, count, onAdd, disabled }) {
@@ -43,9 +42,15 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
   const mine = myTeam != null && conf.subs ? conf.subs[myTeam] : null;
   const submitted = !!mine;
   const sel = group != null ? groups[group - 1] || [] : [];
-  const maxPicks = Math.min(MAX_PICKS, Math.max(1, Math.round((conf.ratio || 0.1) * 30)));
+  // The placement cap is a VALUE budget (server: confrontBudget) — no count limit, only Σ value ≤ budget. Both teams
+  // get the same budget and the 6 groups hold the same total value, so whichever group you take costs the same.
+  const budget = Math.max(0, Number(conf.budget) || 0);
+  const valOf = (key) => (sel.find((r) => r.key === key) || {}).value || 0;
+  const spent = picks.reduce((s, p) => s + valOf(p.enemyKey), 0);
+  const remaining = Math.max(0, budget - spent);
+  const fits = (rec) => !submitted && rec.value <= remaining;
   const add = (rec) => {
-    if (submitted || picks.length >= maxPicks) return;
+    if (!fits(rec)) return;
     setPicks((p) => [...p, { enemyKey: rec.key, routeIndex: 0 }]);
   };
   const setRoute = (i, r) => setPicks((p) => p.map((x, k) => (k === i ? { ...x, routeIndex: r } : x)));
@@ -66,23 +71,24 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
           <${MicroLabel} tone="mint">CONFRONTATION // ${t('对抗期')}</${MicroLabel}>
           <h2 class="spov__title">${t('选择一组怪物，替换对面本回合 {p}% 的出怪', { p: Math.round((conf.ratio || 0.1) * 100) })}
             <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 队内协商（对手看不到你的选择）', { r: conf.round })}</span></h2>
-          <p class="spov__sub">${submitted ? t('你已提交，等待队伍完成') : t('选择一组怪物 → 点怪加入 → 排出怪顺序与门')}</p>
+          <p class="spov__sub">${submitted ? t('你已提交，等待队伍完成') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）')}</p>
         </div>
         <div class="spov__turn">
-          ${submitted ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已提交')}</span>` : null}
+          ${submitted ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已提交')}</span>`
+            : html`<span class="spov__turntxt">${t('已用价值 {spent}/{budget}', { spent, budget })}</span>`}
           ${!submitted && group != null ? html`<${Button} variant="primary" size="lg" icon="check" loading=${busy}
-            disabled=${picks.length === 0} onClick=${() => onConfirm(group, picks)}>${t('提交（{n}/{max}）', { n: picks.length, max: maxPicks })}<//>` : null}
+            disabled=${picks.length === 0} onClick=${() => onConfirm(group, picks)}>${t('提交（{n} 只 · {spent}/{budget}）', { n: picks.length, spent, budget })}<//>` : null}
         </div>
       </header>
 
       <div class="confov__groups">
         ${groups.map((g, i) => {
-          const vs = g.map((r) => r.value);
+          const total = g.reduce((s, r) => s + r.value, 0);
           const isSel = group === i + 1;
           return html`<button key=${i} type="button" class=${cx('confgroup', isSel && 'is-sel')} disabled=${submitted} onClick=${() => { setGroup(i + 1); setPicks([]); }}>
             <span class="confgroup__head">
-              <b class="confgroup__name">G${i + 1}·${t(GROUP_NAMES[i] || '')}</b>
-              <span class="confgroup__meta num">${g.length} ${t('种')} · ${vs[0]}–${vs[vs.length - 1]}</span>
+              <b class="confgroup__name">G${i + 1}</b>
+              <span class="confgroup__meta num">${g.length} ${t('种')} · ${t('总价值 {v}', { v: total })}</span>
             </span>
             <span class="confgroup__icons">
               ${g.map((r) => html`<span key=${r.key} class="confgroup__ic" title=${`${r.name}（${r.value}）`}><${Img} src=${enemyIconUrl(m, r.key)} fallback=${html`<${GIcon} name="target" />`} /></span>`)}
@@ -93,13 +99,13 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
 
       ${group != null ? html`<div class="confov__body">
         <section class="confov__pool">
-          <h3 class="confov__h">${t('G{n} 的怪物（点击加入）', { n: group })}</h3>
+          <h3 class="confov__h">${t('G{n} 的怪物（点击加入）', { n: group })} <span class="num t-dim">${t('剩余价值 {v}', { v: remaining })}</span></h3>
           <div class="confov__chips">
-            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} disabled=${submitted || picks.length >= maxPicks} onAdd=${add} />`)}
+            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} disabled=${!fits(r)} onAdd=${add} />`)}
           </div>
         </section>
         <section class="confov__placed">
-          <h3 class="confov__h">${t('已放置（出怪顺序）')} <span class="num">${picks.length}/${maxPicks}</span></h3>
+          <h3 class="confov__h">${t('已放置（出怪顺序）')} <span class="num">${picks.length} · ${spent}/${budget}</span></h3>
           ${picks.length ? html`<ol class="confov__list">
             ${picks.map((p, i) => {
               const rec = sel.find((r) => r.key === p.enemyKey) || { key: p.enemyKey, name: p.enemyKey, value: 0 };

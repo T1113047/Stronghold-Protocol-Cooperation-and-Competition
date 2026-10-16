@@ -241,6 +241,8 @@ export class MatchPhases {
       }
       this.markPrivate(ps);
     }
+    // 2V2: every seat now holds a band, so the teams' shared HP pools (Σ of the members' band HP) can be built
+    if (this.isVersus) this.initTeamHp();
     void timeout;
     this.enterBattleCheck();
   }

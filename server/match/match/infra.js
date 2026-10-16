@@ -120,6 +120,29 @@ export class MatchInfra {
   /** The team ids present in this match, sorted (2V2 'versus': [0,1]; solo/coop: [0]). */
   matchTeamIds() { return [...new Set(this.order.map((p) => this.teamIdOf(p)))].sort((a, b) => a - b); }
 
+  /**
+   * 2V2 ('versus'): each team shares ONE HP pool = the sum of its members' chosen 策略 (band) HP (`gd.startLp`). The pool
+   * REPLACES the individual 目标生命值: a team lives and dies as one (which is also what keeps the 对抗期's one-to-one
+   * pairing possible — there is no "one teammate eliminated" state). Built once every seat has a band
+   * (MatchPhases.finishBandDraft); solo/coop never build it and keep their per-player LP untouched.
+   * `m.teamLps` (Map<teamId, hp>) is the pool; the members' own `ps.lp` are kept as a split of it (Σ = the pool, so the
+   * existing readers and invariants hold) — the UI shows the pool itself (m.public.teamLps).
+   */
+  initTeamHp() {
+    if (!this.isVersus) return;
+    this.teamLps = new Map();
+    for (const t of this.matchTeamIds()) {
+      let hp = 0;
+      for (const ps of this.order) if (this.teamIdOf(ps) === t) hp += Math.max(0, this.gd.startLp(ps.bandId));
+      this.teamLps.set(t, hp);
+    }
+    this.teamLp = [...this.teamLps.values()].reduce((s, v) => s + v, 0);
+    this._syncTeamLp();
+  }
+
+  /** A team's shared HP pool (2V2), or null in solo/coop (which keep the per-player LP). */
+  teamHpPool(team) { return this.teamLps ? (this.teamLps.get(team) ?? 0) : null; }
+
   /** [ASSUMED] Touch's initial, match-long team grant survives its holder's elimination/quit; focus alone grants none.
    *  2V2: scoped to the player's own team (solo/coop: the whole roster, as before). */
   teamMedicGranted(ps) { return this.alliesOf(ps).some(p => p.bandId === 'band_amedic'); }

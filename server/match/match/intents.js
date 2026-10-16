@@ -39,7 +39,8 @@ export class MatchIntents {
         ? this.pickPersonalChoice(ps, msg.idx, msg.choiceId)
         : this.pickCard(ps, msg.idx);
       case 'g.ready': return ps.setReady(!!msg.ready);
-      // 2V2 对抗期: a team's intervention against the opponent's next battle (confront.js)
+      // 2V2 对抗期: step 1 the target this seat attacks, step 2 its monsters (confront.js)
+      case 'g.confrontTarget': return this.submitConfrontTarget(ps, msg);
       case 'g.confront': return this.submitConfront(ps, msg);
       case 'g.emote': return this.emote(ps, msg.id);
       // playerId: the player tapped (a shared field names two) — the watch preference (item 56)

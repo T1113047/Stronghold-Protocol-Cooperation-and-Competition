@@ -298,6 +298,8 @@ export class Match {
     this.rngDraft = rng('draft');
     this.rngBots = rng('bots');
     this.rngMeta = rng('meta');
+    // 2V2 对抗期: the random drop of the opponent's originals (its own stream, so no other draw shifts)
+    this.rngConfront = rng('confront');
 
     /**
      * 2V2 ('versus'): the round the Competition starts — drawn once per match from R4/R5/R6 with the seeded rng
@@ -386,7 +388,7 @@ export class Match {
     this._infoAdvanceTimer = null;
     this.setupRevision = 0;
     this.setupVote = null;
-    /** 2V2: the 对抗期 submissions of the current round (Map<teamId, sub>); `confrontSubs` collects, `confront` is applied. */
+    /** 2V2: the 对抗期 submissions of the current round (Map<attacker playerId, sub>); `confrontSubs` collects, `confront` is applied. */
     this.confrontSubs = null;
     this.confront = null;
     /** 2V2: one pending setup-reroll vote per team (Map<teamId, vote>); null in solo/coop (the scalar setupVote). */

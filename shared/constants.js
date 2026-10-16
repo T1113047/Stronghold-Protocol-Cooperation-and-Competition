@@ -51,11 +51,19 @@ export const VERSUS_ITEM_PAGER = 'chess_item_4_01_e_a';
  */
 export const VERSUS_LOW_LP = 21;
 /**
- * 对抗期 tunables (2V2): the per-team decision window (s), the number of monster groups offered, and the budget
- * multiplier — a team may place monsters whose combined VALUE is at most `round's wave value × ratio × budgetMul`
- * (confront.js confrontBudget). There is no count cap: the budget (and the group's own size) bounds the placement.
+ * 对抗期 tunables (2V2): the target-selection window (s; ends early once every alive player holds a target), the
+ * monster window (s; FIXED — submitting early does not end it), the number of monster groups offered, the insertion
+ * positions (share of the round's monster count: 25 / 50 / 75 %) and the budget multiplier — a player may place
+ * monsters whose combined VALUE is at most `round's wave value × ratio × budgetMul` (confront.js confrontBudget),
+ * PER PLAYER. There is no count cap: the budget (and the group's own size) bounds the placement.
  */
-export const VERSUS_CONFRONT = Object.freeze({ turnSeconds: 20, groups: 6, budgetMul: 2 });
+export const VERSUS_CONFRONT = Object.freeze({
+  targetSeconds: 10,
+  monsterSeconds: 30,
+  groups: 6,
+  positions: Object.freeze(['front', 'mid', 'back']),
+  budgetMul: 2,
+});
 /**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
  * Non-versus rooms keep the flat, team-less seat model (null).

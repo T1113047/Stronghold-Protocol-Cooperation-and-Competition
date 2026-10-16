@@ -248,35 +248,48 @@ describe('versus (2V2) match: team model', () => {
     const ok = h.drive(() => m.phase === PHASE.CONFRONT, { maxSteps: 3e6 });
     assert.ok(ok && m.phase === PHASE.CONFRONT, `reached the 对抗期 (phase ${m.phase} R${m.round})`);
     assert.equal(m.round, m.contestStartRound, 'at the contest round');
+    assert.equal(m.confrontStage, 'target', 'step 1 (who do I attack) comes first');
     const groups = m.confrontGroups();
     assert.equal(groups.length, 6, '6 monster groups');
     assert.equal(groups.flat().length, 120, '120 enemies across the groups');
     // the whole point of the split: the 6 groups hold the SAME total value, so the choice is never about strength
     const totals = groups.map((g) => g.reduce((s, r) => s + r.value, 0));
     assert.ok(Math.max(...totals) / Math.min(...totals) - 1 < 0.01, `group values equal within 1%: ${totals.join('/')}`);
-    // the cap is the round's VALUE BUDGET (not a count): the whole group does not fit, a few monsters do
+    // step 1: the human names one opponent; the teammate is given the other (first come, first served)
+    const me = m.players.get('p_0');
+    const opp = [...m.players.values()].filter((p) => m.teamIdOf(p) === 1).map((p) => p.playerId);
+    assert.equal(opp.length, 2);
+    assert.equal(m.submitConfrontTarget(me, { targetPlayerId: opp[0] }).ok, true);
+    assert.equal(m.confrontStage, 'monster', 'both sides paired → step 2');
+    assert.equal(m.confrontTargets.get('p_0'), opp[0]);
+    assert.equal(m.confrontTargets.get('ai_1'), opp[1], 'the teammate got the opponent that was left');
+    // step 2: the cap is the round's per-player VALUE BUDGET (not a count): the whole group does not fit, a few monsters do
     const budget = m.confrontBudget();
     assert.ok(budget > 0, 'a positive budget');
-    const whole = groups[5].map((x) => ({ enemyKey: x.key, routeIndex: 0 }));
+    const whole = groups[5].map((x) => ({ enemyKey: x.key, gate: 'lower' }));
     assert.ok(m.confrontSpent(whole) > budget, 'the whole group exceeds the contest round budget');
-    assert.ok(m.submitConfront(m.players.get('p_0'), { group: 6, picks: whole }).error, 'an over-budget submission is refused');
+    assert.ok(m.submitConfront(me, { group: 6, position: 'mid', picks: whole }).error, 'an over-budget submission is refused');
     const picks = [];
     let left = budget;
     for (const r of groups[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
       if (r.value > left) continue;
       left -= r.value;
-      picks.push({ enemyKey: r.key, routeIndex: 0 });
+      picks.push({ enemyKey: r.key, gate: 'lower' });
       if (picks.length >= 3) break;
     }
     assert.ok(picks.length > 0, 'at least one monster fits the budget');
     assert.ok(m.confrontSpent(picks) <= budget, 'the picks stay within the budget');
-    const r = m.submitConfront(m.players.get('p_0'), { group: 6, picks });
+    const r = m.submitConfront(me, { group: 6, position: 'mid', picks });
     assert.equal(r && r.ok, true, JSON.stringify(r));
-    assert.equal(m.phase, PHASE.COMBAT, 'combat starts once every team submitted');
-    const sub = m.confrontFor(m.players.get('ai_2'));
-    assert.ok(sub && sub.picks.length === picks.length, `team 1's wave is sabotaged by team 0's ${picks.length} picks`);
-    const subBack = m.confrontFor(m.players.get('p_0'));
-    assert.ok(subBack && subBack.picks.length > 0, "team 0's wave is sabotaged by team 1");
+    // the window is FIXED: submitting early does not end step 2
+    assert.equal(m.phase, PHASE.CONFRONT, 'the sides stay in step until step 2 runs out');
+    assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'combat starts once the window is up');
+    // an intervention lands on ITS TARGET's wave only
+    const hit = m.confrontFor(m.players.get(opp[0]));
+    assert.ok(Array.isArray(hit) && hit.length === 1 && hit[0].picks.length === picks.length, "team 0's set lands on its own target");
+    assert.ok(hit[0].picks.every((p) => p.enemyKey && (p.gate === 'upper' || p.gate === 'lower')), 'every placed monster carries a gate');
+    const other = m.confrontFor(m.players.get(opp[1]));
+    assert.ok(Array.isArray(other) && other.every((s) => s.target === opp[1]), "the other target only takes its own attacker's set");
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 

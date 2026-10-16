@@ -87,19 +87,26 @@ export class MatchViews {
           return [t, { disabledBonds: [...new Set([...b.drawn, ...b.staticOff])].sort(), drawnDisabledBonds: b.drawn.slice(), bannedChess: b.banned.slice() }];
         })),
       } : {}),
-      // 2V2 对抗期: the 6 equal-value monster groups, the round's placement budget + each team's submission ('null' = not
-      // yet). The budget and every card value carry this round's scaling, so they are comparable for both teams. The
-      // opponent's entry is masked before the reveal (messaging.js _teamPublicView).
-      ...(this.isVersus && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? {
-        confront: {
-          active: this.phase === PHASE.CONFRONT,
-          round: this.round,
-          ratio: this.confrontRatio(),
-          budget: this.confrontBudget(),
-          groups: this.confrontGroups().map((g) => g.map((r) => ({ key: r.key, name: r.name, value: r.value }))),
-          subs: Object.fromEntries(this.matchTeamIds().map((t) => [t, this.confrontSubs && this.confrontSubs.has(t) ? this.confrontSubs.get(t) : null])),
-        },
-      } : {}),
+      // 2V2 对抗期: the 6 equal-value monster groups, the round's per-player budget, who targets whom and each player's
+      // submission. The budget and every card value carry this round's scaling. The view carries the OWN TEAM's entries
+      // only — the opponent's are masked by messaging.js _teamPublicView (the panel shows them as '?').
+      ...(this.isVersus && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? (() => {
+        const src = this.confrontSubs && this.confrontSubs.size ? this.confrontSubs : (this.confront || new Map());
+        const subs = {};
+        for (const [pid, s] of src) subs[pid] = s ? { group: s.group, position: s.position || null, picks: s.picks || [], target: s.target || null } : null;
+        return {
+          confront: {
+            active: this.phase === PHASE.CONFRONT,
+            stage: this.phase === PHASE.CONFRONT ? (this.confrontStage || 'target') : null,
+            round: this.round,
+            ratio: this.confrontRatio(),
+            budget: this.confrontBudget(),
+            targets: this.confrontTargets ? Object.fromEntries(this.confrontTargets) : {},
+            groups: this.confrontGroups().map((g) => g.map((r) => ({ key: r.key, name: r.name, value: r.value }))),
+            subs,
+          },
+        };
+      })() : {}),
       factions: this.factions.slice(),
       disabledBonds: [...new Set([...this.disabledBonds, ...this.staticInactiveBonds])].sort(),
       drawnDisabledBonds: this.disabledBonds.slice(),

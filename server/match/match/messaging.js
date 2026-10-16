@@ -89,8 +89,14 @@ export class MatchMessaging {
         picks: Object.fromEntries(Object.entries(out.draft.picks).filter(([pid]) => same(pid))),
         skipsLeft: Object.fromEntries(Object.entries(out.draft.skipsLeft || {}).filter(([pid]) => same(pid))) };
     }
-    if (out.confront && out.confront.subs) {
-      out.confront = { ...out.confront, subs: out.confront.subs[team] != null ? { [team]: out.confront.subs[team] } : {} };
+    if (out.confront) {
+      // 2V2 对抗期: only the OWN team's targeting and submissions — who the opponents aim at stays hidden
+      const keep = (pid) => this.teamIdOf(this.players.get(pid)) === team;
+      const targets = {};
+      for (const [pid, t] of Object.entries(out.confront.targets || {})) if (keep(pid)) targets[pid] = t;
+      const subs = {};
+      for (const [pid, s] of Object.entries(out.confront.subs || {})) if (keep(pid)) subs[pid] = s;
+      out.confront = { ...out.confront, targets, subs };
     }
     return out;
   }

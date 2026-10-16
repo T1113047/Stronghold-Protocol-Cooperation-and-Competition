@@ -1,18 +1,25 @@
-// 对抗期 overlay (2V2, PHASE.CONFRONT): pick one of the 6 monster groups (VERSUS_CONFRONT.groups; each enemy of the pool
-// with its icon, name and value AT THIS ROUND'S SCALING) and place monsters from it in spawn order, each on a gate/route.
-// The cap is a VALUE BUDGET (server confront.js confrontBudget): no count limit, only Σ value ≤ budget. The confirm sends
-// `g.confront { group, picks }`. Only the OWN team's submission is shown (the opponent's is hidden by the m.public
-// isolation until the Final Assault).
+// 对抗期 overlay (2V2, PHASE.CONFRONT) — two steps, both sides in step:
+//   step 1 ('target'): pick the OPPONENT this seat attacks. The panel shows the opponents as '?' with their P number and
+//     their team's colour — no name, no avatar. Inside a team it is first come, first served (the server hands the
+//     teammate whatever is left).
+//   step 2 ('monster'): fill this seat's VALUE BUDGET (server confront.js confrontBudget — PER PLAYER, no count limit)
+//     with monsters of ONE of the 6 equal-value groups, each on a gate (上路 'upper' / 下路 'lower'), all inserted
+//     together at one position of the wave (靠前/靠中/靠后 = 25/50/75 % of the round's monster count). Submitting early is
+//     fine; the step always runs its window out.
 // Texts go through t() (docs/I18N.md).
 import { useEffect, useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, MicroLabel } from '../ui/components.js';
-import { Img, GIcon, useGameData } from '../ui/gameComponents.js';
+import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
 import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
-const ROUTE_OF = ['上路', '中路', '下路', '空路'];
+const GATES = ['upper', 'lower'];
+const POSITIONS = [['front', '靠前'], ['mid', '靠中'], ['back', '靠后']];
+
+/** P1 / P2 … of a player row (the seat number) — how the panel tells hidden opponents apart. */
+const pNo = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '');
 
 /** A small enemy chip: icon + name + value (used in the group cards and the placement panel). */
 function EnemyChip({ m, rec, count, onAdd, disabled }) {
@@ -26,34 +33,36 @@ function EnemyChip({ m, rec, count, onAdd, disabled }) {
 }
 
 /**
- * @param {{ pub:any, busy?:boolean, onConfirm:(group:number, picks:object[])=>void }} props
+ * @param {{ pub:any, busy?:boolean, onTarget:(targetPlayerId:string)=>void, onConfirm:(group:number, position:string, picks:object[])=>void }} props
  */
-export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
+export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const gd = useGameData();
   const myId = useStore((s) => s.me.playerId);
   const conf = pub && pub.confront;
   const [group, setGroup] = useState(null);
-  const [picks, setPicks] = useState([]); // [{ enemyKey, routeIndex }]
-  useEffect(() => { setGroup(null); setPicks([]); }, [conf && conf.round]);
+  const [picks, setPicks] = useState([]); // [{ enemyKey, gate }]
+  const [position, setPosition] = useState('mid');
+  useEffect(() => { setGroup(null); setPicks([]); setPosition('mid'); }, [conf && conf.round]);
   if (!conf || !conf.active) return null;
   const m = gd.m;
   const groups = Array.isArray(conf.groups) ? conf.groups : [];
-  const myTeam = (pub.players || []).find((p) => p.playerId === myId)?.team ?? null;
-  const mine = myTeam != null && conf.subs ? conf.subs[myTeam] : null;
-  const submitted = !!mine;
+  const players = pub.players || [];
+  const me = players.find((p) => p.playerId === myId) || null;
+  const myTeam = me ? me.team : null;
+  const mates = players.filter((p) => p.team != null && p.team === myTeam);
+  const foes = players.filter((p) => p.team != null && myTeam != null && p.team !== myTeam);
+  const targets = conf.targets || {};
+  const myTarget = targets[myId] || null;
+  const stage = conf.stage || 'target';
   const sel = group != null ? groups[group - 1] || [] : [];
-  // The placement cap is a VALUE budget (server: confrontBudget) — no count limit, only Σ value ≤ budget. Both teams
-  // get the same budget and the 6 groups hold the same total value, so whichever group you take costs the same.
+  // step 2: the placement cap is this seat's VALUE budget — no count limit, only Σ value ≤ budget
   const budget = Math.max(0, Number(conf.budget) || 0);
   const valOf = (key) => (sel.find((r) => r.key === key) || {}).value || 0;
   const spent = picks.reduce((s, p) => s + valOf(p.enemyKey), 0);
   const remaining = Math.max(0, budget - spent);
-  const fits = (rec) => !submitted && rec.value <= remaining;
-  const add = (rec) => {
-    if (!fits(rec)) return;
-    setPicks((p) => [...p, { enemyKey: rec.key, routeIndex: 0 }]);
-  };
-  const setRoute = (i, r) => setPicks((p) => p.map((x, k) => (k === i ? { ...x, routeIndex: r } : x)));
+  const fits = (rec) => !busy && rec.value <= remaining;
+  const add = (rec) => { if (fits(rec)) setPicks((p) => [...p, { enemyKey: rec.key, gate: 'lower' }]); };
+  const setGate = (i, g) => setPicks((p) => p.map((x, k) => (k === i ? { ...x, gate: g } : x)));
   const remove = (i) => setPicks((p) => p.filter((_, k) => k !== i));
   const move = (i, d) => setPicks((p) => {
     const j = i + d;
@@ -62,6 +71,9 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
     [c[i], c[j]] = [c[j], c[i]];
     return c;
   });
+  const mine = conf.subs ? conf.subs[myId] : null;
+  const submitted = !!mine;
+  const foesPicked = mates.every((p) => targets[p.playerId]);
 
   return html`<div class="spov confov" role="dialog" aria-label=${t('对抗期')}>
     <div class="spov__veil" aria-hidden="true"></div>
@@ -69,18 +81,42 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
       <header class="spov__head">
         <div class="spov__titles">
           <${MicroLabel} tone="mint">CONFRONTATION // ${t('对抗期')}</${MicroLabel}>
-          <h2 class="spov__title">${t('选择一组怪物，替换对面本回合 {p}% 的出怪', { p: Math.round((conf.ratio || 0.1) * 100) })}
-            <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 队内协商（对手看不到你的选择）', { r: conf.round })}</span></h2>
-          <p class="spov__sub">${submitted ? t('你已提交，等待队伍完成') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）')}</p>
+          ${stage === 'target'
+            ? html`<h2 class="spov__title">${t('选择你要针对的对手')}
+                <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 对手以 ? 显示，只看编号', { r: conf.round })}</span></h2>`
+            : html`<h2 class="spov__title">${t('为 {p} 定制怪物', { p: myTarget ? pNo(foes.find((f) => f.playerId === myTarget)) || '?' : '?' })}
+                <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 你的怪只会出现在这个对手的波次', { r: conf.round })}</span></h2>`}
+          <p class="spov__sub">${stage === 'target'
+            ? (myTarget ? t('已锁定目标，等待队友与对手') : t('点击一个 ? 头像框锁定你的目标'))
+            : (submitted ? t('你已提交，等待时间走完') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）'))}</p>
         </div>
         <div class="spov__turn">
-          ${submitted ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已提交')}</span>`
-            : html`<span class="spov__turntxt">${t('已用价值 {spent}/{budget}', { spent, budget })}</span>`}
-          ${!submitted && group != null ? html`<${Button} variant="primary" size="lg" icon="check" loading=${busy}
-            disabled=${picks.length === 0} onClick=${() => onConfirm(group, picks)}>${t('提交（{n} 只 · {spent}/{budget}）', { n: picks.length, spent, budget })}<//>` : null}
+          ${stage === 'monster'
+            ? (submitted
+              ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已提交')}</span>`
+              : html`<span class="spov__turntxt">${t('已用价值 {spent}/{budget}', { spent, budget })}</span>`)
+            : null}
+          ${stage === 'monster' && !submitted && group != null ? html`<${Button} variant="primary" size="lg" icon="check" loading=${busy}
+            disabled=${picks.length === 0} onClick=${() => onConfirm(group, position, picks)}>${t('提交（{n} 只 · {spent}/{budget}）', { n: picks.length, spent, budget })}<//>` : null}
         </div>
       </header>
 
+      ${stage === 'target' ? html`<div class="confov__targets">
+        <div class="confov__foes">
+          ${foes.map((f) => html`<button key=${f.playerId} type="button" class=${cx('conffoe', `conffoe--${f.team === 0 ? 'blue' : 'red'}`, myTarget === f.playerId && 'is-sel')}
+            disabled=${!!myTarget || busy} onClick=${() => onTarget(f.playerId)}>
+            <span class="conffoe__q">?</span>
+            <span class="conffoe__p num">${pNo(f)}</span>
+          </button>`)}
+        </div>
+        <div class="confov__pairs">
+          ${mates.map((p) => html`<span key=${p.playerId} class=${cx('confpair', p.playerId === myId && 'is-self')}>
+            <b class="num">${pNo(p)}</b>
+            <span class="confpair__state">${targets[p.playerId] ? t('已选择') : t('未选择')}</span>
+          </span>`)}
+        </div>
+        <p class="confov__hint t-dim">${foesPicked ? t('双方都选好了，马上开始定制怪物') : t('对手被随机分配：先选的先得，队友自动拿剩下的那一个')}</p>
+      </div>` : html`
       <div class="confov__groups">
         ${groups.map((g, i) => {
           const total = g.reduce((s, r) => s + r.value, 0);
@@ -101,7 +137,7 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
         <section class="confov__pool">
           <h3 class="confov__h">${t('G{n} 的怪物（点击加入）', { n: group })} <span class="num t-dim">${t('剩余价值 {v}', { v: remaining })}</span></h3>
           <div class="confov__chips">
-            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} disabled=${!fits(r)} onAdd=${add} />`)}
+            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} disabled=${submitted || !fits(r)} onAdd=${add} />`)}
           </div>
         </section>
         <section class="confov__placed">
@@ -113,8 +149,8 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
                 <span class="confrow__idx num">${i + 1}</span>
                 <span class="confrow__icon"><${Img} src=${enemyIconUrl(m, rec.key)} fallback=${html`<${GIcon} name="target" />`} /></span>
                 <span class="confrow__name">${rec.name}</span>
-                <span class="confrow__route">${ROUTE_OF.map((rn, r) => html`<button key=${r} type="button" class=${cx('confrow__gate', p.routeIndex === r && 'is-on')}
-                  disabled=${submitted} onClick=${() => setRoute(i, r)} title=${t('从{route}出', { route: t(rn) })}>${t(rn)}</button>`)}</span>
+                <span class="confrow__route">${GATES.map((g) => html`<button key=${g} type="button" class=${cx('confrow__gate', p.gate === g && 'is-on')}
+                  disabled=${submitted} onClick=${() => setGate(i, g)} title=${t('从{route}出', { route: t(g === 'upper' ? '上路' : '下路') })}>${t(g === 'upper' ? '上路' : '下路')}</button>`)}</span>
                 <span class="confrow__order">
                   <button type="button" disabled=${submitted || i === 0} onClick=${() => move(i, -1)} aria-label=${t('上移')}><${Icon} name="chevronUp" /></button>
                   <button type="button" disabled=${submitted || i === picks.length - 1} onClick=${() => move(i, 1)} aria-label=${t('下移')}><${Icon} name="chevronDown" /></button>
@@ -123,8 +159,63 @@ export function ConfrontOverlay({ pub, busy = false, onConfirm }) {
               </li>`;
             })}
           </ol>` : html`<p class="confov__empty t-dim">${t('还没有放置怪物')}</p>`}
+          <h3 class="confov__h">${t('出怪位置')}</h3>
+          <div class="confpos">
+            ${POSITIONS.map(([id, label]) => html`<button key=${id} type="button" class=${cx('confpos__opt', position === id && 'is-on')}
+              disabled=${submitted} onClick=${() => setPosition(id)}>${t(label)}<span class="confpos__pct num">${id === 'front' ? '25%' : id === 'mid' ? '50%' : '75%'}</span></button>`)}
+          </div>
         </section>
       </div>` : html`<p class="confov__hint t-dim">${t('先选择上面的一个怪物组')}</p>`}
+      `}
+    </div>
+  </div>`;
+}
+
+/**
+ * The clash: once both sides have locked their interventions the pairs hit each other on screen — the own team's
+ * attacker (avatar + P number) against the opponent it aimed at (a '?' frame, P number only) with the monsters it
+ * throws. Display only: it fades out by itself and never blocks the battle that starts behind it.
+ * @param {{ pub:any }} props
+ */
+export function ConfrontClash({ pub }) {
+  const gd = useGameData();
+  const myId = useStore((s) => s.me.playerId);
+  const conf = pub && pub.confront;
+  const [shown, setShown] = useState(true);
+  const round = conf && conf.round;
+  useEffect(() => {
+    setShown(true);
+    const h = setTimeout(() => setShown(false), 2800);
+    return () => clearTimeout(h);
+  }, [round]);
+  if (!conf || conf.active || !conf.subs || !shown) return null;
+  const players = pub.players || [];
+  const me = players.find((p) => p.playerId === myId) || null;
+  const myTeam = me ? me.team : null;
+  const mates = players.filter((p) => p.team != null && p.team === myTeam);
+  const rows = mates.map((p) => ({ attacker: p, sub: conf.subs[p.playerId] })).filter((r) => r.sub && r.sub.target && (r.sub.picks || []).length);
+  if (!rows.length) return null;
+  const side = (p) => (p && p.team === 1 ? 'red' : 'blue');
+  const pNoOf = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '?');
+  return html`<div class="confclash" aria-hidden="true">
+    <div class="confclash__inner">
+      ${rows.map((r) => {
+        const foe = players.find((p) => p.playerId === r.sub.target) || null;
+        return html`<div key=${r.attacker.playerId} class="confclash__row">
+          <span class=${cx('confclash__side', `confclash__side--${side(r.attacker)}`)}>
+            <${PlayerAvatar} player=${r.attacker} size="sm" />
+            <span class="confclash__p num">${pNoOf(r.attacker)}</span>
+          </span>
+          <span class="confclash__mid">
+            ${(r.sub.picks || []).slice(0, 8).map((pk, i) => html`<${Img} key=${`${pk.enemyKey}:${i}`} src=${enemyIconUrl(gd.m, pk.enemyKey)} fallback=${html`<${GIcon} name="target" />`} />`)}
+            <span class="confclash__vs">✕</span>
+          </span>
+          <span class=${cx('confclash__side', `confclash__side--${side(foe)}`)}>
+            <span class="confclash__q">?</span>
+            <span class="confclash__p num">${pNoOf(foe)}</span>
+          </span>
+        </div>`;
+      })}
     </div>
   </div>`;
 }

@@ -440,7 +440,9 @@ export const C2S = {
   // 2V2 对抗期 (confront.js): the team's intervention — one of VERSUS_CONFRONT.groups monster groups and the placed
   // monsters in spawn order ({ enemyKey, routeIndex }). The cap is the round's VALUE budget, not a count: the list may
   // hold at most a whole group (20).
-  'g.confront': { group: (v) => isInt(v, 1, 6), picks: (v) => isList(v, 20, (p) => isPlain(p) && isId(p.enemyKey) && (p.routeIndex === undefined || isInt(p.routeIndex, 0, 8))) },
+  'g.confront': { group: (v) => isInt(v, 1, 6), position: (v) => typeof v === 'string' && ['front', 'mid', 'back'].includes(v), picks: (v) => isList(v, 20, (p) => isPlain(p) && isId(p.enemyKey) && (p.gate === undefined || p.gate === 'upper' || p.gate === 'lower')) },
+  // 2V2 对抗期 step 1: the opposing player this seat attacks this round (first come, first served inside the team)
+  'g.confrontTarget': { targetPlayerId: isId },
   'g.emote': { id: (v) => EMOTES.includes(v) },
   // playerId: the player tapped in the team panel (a 联防 / boss pair field shows two) — what an eliminated viewer or a
   // spectator seat follows from then on (Match.watchPref; community report of 2026-10-06, item 56)

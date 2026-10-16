@@ -80,7 +80,7 @@ import { ShopBar } from '../ui/shopBar.js';
 import { DetailPanel, resolveDetail } from '../ui/detailPanel.js';
 import { RewardOverlay } from '../ui/rewardOverlay.js';
 import { ChoiceOverlay } from '../ui/choiceOverlay.js';
-import { ConfrontOverlay } from '../ui/confrontOverlay.js';
+import { ConfrontOverlay, ConfrontClash } from '../ui/confrontOverlay.js';
 import { EnemyDrawer } from '../ui/enemyDrawer.js';
 import { Ticker } from '../ui/ticker.js';
 import { EmoteWheel } from '../ui/emotes.js';
@@ -1551,7 +1551,10 @@ function MatchScreen() {
       }} />` : null}
 
     ${pub?.confront?.active ? html`<${ConfrontOverlay} pub=${pub} busy=${confBusy}
-      onConfirm=${async (group, picks) => { setConfBusy(true); try { await actions.confront(group, picks); } finally { setConfBusy(false); } }} />` : null}
+      onTarget=${async (targetPlayerId) => { setConfBusy(true); try { await actions.confrontTarget(targetPlayerId); } finally { setConfBusy(false); } }}
+      onConfirm=${async (group, position, picks) => { setConfBusy(true); try { await actions.confront(group, position, picks); } finally { setConfBusy(false); } }} />` : null}
+
+    ${pub?.confront && !pub.confront.active ? html`<${ConfrontClash} pub=${pub} />` : null}
 
     ${banner ? html`<${PhaseBanner} key=${banner.key} mode="overlay" title=${banner.title} sub=${banner.sub} micro=${banner.micro}
       tone=${banner.tone} duration=${banner.duration || 1500} onDone=${() => setBanner(null)} />` : null}

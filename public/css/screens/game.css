@@ -300,10 +300,18 @@
 }
 .team__btn:hover { transform: translateX(.03rem); }
 .team__seat {
-  position: absolute; left: -.02rem; top: -.04rem; font-size: .11rem; padding: 0 .04rem; line-height: 1.3;
+  position: absolute; right: -.02rem; bottom: -.04rem; font-size: .11rem; padding: 0 .04rem; line-height: 1.3;
   background: rgba(8, 11, 10, .9); color: var(--text-lo); border: 1px solid var(--line-2);
 }
-.team__ai { position: absolute; right: -.04rem; bottom: -.04rem; font-family: var(--font-num); font-size: .11rem; font-weight: 700; padding: 0 .04rem; background: #a9c3d8; color: #0b1520; }
+.team__ai { position: absolute; left: -.04rem; bottom: -.04rem; font-family: var(--font-num); font-size: .11rem; font-weight: 700; padding: 0 .04rem; background: #a9c3d8; color: #0b1520; }
+/* 2V2 ('versus'): the frame and the P badge take the TEAM's colour (blue = team 0, red = team 1); a hidden opponent row
+   shows '?' in place of the avatar — its number and colour are all the client knows. */
+.team__row.is-t0 .pavatar { box-shadow: 0 0 0 2px #4aa3ff, 0 0 .16rem rgba(74, 163, 255, .4); }
+.team__row.is-t1 .pavatar { box-shadow: 0 0 0 2px #ff6a4a, 0 0 .16rem rgba(255, 106, 74, .4); }
+.team__row.is-t0 .team__seat { color: #8cc6ff; border-color: #3d78c4; }
+.team__row.is-t1 .team__seat { color: #ffab97; border-color: #c4583d; }
+.pavatar--foe { display: grid; place-items: center; font-size: .3rem; font-weight: 700; color: var(--text-lo); background: rgba(8, 11, 10, .85); }
+.team__row.is-foe .team__name { color: var(--text-lo); }
 .team__you { position: absolute; right: -.08rem; top: -.08rem; width: .22rem; height: .22rem; display: grid; place-items: center; background: var(--mint-500); color: var(--text-on-mint); clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%); }
 .team__you .icon { width: .14rem; height: .14rem; }
 .team__info { display: flex; flex-direction: column; gap: .02rem; min-width: 0; padding: .04rem .12rem .04rem .06rem; background: linear-gradient(90deg, rgba(8, 11, 10, .82), rgba(8, 11, 10, 0)); }

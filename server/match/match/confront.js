@@ -1,17 +1,26 @@
 // server/match/match/confront.js — Match methods: the 2V2 对抗期 (PHASE.CONFRONT). From the drawn contest round on, after
-// each side's prep, each TEAM submits ONE intervention against the OPPONENT team's next normal battle.
+// each side's prep, every ALIVE player intervenes once, against ONE opposing player:
 //
-// It picks one of VERSUS_CONFRONT.groups monster groups and places monsters from it (enemy type + gate/route, in spawn
-// order). What limits the placement is NOT a count but the round's VALUE BUDGET (confrontBudget): the round's own wave
-// value × the 10→50 % share × VERSUS_CONFRONT.budgetMul. Both teams face the same (synced) wave, so both get the same
-// budget, and the 6 groups are built to hold the SAME TOTAL VALUE (`equalValueGroups`) — whichever group a team takes and
-// whichever monsters it picks, spending the budget costs the same. A monster's cost and the wave's value are the same
-// unit: the value formula carries the round's hp/atk scaling (confrontValue), which is what the client shows on a card.
-// The placed monsters REPLACE originals of the opponent's wave worth `ratio × the wave value` (dropped from the tail) —
-// the wave ends up harder by that share. The two teams submit independently and hide their picks from each other (the
-// m.public isolation of step 3b-3 masks the opponent's `confront` entry). Installed on Match.prototype like the other
-// method containers.
+//   step 1 (targets, VERSUS_CONFRONT.targetSeconds): each player names the opponent they attack. Inside a team it is
+//     first come, first served — whoever submits first picks, and the teammate is given the opponent that is left (A
+//     takes C, B gets D), so the two teams are paired one-to-one and every player both attacks and is attacked. The step
+//     ends once every alive player holds a target (both sides — a side that finished early waits) or its window runs out.
+//   step 2 (monsters, VERSUS_CONFRONT.monsterSeconds): each player fills their own VALUE BUDGET with monsters of ONE of
+//     the 6 groups, each on a gate (上路 'upper' / 下路 'lower') and all inserted at one place in the wave (position:
+//     front / mid / back = 25 / 50 / 75 % of the round's monster count). Submitting early is fine; the phase NEVER ends
+//     before the window is up (the sides stay in step).
+//
+// The budget (confrontBudget) = the round's own wave value × the 10→50 % share × VERSUS_CONFRONT.budgetMul, per PLAYER
+// (each counts on its own) — both teams face the same (synced) wave, so both get the same number, and the 6 groups hold
+// the same total value (equalValueGroups), so the choice is never about raw strength. A monster's cost and the wave's
+// value are one unit: the formula carries the round's hp/atk scaling (confrontValue).
+//
+// Applying: the placed monsters of an intervention land on ITS TARGET's wave only (confrontFor), replacing originals
+// worth `share × the wave value` picked at random (within 2 % of that value), inserted at the chosen position. The
+// opponent never sees who is aiming at whom (m.public isolation) — the panel shows the opponents as '?'.
+// Installed on Match.prototype like the other method containers.
 import { PHASE, ERR, VERSUS_CONFRONT } from '../../../shared/constants.js';
+import { gateOf, roundMods } from '../waves.js';
 import { OK, fail } from './common.js';
 
 /**
@@ -55,7 +64,6 @@ export function equalValueGroups(rows, G) {
     buckets[0].rows.push(r);
     buckets[0].sum += r.value;
   }
-  // display order: the cheapest bucket first (ties by the first key), so G1..G6 stay stable across rounds
   buckets.sort((x, y) => x.sum - y.sum || String(x.rows[0].key).localeCompare(String(y.rows[0].key)));
   return buckets.map((b) => b.rows);
 }
@@ -94,23 +102,27 @@ export class MatchConfront {
     return this._confrontGroups;
   }
 
-  /**
-   * The value of the round's original wave — every team faces the same (synced) wave, so this is one number for the
-   * whole match. Spawns carrying their own `mods` keep them (a later round's own overrides).
-   */
+  /** The round's original wave spawns (every team faces the same synced one). */
+  _confrontWaveSpawns() { return (this.wave && this.wave.spawns) || []; }
+
+  /** The value of the round's original wave, at this round's scaling. */
   confrontWaveValue() {
-    const spawns = (this.wave && this.wave.spawns) || [];
     const scale = this.confrontScale();
     const en = (this.data && this.data.enemies) || {};
     let v = 0;
-    for (const s of spawns) {
+    for (const s of this._confrontWaveSpawns()) {
       const cnt = Math.max(1, Math.floor(Number(s.count) || 1));
       v += confrontValue(en[s.enemyKey], s.mods || scale) * cnt;
     }
     return v;
   }
 
-  /** This round's placement budget: the wave value × the share × VERSUS_CONFRONT.budgetMul (one number for both teams). */
+  /** The round's monster count (Σ counts) — the base of the insertion positions (25 / 50 / 75 %). */
+  confrontWaveCount() {
+    return this._confrontWaveSpawns().reduce((n, s) => n + Math.max(1, Math.floor(Number(s.count) || 1)), 0);
+  }
+
+  /** This round's placement budget: the wave value × the share × VERSUS_CONFRONT.budgetMul — PER PLAYER (个算个的). */
   confrontBudget() {
     return Math.round(this.confrontWaveValue() * this.confrontRatio() * VERSUS_CONFRONT.budgetMul);
   }
@@ -124,108 +136,188 @@ export class MatchConfront {
     return v;
   }
 
-  /** Every alive player of a team is a bot / under 托管 (the team's decision is made at once). */
-  _teamAllBots(team) {
-    const members = this.order.filter((p) => this.teamIdOf(p) === team && p.alive && !p.left);
+  /** The alive, seated members of a team. */
+  _aliveOf(team) { return this.order.filter((p) => p.alive && !p.left && this.teamIdOf(p) === team); }
+
+  /** Every alive member of a team is a bot / under 托管 (its target is decided at once). */
+  _allBots(team) {
+    const members = this._aliveOf(team);
     return members.length > 0 && members.every((p) => p.botControlled);
   }
 
-  /** Enter the 对抗期: each team gets the decision window to submit one intervention (bots submit at once). */
+  /** Enter the 对抗期: step 1 (targets) opens. A team of BOTS decides at once; a team holding a human waits for it — the
+   *  human picks first and the bot teammate is filled in only then (or when the window closes). */
   enterConfront() {
     this.phase = PHASE.CONFRONT;
-    if (!this.confrontSubs) this.confrontSubs = new Map();
-    this.confrontSubs.clear();
-    const secs = this.soloUntimed ? null : VERSUS_CONFRONT.turnSeconds;
-    this.setDeadline(secs, () => this.finishConfront());
-    for (const t of this.matchTeamIds()) if (this._teamAllBots(t)) this._botConfront(t);
+    this.confrontStage = 'target';
+    this.confrontTargets = new Map(); // attacker playerId → target playerId
+    this.confrontSubs = new Map();    // attacker playerId → { target, group, position, picks, ratio, budget }
+    this.setDeadline(this.soloUntimed ? null : VERSUS_CONFRONT.targetSeconds, () => this.finishConfrontTargets());
+    for (const t of this.matchTeamIds()) {
+      if (!this._allBots(t)) continue;
+      for (const ps of this._aliveOf(t)) this.assignConfrontTarget(ps, null, true);
+    }
     for (const ps of this.alivePlayers()) ps.ready = false;
     this.markPublic();
-    this.maybeFinishConfront();
+    this.maybeFinishConfrontTargets();
   }
 
-  /** `g.confront { group, picks }`: a team's submission — the group index (1..N) and the monsters in spawn order. */
-  submitConfront(ps, { group, picks }) {
-    if (this.phase !== PHASE.CONFRONT) return fail(ERR.WRONG_PHASE);
+  /** `g.confrontTarget { targetPlayerId }`: the player names the OPPONENT they attack this round. */
+  submitConfrontTarget(ps, { targetPlayerId }) {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'target') return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
-    const team = this.teamIdOf(ps);
-    if (this.confrontSubs.has(team)) return fail(ERR.ALREADY);
-    const groups = this.confrontGroups();
-    if (!Number.isInteger(group) || group < 1 || group > groups.length) return fail(ERR.BAD_TARGET);
-    const member = this._confrontMember(group, picks);
-    if (!member) return fail(ERR.BAD_TARGET, 'illegal 对抗期 pick');
-    this.confrontSubs.set(team, member);
+    if (this.confrontTargets.has(ps.playerId)) return fail(ERR.ALREADY);
+    const target = this.players.get(targetPlayerId);
+    if (!target || !target.alive || target.left || this.teamIdOf(target) === this.teamIdOf(ps)) return fail(ERR.BAD_TARGET);
+    this.assignConfrontTarget(ps, target.playerId, true);
     this.markPublic();
-    this.maybeFinishConfront();
+    this.maybeFinishConfrontTargets();
     return OK;
   }
 
   /**
-   * Check a submission against the chosen group: every enemyKey in the group, a legal route, and — the only cap — the
-   * combined VALUE within the round's budget (there is no count limit; the group's own size bounds the count).
+   * Give `ps` a target: the named one when it is still free, else the opponent that is left. `fillMates` also hands the
+   * teammate whatever remains (first come, first served: A picks C and B is given D) — never the other team.
    */
-  _confrontMember(group, picks) {
-    const list = this.confrontGroups()[group - 1] || [];
-    const allowed = new Set(list.map((r) => r.key));
-    const arr = Array.isArray(picks) ? picks : [];
-    const routeN = Array.isArray(this.stage && this.stage.routes) ? this.stage.routes.length : 3;
-    const out = [];
-    for (const p of arr) {
-      if (!p || typeof p.enemyKey !== 'string' || !allowed.has(p.enemyKey)) return null;
-      const routeIndex = Number.isInteger(p.routeIndex) ? p.routeIndex : 0;
-      if (routeIndex < 0 || routeIndex >= Math.max(1, routeN)) return null;
-      out.push({ enemyKey: p.enemyKey, routeIndex });
+  assignConfrontTarget(ps, want = null, fillMates = false) {
+    const team = this.teamIdOf(ps);
+    const opp = this.matchTeamIds().find((t) => t !== team);
+    const oppIds = opp == null ? [] : this._aliveOf(opp).map((p) => p.playerId);
+    const takenBy = (t) => [...this.confrontTargets.entries()]
+      .filter(([pid]) => this.teamIdOf(this.players.get(pid)) === t).map(([, v]) => v);
+    if (!this.confrontTargets.has(ps.playerId)) {
+      const free = oppIds.filter((pid) => !takenBy(team).includes(pid));
+      const chosen = typeof want === 'string' && free.includes(want) ? want : free[0];
+      if (chosen) this.confrontTargets.set(ps.playerId, chosen);
     }
-    if (this.confrontSpent(out) > this.confrontBudget()) return null;
-    return { group, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget() };
-  }
-
-  /** An AI team's submission: fill the budget from its group, most expensive fitting monster first (any group does). */
-  _botConfront(team) {
-    if (this.phase !== PHASE.CONFRONT || this.confrontSubs.has(team)) return;
-    const groups = this.confrontGroups();
-    const budget = this.confrontBudget();
-    const routeN = Array.isArray(this.stage && this.stage.routes) ? this.stage.routes.length : 3;
-    const g = groups[groups.length - 1] || [];
-    const picks = [];
-    let left = budget;
-    for (const r of g.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)))) {
-      if (r.value > left) continue;
-      left -= r.value;
-      picks.push({ enemyKey: r.key, routeIndex: picks.length % Math.max(1, routeN) });
+    if (!fillMates) return;
+    for (const mate of this._aliveOf(team)) {
+      if (this.confrontTargets.has(mate.playerId)) continue;
+      const left = oppIds.filter((pid) => !takenBy(team).includes(pid));
+      if (left.length) this.confrontTargets.set(mate.playerId, left[0]);
     }
-    this.confrontSubs.set(team, { group: groups.length, picks, ratio: this.confrontRatio(), budget });
-    this.markPublic();
-    this.maybeFinishConfront();
   }
 
-  /** End the 对抗期 once every team submitted (or the window runs out): apply and start the round's battles. */
-  maybeFinishConfront() {
-    if (this.phase !== PHASE.CONFRONT) return;
-    const teams = this.matchTeamIds().filter((t) => this.order.some((p) => this.teamIdOf(p) === t && p.alive && !p.left));
-    if (teams.every((t) => this.confrontSubs.has(t))) this.finishConfront();
+  /** Step 1 ends once EVERY alive player (both sides) holds a target, or its window runs out. */
+  maybeFinishConfrontTargets() {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'target') return;
+    const alive = this.alivePlayers();
+    if (alive.length && alive.every((p) => this.confrontTargets.has(p.playerId))) this.finishConfrontTargets();
   }
 
-  finishConfront() {
-    if (this.phase !== PHASE.CONFRONT) return;
+  /** Close step 1 (anyone the window caught out gets what is left) and open the FIXED step 2 window. */
+  finishConfrontTargets() {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'target') return;
+    for (const ps of this.alivePlayers()) this.assignConfrontTarget(ps, null, true);
     this.setDeadline(0);
-    this.confront = new Map(this.confrontSubs);
-    this.startCombat();
+    this.confrontStage = 'monster';
+    // step 2 never ends early: submitting only marks the player done, the sides stay in step until the window is up.
+    // The window is set even in a single-human match (soloUntimed): it IS the step's only way to end.
+    this.setDeadline(VERSUS_CONFRONT.monsterSeconds, () => this.finishConfront());
+    for (const ps of this.alivePlayers()) if (ps.botControlled) this.botConfront(ps);
+    this.markPublic();
   }
 
-  /** The applied intervention targeting a player's wave: the OPPONENT team's submission (or null). */
-  confrontFor(ps) {
-    if (!this.isVersus || !this.confront || this.confront.size === 0) return null;
-    const opp = this.matchTeamIds().find((t) => t !== this.teamIdOf(ps));
-    return (opp != null && this.confront.get(opp)) || null;
+  /** `g.confront { group, position, picks }` in step 2: the monsters a player throws at their target. */
+  submitConfront(ps, { group, position, picks }) {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster') return fail(ERR.WRONG_PHASE);
+    if (!ps.alive) return fail(ERR.ELIMINATED);
+    if (this.confrontSubs.has(ps.playerId)) return fail(ERR.ALREADY);
+    const member = this._confrontMember(ps, group, position, picks);
+    if (!member) return fail(ERR.BAD_TARGET, 'illegal 对抗期 pick');
+    this.confrontSubs.set(ps.playerId, member);
+    this.markPublic();
+    return OK;
   }
 
   /**
-   * Replace a share of a player's original wave with the opponent team's placed monsters: originals are dropped from the
-   * tail until their VALUE covers `ratio × the wave value`, then the placed monsters are appended, in order, on their
-   * routes, spread over the wave's window. Both sides of the swap are in the same unit (see confrontValue).
-   * @param {object[]} spawns the player's original SpawnSpecs (each with enemyKey / count / routeIndex / time)
-   * @param {{ picks: object[], ratio: number, budget?: number }} sub
+   * Check a submission against the chosen group: every enemyKey in the group, a legal gate, a legal position, and — the
+   * only cap — the combined VALUE within the round's budget (no count limit; the group's own size bounds the count).
+   */
+  _confrontMember(ps, group, position, picks) {
+    const list = this.confrontGroups()[group - 1] || [];
+    const allowed = new Set(list.map((r) => r.key));
+    const arr = Array.isArray(picks) ? picks : [];
+    const pos = VERSUS_CONFRONT.positions.includes(position) ? position : null;
+    if (!pos) return null;
+    const out = [];
+    for (const p of arr) {
+      if (!p || typeof p.enemyKey !== 'string' || !allowed.has(p.enemyKey)) return null;
+      out.push({ enemyKey: p.enemyKey, gate: p.gate === 'upper' ? 'upper' : 'lower' });
+    }
+    if (this.confrontSpent(out) > this.confrontBudget()) return null;
+    return { target: this.confrontTargets.get(ps.playerId) ?? null, group, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget() };
+  }
+
+  /** An AI player's submission: fill the budget from its group, most expensive fitting monster first. */
+  botConfront(ps) {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster' || this.confrontSubs.has(ps.playerId)) return;
+    const groups = this.confrontGroups();
+    const budget = this.confrontBudget();
+    const g = (groups[groups.length - 1] || []).slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
+    const picks = [];
+    let left = budget;
+    for (const r of g) {
+      if (r.value > left) continue;
+      left -= r.value;
+      picks.push({ enemyKey: r.key, gate: picks.length % 2 ? 'upper' : 'lower' });
+    }
+    const position = VERSUS_CONFRONT.positions[Math.floor(this.rngConfront() * VERSUS_CONFRONT.positions.length)] || 'mid';
+    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: groups.length, position, picks, ratio: this.confrontRatio(), budget });
+    this.markPublic();
+  }
+
+  /** Step 2 is over (its window ran out): anyone missing a submission gets a bot one, then the battles start. */
+  finishConfront() {
+    if (this.phase !== PHASE.CONFRONT) return;
+    this.setDeadline(0);
+    for (const ps of this.alivePlayers()) if (!this.confrontSubs.has(ps.playerId)) this.botConfront(ps);
+    this.confront = new Map(this.confrontSubs);
+    this.confrontStage = null;
+    this.startCombat();
+  }
+
+  /**
+   * The interventions aimed at a player's wave (each attacker hits exactly one target, so 0 or 1 here — a list keeps it
+   * safe whatever the pairing did). `null` when nothing was submitted.
    * @param {object} ps
+   * @returns {object[]}
+   */
+  confrontFor(ps) {
+    if (!this.isVersus || !this.confront || !this.confront.size) return [];
+    return [...this.confront.values()].filter((s) => s && s.target === ps.playerId);
+  }
+
+  /** The template routes of the round's wave (the gates live here, not on the stage). */
+  _confrontRoutes() {
+    const tplId = this.wave && this.wave.templateId;
+    const tpl = tplId ? this.gd.wave(tplId) : null;
+    const routes = tpl && Array.isArray(tpl.routes) ? tpl.routes : [];
+    const leader = !!(tpl && (tpl.kind === 'boss' || tpl.kind === 'hidden'));
+    return { routes, leader };
+  }
+
+  /** The route index a placed monster uses: the template route matching its gate AND movement, else any of its class. */
+  confrontRouteFor(enemyKey, gate) {
+    const en = (this.data && this.data.enemies) || {};
+    const fly = !!(en[enemyKey] && en[enemyKey].isFlyEnemy);
+    const { routes, leader } = this._confrontRoutes();
+    if (!routes.length) return 0;
+    const motionOk = (r) => (fly ? r.motion === 'FLY' : r.motion !== 'FLY' && r.motion !== 'E_NUM');
+    const j = routes.findIndex((r) => motionOk(r) && gateOf(r.start, leader) === gate);
+    if (j >= 0) return j;
+    const i = routes.findIndex(motionOk);
+    return i >= 0 ? i : 0;
+  }
+
+  /**
+   * Replace a share of a player's original wave with one attacker's monsters:
+   *   * originals worth `share × the wave value` are dropped at random (within 2 % of that value);
+   *   * the placed monsters are inserted together at the chosen position (25 / 50 / 75 % of the round's monster count),
+   *     each on the route matching its gate and movement.
+   * @param {object[]} spawns the player's original SpawnSpecs
+   * @param {{ picks: object[], position: string, ratio: number }} sub
+   * @param {object} ps the TARGET player
    * @returns {object[]} the modified spawn list
    */
   applyConfront(spawns, sub, ps) {
@@ -233,25 +325,55 @@ export class MatchConfront {
     const scale = this.confrontScale();
     const en = (this.data && this.data.enemies) || {};
     const valueOf = (key) => confrontValue(en[key], scale);
-    const target = this.confrontWaveValue() * sub.ratio;
     const out = spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));
-    let dropped = 0;
-    for (let i = out.length - 1; i >= 0 && dropped < target; i--) {
-      const c = Math.max(1, Math.floor(Number(out[i].count) || 1));
-      const unit = Math.max(1, valueOf(out[i].enemyKey));
-      const take = Math.min(c, Math.max(1, Math.ceil((target - dropped) / unit)));
-      dropped += take * unit;
-      const left = c - take;
-      if (left <= 0) out.splice(i, 1);
-      else out[i].count = left;
-    }
-    const mods = { hpMul: scale.hpMul, atkMul: scale.atkMul, speedMul: scale.speedMul };
-    const t0 = out.reduce((m, s) => Math.min(m, Number(s.time) || 0), Number.POSITIVE_INFINITY);
-    const start = Number.isFinite(t0) ? t0 : 0;
-    const gap = 2;
-    sub.picks.forEach((p, i) => {
-      out.push({ time: start + i * gap, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: p.routeIndex, mods: { ...mods }, ownerPlayerId: ps.playerId });
+    // 1) drop originals at random until the target value is (nearly) reached
+    const target = this.confrontWaveValue() * sub.ratio;
+    const units = [];
+    out.forEach((s, i) => {
+      const cnt = Math.max(1, Math.floor(Number(s.count) || 1));
+      for (let k = 0; k < cnt; k++) units.push({ i, v: Math.max(1, valueOf(s.enemyKey)) });
     });
-    return out;
+    // shuffle (seeded) then take what fits; the last unit is the one that closes the gap best
+    for (let i = units.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rngConfront() * (i + 1));
+      [units[i], units[j]] = [units[j], units[i]];
+    }
+    let left = target;
+    const take = new Map();
+    for (const u of units) {
+      if (u.v > left) continue;
+      left -= u.v;
+      take.set(u.i, (take.get(u.i) || 0) + 1);
+      if (left <= 0) break;
+    }
+    // 2) apply the drops by REBUILDING the list (splicing while iterating would shift the indexes under us);
+    //    a spawn that loses every unit goes away
+    const kept = [];
+    out.forEach((s, i) => {
+      const c = Math.max(1, Math.floor(Number(s.count) || 1));
+      const rest = c - (take.get(i) || 0);
+      if (rest > 0) kept.push(rest === c ? s : { ...s, count: rest });
+    });
+    // 3) the placed monsters, together at the chosen position
+    const mods = roundMods(scale);
+    const start = this._confrontInsertTime(spawns, sub.position);
+    sub.picks.forEach((p, i) => {
+      kept.push({ time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate), mods: { ...mods }, ownerPlayerId: ps.playerId });
+    });
+    return kept;
+  }
+
+  /** The insertion time of a position: walk the ORIGINAL wave by count to the 25 / 50 / 75 % mark. */
+  _confrontInsertTime(spawns, position) {
+    const frac = position === 'front' ? 0.25 : position === 'back' ? 0.75 : 0.5;
+    const total = spawns.reduce((n, s) => n + Math.max(1, Math.floor(Number(s.count) || 1)), 0);
+    const mark = Math.max(1, Math.round(total * frac));
+    const ordered = spawns.slice().sort((a, b) => (Number(a.time) || 0) - (Number(b.time) || 0));
+    let seen = 0;
+    for (const s of ordered) {
+      seen += Math.max(1, Math.floor(Number(s.count) || 1));
+      if (seen >= mark) return Number(s.time) || 0;
+    }
+    return Number(ordered.length ? ordered[ordered.length - 1].time : 0) || 0;
   }
 }

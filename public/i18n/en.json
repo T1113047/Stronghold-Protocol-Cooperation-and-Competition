@@ -1253,5 +1253,16 @@
   "总价值 {v}": "Total value {v}",
   "已用价值 {spent}/{budget}": "Value used {spent}/{budget}",
   "提交（{n} 只 · {spent}/{budget}）": "Confirm ({n} · {spent}/{budget})",
-  "选择一组怪物 → 点怪加入（不限数量，只限总价值）": "Pick a group, then tap monsters to add (no count limit, only the total value)"
+  "选择一组怪物 → 点怪加入（不限数量，只限总价值）": "Pick a group, then tap monsters to add (no count limit, only the total value)",
+  "选择你要针对的对手": "Pick the opponent you will aim at",
+  "第 {r} 回合 · 对手以 ? 显示，只看编号": "Round {r} · opponents show as ? — the number is all you get",
+  "为 {p} 定制怪物": "Customize monsters for {p}",
+  "第 {r} 回合 · 你的怪只会出现在这个对手的波次": "Round {r} · your monsters appear only in this opponent's wave",
+  "已锁定目标，等待队友与对手": "Target locked — waiting for your teammate and the opponents",
+  "点击一个 ? 头像框锁定你的目标": "Tap a ? frame to lock your target",
+  "你已提交，等待时间走完": "Submitted — waiting for the clock to run out",
+  "未选择": "Not chosen",
+  "双方都选好了，马上开始定制怪物": "Both sides are set — customizing starts",
+  "对手被随机分配：先选的先得，队友自动拿剩下的那一个": "First come, first served — your teammate automatically takes the opponent that is left",
+  "出怪位置": "Spawn position"
 }

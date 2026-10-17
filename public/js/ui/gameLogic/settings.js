@@ -26,7 +26,7 @@ export const TEXT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
  *  textSize: TEXT_SIZES (css/theme.css `--t`, applied by ui/settings.js applyTextSize). ammoCount: 设置「弹药数量」 — the
  *  rounds left / the magazine under an ammo skill's bar (render/units.js; PR #552), off by default: the official HUD has no
  *  such number (the maintainer's decision of 2026-10-13). pictureAuto: [BOARDMODE]/[UNITMODELS] 画面自动调节开关；
- *  boardForce: 强制棋盘 3d|flat；unitsForce: 强制角色模型 on|off（三者皆本机相关，不进账号同步）。 */
+ *  boardForce: 强制棋盘 3d|flat；unitsForce: 强制角色模型 on|off（三者皆本机相关）。 */
 export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', pictureAuto: true, boardForce: 'flat', unitsForce: 'off', keys: DEFAULT_HOTKEYS });
 const QUALITIES = ['high', 'medium', 'low'];
 

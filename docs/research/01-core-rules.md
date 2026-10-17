@@ -534,7 +534,7 @@ The last two look like the solo/easy stat reductions. [ASSUMED] Map them per mod
 ## 13. Scoring, trophies, titles, tips, broadcasts
 
 - **`roundScoreDataList`** (score by rounds cleared) [DATA]: 0→0, 1→10, 2→20, 3→30, 4→50, 5→70, 6→90, 7→110, 8→130, 9→150, 10→170, 11→200, 12→230, 13→260, 14→300. Used for the result screen and history [ASSUMED purpose].
-- **Trophies (成就奖杯), multi only** [WIKI PRTS 下半]:
+- **Trophies (奖杯), multi only** [WIKI PRTS 下半]:
 
 | Rounds passed | 标准 | 险境 | 绝境 | 终极 |
 |---|---|---|---|---|

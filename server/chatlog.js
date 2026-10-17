@@ -10,7 +10,7 @@
 //   # 卫戍协议：狩猎模拟 · 对局对话记录
 //   游戏：狩猎                                   ← 本部署的标识（可用 CHAT_LOG_GAME 覆盖）
 //   房间号 / 模式 / 对局序号 / 开局时间 / 封存时间 / 消息数
-//   ===== 参与者（按加入时间排序）=====           ← [加入时间] [玩家/观众] 名称=… | 账号=QQ:<qq>|游客 | IP=…
+//   ===== 参与者（按加入时间排序）=====           ← [加入时间] [玩家/观众] 名称=… | IP=…
 //   ===== 对话（时间轴）=====                     ← [时间] 名称：说了啥（已过滤，但记原文便于审计）
 //
 // Records older than CHAT_LOG_RETAIN_DAYS (default 7) are deleted on load and after every seal.
@@ -63,9 +63,6 @@ export function pruneChatLogs(dir = chatLogDir(), now = Date.now(), log = noopLo
   return removed;
 }
 
-/** 账号标记：QQ 号 or 游客. */
-const accountMark = (account) => (typeof account === 'string' && account ? `QQ:${account}` : '游客');
-
 /**
  * @param {{ roomCode?: string, matchNo?: number, mode?: string, difficulty?: string,
  *   game?: string, title?: string, now?: () => number, log?: object, dir?: string }} [opts]
@@ -75,7 +72,7 @@ export function createChatLog({ roomCode = '----', matchNo = 0, mode = '', diffi
   const root = dir || chatLogDir();
   try { fs.mkdirSync(root, { recursive: true }); } catch { /* seal will report */ }
   const file = path.join(root, `${fmtFile(new Date(startedAt))}-${roomCode}.log`);
-  /** @type {Map<string, { playerId: string, name: string, account: string|null, ip: string, role: string, joinedAt: number }>} */
+  /** @type {Map<string, { playerId: string, name: string, ip: string, role: string, joinedAt: number }>} */
   const members = new Map();
   /** @type {Array<{ at: number, playerId: string, text: string, censored: boolean }>} */
   const events = [];
@@ -88,15 +85,14 @@ export function createChatLog({ roomCode = '----', matchNo = 0, mode = '', diffi
     /**
      * Record a participant / spectator (called at match start for every seat + spectator, and again when a spectator
      * joins a running match). Re-registering the same playerId updates its fields but keeps the first join time.
-     * @param {{ playerId: string, name?: string, account?: string|null, ip?: string, role?: string }} info
+     * @param {{ playerId: string, name?: string, ip?: string, role?: string }} info
      */
-    addMember({ playerId, name = '', account = null, ip = '?', role = '玩家' } = {}) {
+    addMember({ playerId, name = '', ip = '?', role = '玩家' } = {}) {
       if (!playerId || sealed) return;
       const prev = members.get(playerId);
       members.set(playerId, {
         playerId,
         name: name || prev?.name || '',
-        account: account ?? prev?.account ?? null,
         ip: ip || prev?.ip || '?',
         role: role || prev?.role || '玩家',
         joinedAt: prev?.joinedAt ?? now(),
@@ -130,7 +126,7 @@ export function createChatLog({ roomCode = '----', matchNo = 0, mode = '', diffi
       lines.push('===== 参与者（按加入时间排序）=====');
       if (m.length) {
         for (const mem of m) {
-          lines.push(`[${fmtTime(new Date(mem.joinedAt))}] [${mem.role}] 名称=${mem.name || '未知'} | 账号=${accountMark(mem.account)} | IP=${mem.ip}`);
+          lines.push(`[${fmtTime(new Date(mem.joinedAt))}] [${mem.role}] 名称=${mem.name || '未知'} | IP=${mem.ip}`);
         }
       } else {
         lines.push('（无）');

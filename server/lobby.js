@@ -365,6 +365,7 @@ export class Lobby {
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
       // [MATCHMAKE] 快速匹配
       case 'room.matchmake': return this.matchmake(session, msg);
+      case 'room.quickmatch': return this.quickmatch(session, msg);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);

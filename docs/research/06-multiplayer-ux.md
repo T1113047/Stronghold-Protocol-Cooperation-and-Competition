@@ -152,7 +152,7 @@ Mode unlocks (`preposedMode`) [DATA]:
 
 ### 3.1 Hub → mode select [OFF intro image][SHOT]
 
-- **Left column:** 成就统计 (stats), 报酬说明 (rewards info), 每日防卫目标 (daily 200 tokens → +300), 关键目标 (missions), 功勋兑换处 (milestone shop; 60 levels in `milestoneList`).
+- **Left column:** 统计 (stats), 报酬说明 (rewards info), 每日防卫目标 (daily 200 tokens → +300), 关键目标 (missions), 功勋兑换处 (milestone shop; 60 levels in `milestoneList`).
 - **Right column:** S.W.E.E.P.报告 (codex), 物资调配处 (roster config), 模拟邀约 (pending invites).
 - **Bottom-right mode buttons:**
   - `独立模拟`

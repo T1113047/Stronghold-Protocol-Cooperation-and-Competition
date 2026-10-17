@@ -77,7 +77,6 @@ export class MatchIntents {
    * [CHAT] 局内文字聊天。服务端一条龙：
    *   去控制字符 + trim → 截断到 CHAT_MAX_LEN → 发送冷却 → 违禁词过滤（服务端权威）→ 广播 m.chat → 写对局记录。
    * 已淘汰但仍在线的座位可以发言（[CHATLOG] 的规则）；观战者在 lobby.routeGame 就被挡住（ERR.SPECTATOR）；
-   * 「仅登录可发言」等账号系统（第 4 批）落地后由 lobby 的 chatRequiresAccount 打开。
    * `at` 用真实墙上时间（只作显示：客户端的气泡按 Date.now() 比较），逻辑计时仍走 sched。
    */
   chat(ps, { text } = {}) {

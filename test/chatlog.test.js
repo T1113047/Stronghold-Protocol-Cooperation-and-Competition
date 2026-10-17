@@ -17,7 +17,7 @@ describe('对局对话记录 (chatlog)', () => {
     const t = (ms) => 1_700_000_000_000 + ms;
     const log = createChatLog({ roomCode: 'ABCD', matchNo: 3, mode: 'versus', difficulty: 'ABYSS', dir, now: () => t(0) });
     log.addMember({ playerId: 'p_0', name: '甲', ip: '1.2.3.4', role: '玩家' });
-    log.addMember({ playerId: 'p_1', name: '乙', account: '10001', ip: '5.6.7.8', role: '玩家' });
+    log.addMember({ playerId: 'p_1', name: '乙', ip: '5.6.7.8', role: '玩家' });
     log.addMember({ playerId: 'p_2', name: '看客', ip: '9.9.9.9', role: '观众(中途加入)' });
     log.addMessage({ playerId: 'p_0', text: '你好' });
     log.addMessage({ playerId: 'p_1', text: '****', censored: true });
@@ -33,8 +33,8 @@ describe('对局对话记录 (chatlog)', () => {
     assert.match(text, /^模式：versus（ABYSS）$/m);
     assert.match(text, /^对局序号：#3$/m);
     assert.match(text, /^消息数：2$/m);
-    assert.match(text, /\[玩家\] 名称=甲 \| 账号=游客 \| IP=1\.2\.3\.4/);
-    assert.match(text, /名称=乙 \| 账号=QQ:10001 \| IP=5\.6\.7\.8/);
+    assert.match(text, /\[玩家\] 名称=甲 \| IP=1\.2\.3\.4/);
+    assert.match(text, /名称=乙 \| IP=5\.6\.7\.8/);
     assert.match(text, /\[观众\(中途加入\)\] 名称=看客/);
     assert.match(text, /甲：你好$/m);
     assert.match(text, /乙：\*\*\*\*（已过滤）$/m, 'the transcript keeps the (filtered) mark');

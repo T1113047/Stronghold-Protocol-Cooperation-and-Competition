@@ -161,7 +161,7 @@ export class MatchPrep {
     if (r === this.gd.bossRound) {
       this.hiddenLayerSum = alive.reduce((s, p) => s + p.activatedLayers(), 0);
       this.startFinalAssault(false);
-    } else if (r === this.gd.hiddenRound) {
+    } else if (this.isBossRound(r) && r !== this.gd.bossRound) {
       this.startFinalAssault(true);
     } else if (this.confrontActive()) {
       // 2V2 对抗期: each team intervenes against the opponent's next battle before it starts

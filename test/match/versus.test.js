@@ -6,8 +6,9 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA } from './harness.js';
-import { PHASE, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS } from '../../shared/constants.js';
+import { PHASE, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS, VERSUS_THIRD_BOSS } from '../../shared/constants.js';
 import { confrontPool } from '../../server/match/match/confront.js';
+import { validateC2S } from '../../shared/protocol.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
 const vsSeats = () => ([
@@ -152,6 +153,67 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.warn.filter((w) => /implausible boss result/.test(w)), [], 'no boss result was rejected');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
     assert.ok(h.ended, 'the match ended');
+  });
+
+  test('versus: the boss chain reaches the 第三关 (R16) — the same boss with a ×1.5 pool', () => {
+    // 4 humans with client-side combat: the pool-zero end condition is only checked for client fields, and the harness's
+    // fake boss never dies on its own (the tests below clear the pools explicitly).
+    const seats = [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'p_2', name: 'B0', isBot: false, connected: true, team: 1 },
+      { seat: 3, playerId: 'p_3', name: 'B1', isBot: false, connected: true, team: 1 },
+    ];
+    const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats, seed: 21, fake: true, clientCombat: true }).start();
+    h.autoHumans();
+    const m = h.m;
+    // the official way in (the golden runs boost the same two things): every seat counts as fully bonded and starts rich,
+    // so the 隐秘核心 / 第三关 thresholds (Σ layers > 1200 / ×1.5, team LP > 1) hold
+    for (const ps of m.players.values()) { ps.activatedLayers = () => 999; ps.lp = 100000; }
+    const clearBoss = () => { for (const t of m._teamIds()) { const p = m._poolOf(t); if (p) p.hp = 0; } m._checkFinalEnd(); };
+    assert.ok(h.drive(() => m.phase === PHASE.FINAL_ASSAULT, { maxSteps: 4e6 }), 'reached the Final Assault');
+    assert.equal(m.round, 14, 'R14 is the Final Assault');
+    assert.equal(m.thirdBossRound, VERSUS_THIRD_BOSS.round, 'a 2V2 险境 match has the third boss');
+    assert.equal(m.isBossRound(16), true, 'R16 counts as a boss round');
+    assert.equal(m.bossIdOfRound(16), m.hiddenBossId, 'the 第三关 fights the Hidden Core boss');
+    clearBoss();
+    assert.ok(h.drive(() => m.phase === PHASE.HIDDEN_CORE && m.round === 15, { maxSteps: 4e6 }), 'the 隐秘核心 opens');
+    assert.equal(m.hiddenReached, true, 'hiddenReached');
+    const hiddenPools = [...m.bossPools.values()].map((p) => p.maxHp);
+    assert.equal(new Set(hiddenPools).size, 1, 'both teams get the same pool');
+    clearBoss();
+    assert.ok(h.drive(() => m.round === 16 && m.phase === PHASE.HIDDEN_CORE, { maxSteps: 4e6 }), 'the 第三关 opens after the 隐秘核心 is cleared');
+    assert.equal(m.thirdBossReached, true, 'thirdBossReached');
+    assert.equal(m.phase, PHASE.HIDDEN_CORE, 'it runs as the hidden-core phase (the client titles it 终焉核心)');
+    assert.equal(m.bossPool, null, '2V2 keeps one pool per team');
+    assert.deepEqual(
+      [...m.bossPools.values()].map((p) => p.maxHp),
+      hiddenPools.map((v) => Math.round(v * VERSUS_THIRD_BOSS.poolMul)),
+      'the 第三关 pool is the 隐秘核心 pool × poolMul',
+    );
+    assert.equal(h.lastTo('p_0', 'm.public').thirdBoss, true, 'the public view marks the 第三关');
+    clearBoss();
+    assert.ok(h.drive(() => h.ended != null, { maxSteps: 4e6 }), 'the match settles at the end of the chain');
+    assert.ok(h.ended.versus, 'the versus outcome is decided then');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: 标准 has no 第三关 (no Hidden Core at all), and co-op keeps its official two boss rounds', () => {
+    const funny = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 21, fake: true }).start();
+    funny.autoHumans();
+    assert.equal(funny.m.gd.hiddenRound, null, '標準 has no hidden round');
+    assert.equal(funny.m.thirdBossRound, null, 'so no third boss either');
+    assert.equal(funny.m.isBossRound(16), false);
+    funny.drive(() => funny.ended != null, { maxSteps: 4e6 });
+    assert.equal(funny.m.round, 14, 'the match still ends at R14');
+    assert.equal(funny.m.thirdBossReached, false);
+    assert.ok(funny.ended.versus, 'the versus outcome');
+    assert.deepEqual(funny.logs.error, [], 'no engine errors');
+    // co-op: the mode has a Hidden Core but the third boss is 2V2-only
+    const coop = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 7, fake: true }).start();
+    assert.equal(coop.m.gd.hasThirdBoss, true, 'co-op 险境 has a Hidden Core');
+    assert.equal(coop.m.thirdBossRound, null, 'but the 第三关 is versus-only');
+    assert.equal(coop.m.isBossRound(coop.m.gd.hiddenRound), true, 'its Hidden Core stays a boss round');
   });
 
   test('versus: the result carries per-team scoring and a winner', () => {
@@ -676,6 +738,19 @@ describe('versus (2V2) match: team model', () => {
     const sub = m.confrontSubs.get('p_0');
     assert.deepEqual(sub.picks.map((p) => p.enemyKey), [first.key, second.key], 'both types land');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: the 悬赏期 payload passes the wire schema (every type tab, cross-type lists, big lists)', () => {
+    const pick = { enemyKey: 'enemy_1000_gopro_2', gate: 'lower' };
+    // every 特训敌人 tab, plus the null the client sends when no tab was opened
+    for (const group of [1, 2, 3, 4, 5, 6, 7, null]) {
+      assert.equal(validateC2S({ t: 'g.confront', group, position: 'mid', picks: [pick] }), null, `group ${group} is accepted`);
+    }
+    // picking across types may place a LOT of monsters (the budget, not a count, is the cap)
+    assert.equal(validateC2S({ t: 'g.confront', group: 7, position: 'mid', picks: Array.from({ length: 30 }, () => ({ ...pick })) }), null, '30 monsters are accepted');
+    assert.ok(validateC2S({ t: 'g.confront', group: 7, position: 'mid', picks: Array.from({ length: 65 }, () => ({ ...pick })) }), 'a silly 65-monster list is still refused');
+    assert.ok(validateC2S({ t: 'g.confront', group: 0, position: 'mid', picks: [pick] }), 'group 0 is refused');
+    assert.ok(validateC2S({ t: 'g.confront', group: 17, position: 'mid', picks: [pick] }), 'group 17 is refused');
   });
 
   test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();

@@ -1284,5 +1284,13 @@
   "悬赏名单": "Bounty board",
   "赏金 +{n}": "Bounty +{n}",
   "击杀对面派来的猎物，赏金归己方": "Killing a monster the other team sent pays YOUR team",
-  "猎物漏过不扣目标生命": "A hunted monster that leaks costs no target HP"
+  "猎物漏过不扣目标生命": "A hunted monster that leaks costs no target HP",
+  "终焉核心": "Final Core",
+  "强化归来的假想敌": "The hypothetical enemy returns, empowered",
+  "终焉核心已解锁": "Final Core unlocked",
+  "快速匹配": "Quick Match",
+  "开放匹配": "Open to matchmaking",
+  "已开放匹配": "Open to matchmaking",
+  "开放后，其他博士可用「快速匹配」加入本房": "When open, other doctors can join this room with Quick Match",
+  "当前没有开放匹配的房间，可创建同盟后开启「开放匹配」": "No room is open for matchmaking yet — create one and turn on Open to matchmaking"
 }

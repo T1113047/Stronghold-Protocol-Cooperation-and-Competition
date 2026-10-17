@@ -98,6 +98,10 @@ export function backoffDelay(attempt, rand = Math.random) {
  * @returns {string}
  */
 export function defaultWsUrl(loc = globalThis.location) {
+  // [WSDIRECT] 经中转入口打开时，B 节点 nginx 会在首页注入 window.__SH_WS__，让游戏 WebSocket 直连源站，
+  // 绕开「玩家→B→A」那一跳（素材仍走 B 缓存）；从源站直连打开时不注入，仍走同源。
+  const forced = globalThis.__SH_WS__;
+  if (typeof forced === 'string' && forced) return forced;
   if (!loc || !loc.host) return 'ws://localhost:3000/ws';
   return `${loc.protocol === 'https:' ? 'wss' : 'ws'}://${loc.host}/ws`;
 }

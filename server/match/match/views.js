@@ -122,6 +122,9 @@ export class MatchViews {
       hiddenBossId: this.hiddenBossId,
       bossRound: this.gd.bossRound,
       hiddenRound: this.gd.hiddenRound,
+      // 2V2 第三关 (R16): the round itself (null when this match has none) and whether THIS round is it
+      thirdBossRound: this.thirdBossRound,
+      thirdBoss: this.thirdBossRound != null && this.round === this.thirdBossRound,
       bossPairs: this.bossWaves ? this.bossWaves.map(w => w.players.slice()) : this.bossPairs ? this.bossPairs.map(ids => ids.slice()) : null,
       spRound: this.gd.spRounds().includes(this.round),
       // DESIGN §14: 'client' = battles are simulated by the browsers (b.start specs), 'server' = legacy streaming

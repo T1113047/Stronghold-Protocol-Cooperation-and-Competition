@@ -1,11 +1,11 @@
-// server/match/match/bossRounds.js — Match methods: the Final Assault / Hidden Core (the rules:
+// server/match/match/bossRounds.js — Match methods: the Final Assault / Hidden Core / 2V2 第三关 (the rules:
 // server/match/finalAssault.js) — the boss fields and the shared pool; client-side boss fields (plausibility budgets on
 // the field clock, cumulative credits, handovers, the boss clock, the end: pool 0 → victory, team LP 0 → defeat);
-// b.pool; the merged team LP and its shares; the overtime drain; bounties after a boss field; then the Hidden Core or
-// RESULT.
+// b.pool; the merged team LP and its shares; the overtime drain; bounties after a boss field; then the next boss round
+// of the chain (隐秘核心, then the 2V2 第三关) or RESULT.
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
-import { PHASE, GEO } from '../../../shared/constants.js';
+import { PHASE, GEO, VERSUS_THIRD_BOSS } from '../../../shared/constants.js';
 import { createRng, deriveSeed } from '../../sim/rng.js';
 import { buildBossWave, bountySpawns } from '../waves.js';
 import { pairPlayers, bossPoolHp, SharedBossPool, CreditPool, hiddenEligible, BOSS_HIT_STEPS } from '../finalAssault.js';
@@ -83,6 +83,18 @@ export class MatchBoss {
   /** The team ids of this match's boss fight (versus: every team; solo/coop: the single team 0). */
   _teamIds() { return this.teamLps ? [...this.teamLps.keys()] : [0]; }
 
+  /** The 2V2 third-boss round (16, VERSUS_THIRD_BOSS) when this match may have one — versus + a Hidden Core in the
+   *  difficulty (標準 FUNNY has neither R15 nor R16) — else null. */
+  get thirdBossRound() { return this.isVersus && this.gd.hasThirdBoss ? VERSUS_THIRD_BOSS.round : null; }
+
+  /** Whether `r` is a boss round of the chain (最终攻势 / 隐秘核心 / the 2V2 第三关). */
+  isBossRound(r) {
+    return r === this.gd.bossRound || r === this.gd.hiddenRound || (this.thirdBossRound != null && r === this.thirdBossRound);
+  }
+
+  /** The boss id fought in boss round `r` (the 第三关 re-fights the Hidden Core's boss in an enhanced form). */
+  bossIdOfRound(r) { return r === this.gd.bossRound ? this.bossId : this.hiddenBossId; }
+
   startFinalAssault(hidden) {
     const alive = this.alivePlayers();
     if (!alive.length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
@@ -104,12 +116,14 @@ export class MatchBoss {
       }
     }
     const bossId = hidden ? this.hiddenBossId : this.bossId;
+    // 2V2 第三关 (round 16): the same leader, an ENHANCED pool (VERSUS_THIRD_BOSS.poolMul)
+    const poolMul = this.thirdBossRound != null && this.round === this.thirdBossRound ? VERSUS_THIRD_BOSS.poolMul : 1;
     // BOSS_HIT tickers ("对敌方领袖造成的伤害超过20% / 50% / 80%"): the player's damage to THIS leader over its pool —
     // the pool's own per-player tally, one pool per boss round (2V2: one pool per team). stats.bossDamage (the result's
     // 领袖伤害) adds up both rounds, so it would credit the Final Assault's damage to the hidden leader.
     const hitSteps = new Map();
     const makePool = (count) => {
-      const p = new SharedBossPool(bossPoolHp(this.gd, bossId, count), {});
+      const p = new SharedBossPool(bossPoolHp(this.gd, bossId, count, poolMul), {});
       p.onHit = (pid, dmg) => {
         const ps = this.players.get(pid);
         if (!ps) return;
@@ -696,27 +710,54 @@ export class MatchBoss {
     this.overtimeAt = 0;
     this.markPublic();
     this.runner = null;
-    if (this.isVersus) {
-      // 2V2: the Final Assault is the end — no Hidden Core. Score the teams and finish (per-player victory comes
-      // from this.versusOutcome in results.js).
-      this.versusOutcome = this._versusDecide();
-      this.later(this.scaled(DELAYS.SETTLE), () => this.finish({ victory: true, reason: 'versus' }));
-      return;
-    }
-    if (!hidden) {
-      const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
-      this.later(this.scaled(DELAYS.SETTLE), () => {
-        if (eligible) {
+    // The boss CHAIN (design 2026-10-17): 最终攻势 (R14) → 隐秘核心 (R15) → 2V2 第三关 (R16). A cleared round opens the
+    // next one when the layers / LP also qualify; when the chain ends the match settles (2V2 decides its winner then).
+    const third = this.thirdBossRound;
+    const ahead = !hidden ? this.gd.hiddenRound : (third != null && this.round !== third ? third : null);
+    // 2V2: the round is SHARED and both teams fight their own leader, so one team's clear opens the next round for the
+    // match (requiring both would make the 隐秘核心 / 第三关 practically unreachable) — [ASSUMED].
+    const advanced = this.isVersus ? this._anyTeamCleared() : victory;
+    this.later(this.scaled(DELAYS.SETTLE), () => {
+      if (advanced && ahead != null && !!this.hiddenBossId && this._bossChainEligible(ahead)) {
+        if (ahead === this.gd.hiddenRound) {
           this.hiddenReached = true;
-          this.bossPool = null;
           this.tickerText('隐秘核心已解锁', FLOW_TICKER_PRIORITY);
-          this.startRound(this.gd.hiddenRound);
         } else {
-          this.finish({ victory, reason: victory ? 'victory' : 'defeat' });
+          this.thirdBossReached = true;
+          this.tickerText('终焉核心已解锁', FLOW_TICKER_PRIORITY);
         }
-      });
-    } else {
-      this.later(this.scaled(DELAYS.SETTLE), () => this.finish({ victory: true, hiddenCleared: victory, reason: 'victory' }));
+        this.bossPool = null;
+        this.startRound(ahead);
+        return;
+      }
+      if (this.isVersus) {
+        // per-player victory comes from this.versusOutcome in results.js
+        this.versusOutcome = this._versusDecide();
+        this.finish({ victory: true, reason: 'versus' });
+        return;
+      }
+      if (!hidden) this.finish({ victory, reason: victory ? 'victory' : 'defeat' });
+      else this.finish({ victory: true, hiddenCleared: victory, reason: 'victory' });
+    });
+  }
+
+  /** 2V2: at least one team cleared its own leader this boss round. */
+  _anyTeamCleared() { return this._teamIds().some((t) => (this._poolOf(t)?.hp ?? 1) <= 0); }
+
+  /**
+   * Whether the boss chain may continue into `round`. Solo / co-op: the official `hiddenEligible` (hidden-core layers +
+   * team LP). 2V2 [ASSUMED]: the same rule per TEAM (the round is shared, so the best team opens it), and the 第三关
+   * threshold is the Hidden Core's × `VERSUS_THIRD_BOSS.layerMul`.
+   */
+  _bossChainEligible(round) {
+    if (round == null) return false;
+    if (!this.isVersus) return hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
+    const hc = this.gd.hiddenCore;
+    const threshold = hc.multi * (round === this.thirdBossRound ? VERSUS_THIRD_BOSS.layerMul : 1);
+    for (const t of this._teamIds()) {
+      const layerSum = this.alivePlayers().filter((p) => this.teamIdOf(p) === t).reduce((s, p) => s + p.activatedLayers(), 0);
+      if (layerSum > threshold && this._teamLpOf(t) > hc.minTeamLpExclusive) return true;
     }
+    return false;
   }
 }

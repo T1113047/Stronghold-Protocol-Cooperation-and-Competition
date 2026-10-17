@@ -104,6 +104,28 @@ export const VERSUS_CONFRONT = Object.freeze({
   killIncomeShare: 1,
 });
 /**
+ * 2V2 第三关 boss — round 16 (design 2026-10-17, user): after the 隐秘核心 the SAME Hidden Core boss comes back in an
+ * ENHANCED form, so the boss chain of a 2V2 NORMAL/HARD/ABYSS match is 最终攻势 (R14) → 隐秘核心 (R15) → 终焉核心 (R16).
+ *
+ * 2V2 only (solo / co-op keep the official two boss rounds) and only where a Hidden Core exists at all
+ * (config hiddenCore.difficulties = NORMAL / HARD / ABYSS — 标准 FUNNY has no R15 and therefore no R16).
+ *
+ * The sizes are [ASSUMED] (no official source — the official mode ends at the Hidden Core):
+ *   * `round`   — the round number itself (16);
+ *   * `poolMul` — the leader's shared HP pool = its Hidden Core bloodPoint × this;
+ *   * `atkMul` / `speedMul` / `hpMul` — extra multipliers on the round's scale for the boss field (the leader normally
+ *     takes only ATK / speed from enemyScale and its HP from the pool — hpMul only reaches its parts / escorts);
+ *   * `layerMul` — the R15 threshold (config hiddenCore.multi) × this, i.e. the price of admission to R16.
+ */
+export const VERSUS_THIRD_BOSS = Object.freeze({
+  round: 16,
+  poolMul: 1.5,
+  atkMul: 1.25,
+  speedMul: 1.1,
+  hpMul: 1.3,
+  layerMul: 1.5,
+});
+/**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
  * Non-versus rooms keep the flat, team-less seat model (null).
  * @param {number} seat 0..MAX_SEATS-1

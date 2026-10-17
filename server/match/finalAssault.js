@@ -75,8 +75,11 @@ export function pairPlayers(alive, rng, previous = null) {
   return groups;
 }
 
-/** Shared boss HP for a boss id with `aliveCount` alive players (GameData.bossPoolShare / bossPoolShareOf; omitted ⇒ a full team). */
-export function bossPoolHp(gd, bossId, aliveCount) {
+/**
+ * Shared boss HP for a boss id with `aliveCount` alive players (GameData.bossPoolShare / bossPoolShareOf; omitted ⇒ a full
+ * team). `mul` is an extra multiplier — the 2V2 第三关 (round 16) passes VERSUS_THIRD_BOSS.poolMul.
+ */
+export function bossPoolHp(gd, bossId, aliveCount, mul = 1) {
   const boss = gd.boss(bossId);
   const diff = gd.difficulty;
   let base = boss && boss.bloodPoint && Number.isFinite(boss.bloodPoint[diff]) ? boss.bloodPoint[diff] : null;
@@ -85,7 +88,7 @@ export function bossPoolHp(gd, bossId, aliveCount) {
   const tune = typeof gd.bossHpMul === 'function' ? gd.bossHpMul(bossId) : 1;
   const share = typeof gd.bossPoolShare === 'function' ? gd.bossPoolShare(aliveCount)
     : bossPoolShareOf(gd.mode && gd.mode.bossHpScale, gd.config && gd.config.bossHpScale, !!gd.isSolo, aliveCount);
-  return Math.max(1, Math.round(base * share * tune));
+  return Math.max(1, Math.round(base * share * tune * (mul > 0 ? mul : 1)));
 }
 
 /**

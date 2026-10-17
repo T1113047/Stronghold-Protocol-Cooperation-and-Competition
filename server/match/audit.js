@@ -41,10 +41,10 @@
 //                 silent (deadline 0)
 // Checks never throw into the match: an exception inside a check is itself recorded as a violation.
 
-import { PHASE } from '../../shared/constants.js';
+import { PHASE, VERSUS_THIRD_BOSS } from '../../shared/constants.js';
 import { collectViolations } from './invariants.js';
 import { mergeTile, pieceDir, canPlace, placeClass } from './board.js';
-import { bossPoolHp, hiddenEligible } from './finalAssault.js';
+import { bossPoolHp } from './finalAssault.js';
 import { helperOrder } from './unite.js';
 import { BAND_TURN_SECONDS } from './Match.js';
 
@@ -327,7 +327,7 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
     check('round start phase', () => {
       if (m.phase !== PHASE.ROUND_START) return;
       expectDeadline(2, 'ROUND_START', { silentSolo: true });
-      const isBoss = rr === gd.bossRound || rr === gd.hiddenRound;
+      const isBoss = m.isBossRound(rr);
       if (isBoss ? !m.bossWaves : !m.wave) fail('round without its wave');
     });
     return res;
@@ -492,9 +492,12 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
       m.fields.forEach((f, i) => { if (f.fieldId !== `b${i + 1}`) fail(`boss field id ${f.fieldId}`); });
       if (!hidden && m.teamLp !== lpSum) fail(`team LP ${m.teamLp} != Σ alive LP ${lpSum}`);
       if (hidden && m.teamLp !== teamLp0) fail(`hidden core changed team LP ${teamLp0} → ${m.teamLp}`);
-      const want = bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length);
+      const third = m.thirdBossRound != null && m.round === m.thirdBossRound;
+      const want = m.isVersus
+        ? bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length, third ? VERSUS_THIRD_BOSS.poolMul : 1)
+        : bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length);
       if (!m.bossPool || m.bossPool.maxHp !== want) fail(`boss pool ${m.bossPool && m.bossPool.maxHp} != ${want}`);
-      if (hidden && !hiddenEligible(gd, { layerSum: m.hiddenLayerSum, teamLp: m.teamLp })) fail('hidden core entered while not eligible');
+      if (hidden && !m._bossChainEligible(m.round)) fail('hidden core entered while not eligible');
       if (hidden && gd.difficulty === 'FUNNY') fail('hidden core on FUNNY');
     });
     return res;

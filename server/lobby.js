@@ -202,6 +202,8 @@ export class Room {
     /** @type {string | null} per-network limit key of whoever started the running match */
     this.matchKey = null;
     this.createdAt = now;
+    /** [MATCHMAKE] 本地补丁 server_patches/matchmake：房主是否把本房对外开放匹配（默认开启，房主可手动关闭） */
+    this.matchmake = true;
     this.disposed = false;
   }
 
@@ -231,6 +233,7 @@ export class Room {
       difficulty: this.difficulty,
       aiPicksLast: this.aiPicksLast,
       inMatch: !!this.match,
+      matchmake: !!this.matchmake, // [MATCHMAKE]
       seats: this.seats.map((s) => {
         if (!s) return null;
         const row = { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left };
@@ -358,6 +361,9 @@ export class Lobby {
       case 'room.diy': return this.diy(session, msg);
       case 'room.spectate': return this.spectate(session, msg);
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
+      // [MATCHMAKE] 快速匹配
+      case 'room.matchmake': return this.matchmake(session, msg);
+      case 'room.quickmatch': return this.quickmatch(session, msg);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);
@@ -462,6 +468,51 @@ export class Lobby {
     if (!room) return fail(ERR.NOT_IN_ROOM);
     this.removeMember(room, session.playerId);
     return OK;
+  }
+
+  // [MATCHMAKE] 快速匹配（移植自服务服 server_patches/matchmake）--------------------------------------
+  /**
+   * room.matchmake { on } — the host opens/closes their own room to quick-match. Host only, lobby only (a running
+   * match cannot change it), 非 solo 房（本 fork 的 2V2 versus 房同样可开放）。The flag is a room property: it survives
+   * host migration and the room's matches, and room.state mirrors it for every member's UI.
+   */
+  matchmake(session, { on }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    if (room.mode === 'solo') return fail(ERR.BAD_MSG, 'solo rooms cannot be matched');
+    const next = on === true;
+    if (room.matchmake !== next) {
+      room.matchmake = next;
+      this.broadcastState(room);
+    }
+    return OK;
+  }
+
+  /**
+   * room.quickmatch { difficulty } — join the best open room of that difficulty: among rooms that opted in
+   * (room.matchmake), are not solo, have not started, have a free seat and a connected human host, the one with the
+   * most humans wins (ties: most seats taken, then longest waiting). No room → ROOM_NOT_FOUND (the client shows
+   * "none open"); this never creates a room.
+   */
+  quickmatch(session, { difficulty }) {
+    const cur = this.roomOf(session);
+    if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
+    const hostOk = (r) => {
+      const h = r.hostId ? r.seatOf(r.hostId) : null;
+      return !!h && !h.isBot && !h.left && h.connected;
+    };
+    const humanCount = (r) => r.seats.filter((s) => s && !s.isBot && !s.left).length;
+    const occupied = (r) => r.seats.filter(Boolean).length;
+    const target = [...this.rooms.values()]
+      .filter((r) => r.matchmake === true && r.mode !== 'solo' && !r.match && !r.disposed
+        && r.difficulty === difficulty && r.freeSeat() >= 0 && hostOk(r))
+      .sort((a, b) => humanCount(b) - humanCount(a) || occupied(b) - occupied(a) || (a.createdAt - b.createdAt))[0];
+    if (!target) return fail(ERR.ROOM_NOT_FOUND, 'no open match room');
+    if (cur === target) { this.sendState(target, session); return OK; }
+    if (cur) return fail(ERR.ALREADY, 'leave your current room first');
+    return this.join(session, { code: target.code });
   }
 
   /**

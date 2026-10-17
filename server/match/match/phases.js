@@ -279,7 +279,7 @@ export class MatchPhases {
     // round start: its recompute() checks the board on the field the player deploys on this round (deployFieldOf reads
     // the boss pairing), so R14 → R15 never re-checks a boss-field board against the normal field (user playtest #5
     // item 7). rngWaves is used only here, so the order leaves every random stream unchanged.
-    const isBoss = r === this.gd.bossRound || r === this.gd.hiddenRound;
+    const isBoss = this.isBossRound(r);
     if (isBoss) {
       this._planBossWaves();
     } else {
@@ -303,7 +303,7 @@ export class MatchPhases {
   /** Stable per-match pairs and their templates, generated before the prep preview / board validation. */
   _planBossWaves() {
     const r = this.round;
-    const bossId = r === this.gd.hiddenRound && r !== this.gd.bossRound ? this.hiddenBossId : this.bossId;
+    const bossId = this.bossIdOfRound(r);
     // Pairing uses an independent seeded draw, consuming no shop, wave, draft or battle randomness.
     const groups = this.bossPairGroups(this.alivePlayers());
     this.bossPairs = groups.map(g => g.map(p => p.playerId));

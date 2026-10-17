@@ -229,6 +229,28 @@ function AiLastToggle({ option, busy, onToggle }) {
   </div>`;
 }
 
+/**
+ * [MATCHMAKE] 快速匹配开关（移植自服务服 server_patches/matchmake）：房主开关本房是否对外开放匹配；非房主只看到状态。
+ * 样式与「AI 队友最后选择」一致（.ailast 小开关），与它并排。
+ */
+function MatchmakeControl({ room, isHost, busy, onToggle }) {
+  if (!isHost) {
+    if (!room.matchmake) return null;
+    return html`<div class="ailast matchmake-ctl">
+      <span class="matchmake-state t-mint"><${Icon} name="users" />${t('已开放匹配')}</span>
+    </div>`;
+  }
+  return html`<div class="ailast matchmake-ctl">
+    <${Tooltip} text=${t('开放后，其他博士可用「快速匹配」加入本房')}>
+      <button type="button" role="switch" aria-checked=${room.matchmake ? 'true' : 'false'}
+          class=${`dpick__opt ailast__opt${room.matchmake ? ' is-active' : ''}`} disabled=${!!busy}
+          onClick=${() => onToggle(!room.matchmake)}>
+        <${Icon} name="check" class=${room.matchmake ? 'is-on' : ''} />${t('开放匹配')}
+      </button>
+    <//>
+  </div>`;
+}
+
 /** Room screen component. */
 export function RoomScreen() {
   const room = useStore((s) => s.room);
@@ -270,6 +292,8 @@ export function RoomScreen() {
     if (ok) run(`kick${seat}`, () => net.request('room.kick', { seat, playerId }));
   };
   const setDifficulty = (difficulty) => run('diff', () => net.request('room.setDifficulty', { difficulty }));
+  // [MATCHMAKE] 本地补丁：房主开关本房是否对外开放匹配
+  const toggleMatchmake = (on) => run('matchmake', () => net.request('room.matchmake', { on }));
   const setAiLast = (on) => run('ailast', () => net.request('room.setAiPicksLast', { on }));
   // 2V2: swap two seats (drag an avatar between the teams; the team follows the seat index)
   const swapSeats = (from, to) => run('swap', () => net.request('room.swapSeats', { a: from, b: to }));
@@ -366,7 +390,10 @@ export function RoomScreen() {
         <span class="room-bar__label">${t('模拟难度')}<${MicroLabel}>DIFFICULTY<//></span>
         <div class="room-bar__opts">
           <${DifficultyPicker} room=${room} isHost=${facts.isHost} busy=${busy} onPick=${setDifficulty} />
-          <${AiLastToggle} option=${aiLastOption(room, me.playerId)} busy=${busy} onToggle=${setAiLast} />
+          <div class="room-bar__toggles">
+            ${room.mode !== 'solo' ? html`<${MatchmakeControl} room=${room} isHost=${facts.isHost} busy=${busy} onToggle=${toggleMatchmake} />` : null}
+            <${AiLastToggle} option=${aiLastOption(room, me.playerId)} busy=${busy} onToggle=${setAiLast} />
+          </div>
         </div>
       </div>
       <div class="room-bar__center">

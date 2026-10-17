@@ -281,6 +281,14 @@ export function LobbyScreen() {
     }
   };
   const create = () => run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
+  // [MATCHMAKE] 快速匹配：加入一间同难度、已开放匹配的房；没有则提示暂无（不自动建房）
+  const quickmatch = () => run('match', () => net.request('room.quickmatch', { difficulty }).catch((err) => {
+    if (err?.code === ERR.ROOM_NOT_FOUND) {
+      toast(t('当前没有开放匹配的房间，可创建同盟后开启「开放匹配」'), 'warn');
+      return;
+    }
+    throw err;
+  }));
   const join = (c = code) => {
     // `onClick=${join}` hands the click EVENT as the first argument, and a default parameter only applies to
     // `undefined` — codeArg keeps an event target out of the key and falls back to the input field
@@ -380,6 +388,7 @@ export function LobbyScreen() {
               ${roomMode === 'solo' ? t('开始独立模拟') : roomMode === 'versus' ? t('创建 2V2 房间') : t('创建同盟')}
             <//>
           <//>
+          ${roomMode !== 'solo' ? html`<${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'match'} disabled=${!online} onClick=${quickmatch}>${t('快速匹配')}<//>` : null}
           <div class="create-box__hint">
             ${online
               ? html`<span>${roomMode === 'solo' ? t('创建后即可开始模拟') : roomMode === 'versus' ? t('创建后邀请另一位博士，或添加 AI 队友补满两队') : t('创建后可邀请好友或添加 AI 队友')}</span>`

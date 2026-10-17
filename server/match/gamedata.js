@@ -14,6 +14,7 @@
 import { getConfig, getMode } from '../data.js';
 import { isShopItem } from '../sim/simdata.js';
 import { standInRecord } from '../../shared/standIn.js';
+import { VERSUS_THIRD_BOSS } from '../../shared/constants.js';
 
 const own = (map, id) => (map && typeof map === 'object' && typeof id === 'string' && Object.hasOwn(map, id) && map[id] && typeof map[id] === 'object' ? map[id] : null);
 const numOr = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -150,15 +151,16 @@ export class GameData {
    * never scaled by enemyScale ("领袖单位于服务器的生命值加成不受上述加成影响").
    * @param {string} bossId
    * @param {number} [aliveCount] alive players at the Final Assault / Hidden Core start (co-op)
+   * @param {number} [mul] extra multiplier — 2V2 第三关 (round 16) passes VERSUS_THIRD_BOSS.poolMul
    * @returns {number}
    */
-  bossPoolHp(bossId, aliveCount) {
+  bossPoolHp(bossId, aliveCount, mul = 1) {
     const boss = this.boss(bossId);
     const diff = this.difficulty;
     let base = boss && boss.bloodPoint && Number.isFinite(boss.bloodPoint[diff]) ? boss.bloodPoint[diff] : null;
     if (base == null && boss && boss.bloodPoint) base = Object.values(boss.bloodPoint).find((v) => Number.isFinite(v)) ?? null;
     if (base == null) base = 500000;
-    return Math.max(1, Math.round(base * this.bossPoolShare(aliveCount)));
+    return Math.max(1, Math.round(base * this.bossPoolShare(aliveCount) * (mul > 0 ? mul : 1)));
   }
 
   /**
@@ -339,11 +341,22 @@ export class GameData {
   }
   get bossRound() { return Number.isInteger(this.mode.bossRound) && this.mode.bossRound > 0 ? this.mode.bossRound : this.lastRound; }
   get hiddenRound() { return Number.isInteger(this.mode.hiddenRound) && this.mode.hiddenRound > 0 ? this.mode.hiddenRound : null; }
+  /**
+   * Whether this mode+difficulty may run the 2V2 第三关 (round 16, VERSUS_THIRD_BOSS): a Hidden Core exists at all and this
+   * difficulty is one that has it (config hiddenCore.difficulties — 标准 FUNNY has neither R15 nor R16). The 2V2-only
+   * gate lives on the match (Match#thirdBossRound), so solo / co-op keep the official two boss rounds.
+   */
+  get hasThirdBoss() { return this.hiddenRound != null && this.hiddenCore.difficulties.includes(this.difficulty); }
   get maxShopLevel() { return posIntOr(this.mode.maxShopLevel, DEFAULTS.maxShopLevel); }
 
   roundCfg(r) {
     const rounds = this.mode.rounds;
-    return rounds && typeof rounds === 'object' && rounds[String(r)] && typeof rounds[String(r)] === 'object' ? rounds[String(r)] : null;
+    const cfg = rounds && typeof rounds === 'object' && rounds[String(r)] && typeof rounds[String(r)] === 'object' ? rounds[String(r)] : null;
+    if (cfg) return cfg;
+    // 2V2 第三关 (round 16, VERSUS_THIRD_BOSS): the official table has no round of its own — it reuses the 隐秘核心's
+    // (prep time, level time, bossTemplates→the same boss, bgm, overtime). [ASSUMED]
+    if (this.hasThirdBoss && r === VERSUS_THIRD_BOSS.round) return this.roundCfg(this.hiddenRound);
+    return null;
   }
 
   spRounds() { return Array.isArray(this.mode.spRounds) ? this.mode.spRounds.filter((n) => Number.isInteger(n)) : []; }
@@ -420,13 +433,15 @@ export class GameData {
    * `enemy_exclude` leaves out the 14 器物 hit-count keys — they take hpMul / supplyHpMul (archetypes.js `times`).
    */
   baseEnemyScale(r) {
-    const e = this.mode.enemyScale && this.mode.enemyScale[String(r)];
+    const third = this.hasThirdBoss && r === VERSUS_THIRD_BOSS.round;
+    const e = this.mode.enemyScale && this.mode.enemyScale[String(third ? this.hiddenRound : r)];
     if (!e || typeof e !== 'object') return { hpMul: 1, atkMul: 1, speedMul: 1 };
+    const boost = third ? VERSUS_THIRD_BOSS : { hpMul: 1, atkMul: 1, speedMul: 1 };
     const supply = numOr(e.supplyHp, 1);
     return {
-      hpMul: Math.max(0.01, numOr(e.hp, 1)),
-      atkMul: Math.max(0, numOr(e.atk, 1)),
-      speedMul: Math.max(0.01, numOr(e.speed, 1)),
+      hpMul: Math.max(0.01, numOr(e.hp, 1)) * boost.hpMul,
+      atkMul: Math.max(0, numOr(e.atk, 1)) * boost.atkMul,
+      speedMul: Math.max(0.01, numOr(e.speed, 1)) * boost.speedMul,
       ...(supply > 0 && supply !== 1 ? { supplyHpMul: supply } : {}),
     };
   }

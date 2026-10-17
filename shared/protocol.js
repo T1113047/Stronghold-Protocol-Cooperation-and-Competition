@@ -413,6 +413,11 @@ export const C2S = {
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
   'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.removeSpectator': { playerId: isId },
+  // [MATCHMAKE] 快速匹配（移植自服务服 server_patches/matchmake）：
+  //   room.matchmake  { on }          房主开关本房是否对外开放匹配（非 solo 房、大厅内；room.state.matchmake 回显）
+  //   room.quickmatch { difficulty }  加入一间同难度、已开放匹配、未开局且有座的房；没有则回 ROOM_NOT_FOUND
+  'room.matchmake': { on: isBool },
+  'room.quickmatch': { difficulty: (v) => DIFFICULTIES.includes(v) },
 
   // match
   'g.infoReady': { setupRevision: (v) => isInt(v, 0, 2 ** 31), $optional: ['setupRevision'] },
@@ -437,10 +442,11 @@ export const C2S = {
   'g.reward': { idx: (v) => isInt(v, 0, 5) },
   'g.choice': { idx: (v) => isInt(v, 0, 5), choiceId: isId, $optional: ['choiceId'] },
   'g.ready': { ready: isBool },
-  // 2V2 对抗期 (confront.js): the team's intervention — one of VERSUS_CONFRONT.groups monster groups and the placed
-  // monsters in spawn order ({ enemyKey, routeIndex }). The cap is the round's VALUE budget, not a count: the list may
-  // hold at most a whole group (20).
-  'g.confront': { group: (v) => isInt(v, 1, 6), position: (v) => typeof v === 'string' && ['front', 'mid', 'back'].includes(v), picks: (v) => isList(v, 20, (p) => isPlain(p) && isId(p.enemyKey) && (p.gate === undefined || p.gate === 'upper' || p.gate === 'lower')) },
+  // 2V2 悬赏期 (confront.js): the team's intervention — ONE 特训敌人 type tab (`group`, 1-based; the official types are
+  // data-driven, 7 of them today, so the schema only bounds it loosely and the server clamps) and the placed monsters in
+  // spawn order ({ enemyKey, gate }). The cap is the round's VALUE budget, not a count: the player may MIX TYPES, so the
+  // list can hold monsters from several tabs (the pool is 120) — hence the generous list cap.
+  'g.confront': { group: nullable((v) => isInt(v, 1, 16)), position: (v) => typeof v === 'string' && ['front', 'mid', 'back'].includes(v), picks: (v) => isList(v, 64, (p) => isPlain(p) && isId(p.enemyKey) && (p.gate === undefined || p.gate === 'upper' || p.gate === 'lower')) },
   // 2V2 对抗期 step 1: the opposing player this seat attacks this round (first come, first served inside the team)
   'g.confrontTarget': { targetPlayerId: isId },
   'g.emote': { id: (v) => EMOTES.includes(v) },

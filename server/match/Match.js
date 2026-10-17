@@ -446,6 +446,8 @@ export class Match {
     this._finalEndings = null;
     this.hiddenLayerSum = 0;
     this.hiddenReached = false;
+    /** 2V2: the 第三关 (round 16, VERSUS_THIRD_BOSS) was entered. */
+    this.thirdBossReached = false;
     this.outcome = null;
     this._turnToken = 0;
   }

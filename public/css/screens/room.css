@@ -307,6 +307,10 @@
 .ailast__opt:last-child { border-right: 1px solid var(--line-2); }
 .ailast__opt .icon { opacity: .25; }
 .ailast__opt .icon.is-on { opacity: 1; }
+/* [MATCHMAKE] 快速匹配开关与「AI 队友最后选择」并排一行，样式复用 .ailast 小开关 */
+.room-bar__toggles { display: flex; align-items: center; gap: .18rem; flex-wrap: wrap; min-width: 0; }
+.matchmake-state { display: inline-flex; align-items: center; gap: .06rem; font-size: calc(.14 * var(--t)); }
+.matchmake-state .icon { width: .16rem; height: .16rem; }
 
 .ready-count[hidden] { display: none; }
 .ready-count { display: flex; align-items: baseline; gap: .06rem; font-size: calc(.16 * var(--t)); }

@@ -96,6 +96,9 @@ export const actions = {
   confront: (group, position, picks) => act('g.confront', { group, position, picks: (picks || []).map((p) => ({ enemyKey: p.enemyKey, gate: p.gate === 'upper' ? 'upper' : 'lower' })) }, { sfx: 'confirm' }),
   ready: (ready) => act('g.ready', { ready }, { sfx: ready ? 'ready' : 'back' }),
   emote: (id) => act('g.emote', { id }, { quiet: true }),
+  // [CHAT] in-match free text (ui/chat.js ChatBox): quiet like g.emote — a line the server refuses (2 s rate limit)
+  // must not toast over the game.
+  chat: (text) => act('g.chat', { text }, { quiet: true }),
   // `playerId`: the player tapped in the team panel (a shared field shows two) — what an eliminated viewer follows
   watch: (fieldId, playerId = null) => act('g.watch', typeof playerId === 'string' && playerId ? { fieldId, playerId } : { fieldId }, { sfx: 'tab' }),
   autoplay: (on) => act('g.autoplay', { on }),

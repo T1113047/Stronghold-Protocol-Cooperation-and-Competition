@@ -1,0 +1,8 @@
+# server/chat-banned.txt — 本地兜底违禁词表（一行一词，'#' 开头为注释）。
+#
+# ⚠️ 真实词表留在**服务服**（A 服）：
+#     * 主词库走环境变量 CHAT_FILTER_SOURCES（指向 AstrBot 的官方 SensitiveLexicon.json）；
+#     * 补充词表直接改服务服上的这份文件（部署同步会覆盖它，所以服务服改完记得记在 A狩猎维护手册）。
+# 仓库里**只放示例占位**，不放任何真实词表（合规与安全要求）。
+示例占位词
+example-placeholder

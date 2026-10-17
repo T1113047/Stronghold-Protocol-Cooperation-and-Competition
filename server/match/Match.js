@@ -245,6 +245,15 @@ export class Match {
     this.broadcastFn = opts.broadcast;
     this.onEndFn = opts.onEnd;
     this.data = opts.data && typeof opts.data === 'object' ? opts.data : {};
+    /**
+     * [CHAT]/[CHATLOG] 局内聊天（移植自服务服）：`chatFilter` = 违禁词过滤器（server/chatFilter.js 的 filterChat，
+     * lobby 注入），`chatLog` = 本局对话记录（server/chatlog.js 的 createChatLog，lobby 建档、结束时封存）。
+     * 两者缺席时聊天仍可用，只是不过滤 / 不落盘（单测与 solo 也走这条）。
+     */
+    this.chatFilter = typeof opts.chatFilter === 'function' ? opts.chatFilter : null;
+    this.chatLog = opts.chatLog || null;
+    /** 聊天广播序号（客户端按 seq 排序/查未读；单局内单调递增） */
+    this.chatSeq = 0;
     this.gd = new GameData(this.data, this.modeId);
     if (!this.difficulty) this.difficulty = this.gd.difficulty;
     this.isSolo = this.mode === 'solo' || this.gd.isSolo;

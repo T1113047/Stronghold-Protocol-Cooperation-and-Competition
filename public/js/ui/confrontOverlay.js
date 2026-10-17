@@ -13,10 +13,11 @@ import { html, Button, Icon, MicroLabel, Countdown } from '../ui/components.js';
 import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl, factionIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
-import { t } from '../../../shared/i18n.js';
+import { t, N_ } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
-const POSITIONS = [['front', '靠前'], ['mid', '靠中'], ['back', '靠后']];
+// module-level, so the labels are msgids (N_) and translated where they are shown (t(label))
+const POSITIONS = [['front', N_('靠前')], ['mid', N_('靠中')], ['back', N_('靠后')]];
 /**
  * A 特训敌人 type's short label: the data name is 特训敌人·隐匿, the shown label drops the translated prefix (the same
  * expression the enemy drawer's faction chips use).

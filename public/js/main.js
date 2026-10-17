@@ -61,6 +61,7 @@ const RESTORE_GRACE_MS = 1500;
 const JOIN_DELAY_MS = 350;
 const TICKER_KEEP = 20;
 const EMOTE_KEEP = 20;
+const CHAT_KEEP = 100; // [CHAT] recent m.chat lines kept for the bottom-left history and the avatar bubbles
 
 const SCREENS = { title: TitleScreen, lobby: LobbyScreen, room: RoomScreen, game: GameScreen };
 
@@ -132,15 +133,15 @@ function maybeFinishRestore() {
 
 /**
  * Leave whatever room / match was on screen for the lobby with nothing stale left behind: open imperative dialogs,
- * the post-resume restore timer, ticker lines and emote bubbles of the old match (the battle runner and the 暂离 flag
- * follow the store themselves).
+ * the post-resume restore timer, ticker lines, emote bubbles and chat lines of the old match (the battle runner and
+ * the 暂离 flag follow the store themselves).
  */
 function backToLobby() {
   identity.rememberMatch(null);
   clearTimeout(restoreTimer);
   const s = store.get();
   if (s.room || s.match.public) closeAllDialogs();
-  store.set({ room: null, match: emptyMatch(), ticker: [], emotes: [] });
+  store.set({ room: null, match: emptyMatch(), ticker: [], emotes: [], chat: [] });
   store.patch('ui', { restoring: false });
 }
 
@@ -188,8 +189,9 @@ function onRoomState(msg) {
     return;
   }
   const prevRoom = store.get().room;
-  // A (new) match starts: forget the previous match's state so stale results never show.
-  if (room.inMatch && !(prevRoom && prevRoom.inMatch && prevRoom.code === room.code)) store.set({ match: emptyMatch() });
+  // A (new) match starts: forget the previous match's state so stale results never show — its chat lines included
+  // ([CHAT] a new match must not open on the last one's conversation).
+  if (room.inMatch && !(prevRoom && prevRoom.inMatch && prevRoom.code === room.code)) store.set({ match: emptyMatch(), chat: [] });
   store.set({ room });
   identity.rememberMatch(room.inMatch && seats.some((seat) => seat?.playerId === myId)
     ? { name: store.get().me.name, code: room.code || '' } : null);
@@ -259,6 +261,15 @@ function wireNet() {
   });
   net.on('m.emote', (msg) => {
     store.set((s) => ({ emotes: [...s.emotes.slice(-(EMOTE_KEEP - 1)), { seq: ++seq, playerId: msg.playerId, id: msg.id, at: Date.now() }] }));
+  });
+  // [CHAT] in-match text chat: keep the last CHAT_KEEP lines for the bottom-left history (ui/chat.js ChatBox); the
+  // avatar bubbles read the same list (chatBubblesActive). The server already trimmed / capped the text and sends the
+  // sender's name — the box still falls back to the match's player list for an older line.
+  net.on('m.chat', (msg) => {
+    const text = typeof msg.text === 'string' ? msg.text : '';
+    if (!text) return;
+    const name = typeof msg.name === 'string' ? msg.name : '';
+    store.set((s) => ({ chat: [...s.chat.slice(-(CHAT_KEEP - 1)), { playerId: msg.playerId, name, text, seq: ++seq, at: Date.now() }] }));
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.

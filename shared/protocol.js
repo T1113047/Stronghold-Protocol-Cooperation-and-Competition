@@ -1,7 +1,7 @@
 // Normative message catalogue (DESIGN §8). Used by server (validation) and client (building requests).
 // Every client→server message is `{ t, rid?, ...fields }`. Unknown `t` or invalid fields ⇒ ERR.BAD_MSG.
 
-import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, ROOM_MODES, EMOTES, GEO } from './constants.js';
+import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, ROOM_MODES, EMOTES, GEO, CHAT_MAX_LEN } from './constants.js';
 import { isDroppableChess } from './standIn.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
 import { cultivatedStats, isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT } from './potential.js';
@@ -450,6 +450,8 @@ export const C2S = {
   // 2V2 对抗期 step 1: the opposing player this seat attacks this round (first come, first served inside the team)
   'g.confrontTarget': { targetPlayerId: isId },
   'g.emote': { id: (v) => EMOTES.includes(v) },
+  // [CHAT] 局内文字聊天：清洗/截断/冷却/违禁词都在服务端（见 server/match/match/intents.js chat()）
+  'g.chat': { text: (v) => isStr(v, CHAT_MAX_LEN) && v.trim().length > 0 },
   // playerId: the player tapped in the team panel (a 联防 / boss pair field shows two) — what an eliminated viewer or a
   // spectator seat follows from then on (Match.watchPref; community report of 2026-10-06, item 56)
   'g.watch': { fieldId: (v) => isStr(v, 32), playerId: isId, $optional: ['playerId'] },
@@ -486,6 +488,10 @@ export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'room.state', 'room.closed',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
+  // m.chat { playerId, name, text, seq, at } — 局内文字聊天广播（移植自服务服 server_patches/chat）
+  'm.chat',
+  // [NOTICE] m.notice { text } — 服务器公告：广播给所有在线连接（大厅 / 房间 / 对局中）；POST /api/notify（仅回环）
+  'm.notice',
   // m.layer { playerId, bondId, add } — own live prep layer gain; ephemeral, never replayed on resync.
   'm.layer',
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)

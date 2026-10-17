@@ -17,6 +17,8 @@
 //     in server/lobby.js. Local / LAN peers without a forwarding header (dev machine, tests, LAN party)
 //     have no key and are never limited per address.
 //   * Heartbeat (ws ping/pong every `heartbeatMs`, dead sockets terminated), hello timeout.
+//   * [NOTICE] broadcastNotice(text): a server announcement (`m.notice`) to every open socket — lobby, a room or a
+//     running match alike; the loopback-only POST /api/notify (http/routes.js) drives it.
 //   * Send helpers that never throw, with a backpressure guard: non-critical `b.snap` frames are skipped
 //     while the socket has more than 1 MB queued; a socket with more than 16 MB queued is terminated
 //     (the client reconnects and receives a full state resync).
@@ -362,6 +364,25 @@ export function sanitizeName(raw) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+// Server announcements ([NOTICE])
+// ---------------------------------------------------------------------------------------------------
+
+/** [NOTICE] Longest announcement a server notice carries (code points), see Network.broadcastNotice. */
+export const NOTICE_MAX_LEN = 200;
+
+/**
+ * [NOTICE] Sanitize an announcement: drop control / invisible characters and lone surrogates, collapse whitespace,
+ * cap at NOTICE_MAX_LEN code points. Returns '' when nothing printable remains.
+ * @param {unknown} raw
+ * @returns {string}
+ */
+export function cleanNoticeText(raw) {
+  if (typeof raw !== 'string') return '';
+  const s = raw.normalize('NFC').replace(LONE_SURROGATE_RE, '').replace(STRIP_RE, '').replace(/\s+/g, ' ').trim();
+  return [...s].slice(0, NOTICE_MAX_LEN).join('').trim();
+}
+
+// ---------------------------------------------------------------------------------------------------
 // Client addresses (per-network limits)
 // ---------------------------------------------------------------------------------------------------
 
@@ -570,6 +591,24 @@ export class Network {
 
   /** @param {Connection} conn @param {object} msg */
   reply(conn, msg) { return send(conn.ws, msg); }
+
+  /**
+   * [NOTICE] Broadcast a server announcement to every open socket — in the lobby, a room or a running match alike.
+   * Driven by the loopback-only POST /api/notify (http/routes.js). Never throws.
+   * @param {string} text
+   * @returns {number} how many sockets the frame was queued on
+   */
+  broadcastNotice(text) {
+    const clean = cleanNoticeText(text);
+    if (!clean) return 0;
+    const msg = { t: 'm.notice', text: clean };
+    let n = 0;
+    for (const conn of this.conns.values()) {
+      if (conn.closing) continue;
+      if (send(conn.ws, msg)) n += 1;
+    }
+    return n;
+  }
 
   /** @param {Connection} conn */
   onFrame(conn, data, isBinary) {

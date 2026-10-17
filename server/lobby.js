@@ -104,6 +104,8 @@ import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, check
 import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { getData as defaultGetData, lookup } from './data.js';
 import { Match as DefaultMatch } from './match/Match.js';
+import { filterChat, loadChatFilter } from './chatFilter.js';
+import { createChatLog } from './chatlog.js';
 import { KITTED_CHARS } from './sim/content/kits/index.js';
 
 /** Room code alphabet: uppercase letters without I and O (and no digits, so no 0/1). */
@@ -539,6 +541,8 @@ export class Lobby {
     session.pendingResult = null;
     this.broadcastState(room);
     if (room.match) this.callMatch(room, 'addSpectator', session.playerId);
+    // [CHATLOG] 中途加入的观众追加进本局记录（保留首次加入时间）
+    try { room.matchCtx?.chatLog?.addMember({ playerId: session.playerId, name: session.name, ip: session.addr || '?', role: '观众(中途加入)' }); } catch { /* 记录失败不影响观战 */ } // i18n-ignore: 写进对局记录文件的数据，不是界面文案
     return OK;
   }
 
@@ -830,6 +834,11 @@ export class Lobby {
   startMatch(room, key = null) {
     const host = room.seatOf(room.hostId);
     if (host) host.ready = true;
+    // [CHAT] 违禁词库只载一次（首次开局时）；词库路径来自环境变量 CHAT_FILTER_SOURCES，仓库里不写服务端路径。
+    if (!this._chatFilterLoaded) {
+      this._chatFilterLoaded = true;
+      try { this.log.info(`[chat] 违禁词库已载入：${loadChatFilter()} 条`); } catch (e) { this.log.warn('[chat] 违禁词库载入失败', e); }
+    }
     const seats = room.seats.filter(Boolean).map((s) => ({
       seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, connected: s.connected,
       // 2V2 ('versus'): the team this seat fights for (PlayerState.team) — absent in 'solo' / 'coop'
@@ -843,7 +852,19 @@ export class Lobby {
       diy: s.isBot ? null : s.diy || null,
     }));
     // lastPublic / results: the latest m.public broadcast and the m.result frames (encoded), kept for the replay.
-    const ctx = { live: true, ended: false, disposed: false, match: null, lastPublic: null, sharedResult: null, results: new Map() };
+    const ctx = { live: true, ended: false, disposed: false, match: null, lastPublic: null, sharedResult: null, results: new Map(), chatLog: null };
+    // [CHATLOG] 本局对话记录：开局建档 + 收录所有真人席与观众（含中途加入的，见 spectate）
+    try {
+      ctx.chatLog = createChatLog({
+        roomCode: room.code, matchNo: room.matchCount + 1, mode: room.mode, difficulty: room.difficulty, log: this.log,
+      });
+      const addrOf = (pid) => { const s = this.registry.byId(pid); return (s && s.addr) || '?'; };
+      for (const s of room.seats) if (s && !s.isBot) ctx.chatLog.addMember({ playerId: s.playerId, name: s.name, ip: addrOf(s.playerId), role: '玩家' }); // i18n-ignore: 记录文件数据
+      for (const s of room.spectators) ctx.chatLog.addMember({ playerId: s.playerId, name: s.name, ip: addrOf(s.playerId), role: '观众' }); // i18n-ignore: 记录文件数据
+    } catch (e) {
+      this.log.warn(`[chatlog] ${room.code} 建档失败`, e);
+      ctx.chatLog = null;
+    }
     let seed = 0;
     try { seed = this.seedFn() >>> 0; } catch { seed = randomInt(2 ** 32); }
     try {
@@ -866,6 +887,9 @@ export class Lobby {
         send: (playerId, msg) => (ctx.live ? this.matchSend(room, ctx, playerId, msg) : false),
         broadcast: (msg) => { if (ctx.live) this.matchBroadcast(room, ctx, msg); },
         onEnd: (summary) => this.onMatchEnd(room, ctx, summary),
+        // [CHAT]/[CHATLOG]（移植自服务服）：违禁词过滤（服务端权威）+ 本局对话记录（结束时封存）
+        chatFilter: filterChat,
+        chatLog: ctx.chatLog,
       });
       ctx.match = match;
       room.match = match;
@@ -891,6 +915,8 @@ export class Lobby {
     if (ctx.ended || !ctx.live || room.matchCtx !== ctx || room.disposed) return;
     ctx.ended = true;
     room.lastSummary = summary ?? null;
+    // [CHATLOG] 对局结束 → 封存本局对话记录（幂等；失败只记日志，不影响结算）
+    try { ctx.chatLog?.seal(); } catch (e) { this.log.warn(`[chatlog] ${room.code} 封存失败`, e); }
     room.match = null;
     room.matchCtx = null;
     room.matchKey = null;
@@ -1029,6 +1055,8 @@ export class Lobby {
     }
     // a spectator only watches (header): nothing else of it ever reaches the match
     if (msg.t !== 'g.watch' && room.spectatorOf(session.playerId)) return fail(ERR.SPECTATOR);
+    // [CHAT] 「仅登录可发言」（[CHATLOG] 规则）：账号系统（第 4 批）落地后把 this.chatRequiresAccount 置 true 即生效
+    if (msg.t === 'g.chat' && this.chatRequiresAccount && !session.account) return fail(ERR.BAD_MSG, 'login required to chat');
     let res;
     try {
       res = room.match.handle(session.playerId, msg);

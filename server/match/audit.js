@@ -46,7 +46,7 @@ import { collectViolations } from './invariants.js';
 import { mergeTile, pieceDir, canPlace, placeClass } from './board.js';
 import { bossPoolHp } from './finalAssault.js';
 import { helperOrder } from './unite.js';
-import { BAND_TURN_SECONDS } from './Match.js';
+import { BAND_TURN_SECONDS, DELAYS } from './Match.js';
 
 /**
  * @param {import('./Match.js').Match} m
@@ -326,7 +326,8 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
     runInvariants();
     check('round start phase', () => {
       if (m.phase !== PHASE.ROUND_START) return;
-      expectDeadline(2, 'ROUND_START', { silentSolo: true });
+      // [LATENCY] ROUND_START is env-overridable now — read it instead of the old hard-coded 2 s
+      expectDeadline(DELAYS.ROUND_START / 1000, 'ROUND_START', { silentSolo: true });
       const isBoss = m.isBossRound(rr);
       if (isBoss ? !m.bossWaves : !m.wave) fail('round without its wave');
     });

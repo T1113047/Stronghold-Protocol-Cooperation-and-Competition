@@ -1278,7 +1278,7 @@
   "{name}博士已离开，由 AI 接管": "Dr. {name} left — the AI takes the seat over",
   "沿用上轮": "Reuse last round",
   "沿用上一轮的编队（按本轮预算重新装填）": "Reuse last round's squad; the leftover budget is topped up automatically (nothing fits: it stays)",
-  "点一下换门 · 长按拖动排序（默认下路）": "Tap to switch the gate · press and hold to drag it in the order (default 下路, lower)",
+  "点一下换门 · 长按拖动排序（默认下路）": "Tap to switch the gate · press and hold to drag it in the order (lower lane by default)",
   "点击换门 · 长按拖动排序": "Tap to switch the gate · press and hold to reorder",
   "非队友视角无法查看": "You can't view a non-teammate's side",
   "悬赏名单": "Bounty board",
@@ -1292,5 +1292,16 @@
   "开放匹配": "Open to matchmaking",
   "已开放匹配": "Open to matchmaking",
   "开放后，其他博士可用「快速匹配」加入本房": "When open, other doctors can join this room with Quick Match",
-  "当前没有开放匹配的房间，可创建同盟后开启「开放匹配」": "No room is open for matchmaking yet — create one and turn on Open to matchmaking"
+  "当前没有开放匹配的房间，可创建同盟后开启「开放匹配」": "No room is open for matchmaking yet — create one and turn on Open to matchmaking",
+  "聊天": "Chat",
+  "发送消息…": "Send a message…",
+  "发送": "Send",
+  "收起聊天": "Collapse Chat",
+  "聊天记录": "Chat Log",
+  "暂无聊天": "No messages yet",
+  "有 {n} 条新消息": "{n} {n|new message|new messages}",
+  "观战中只能旁观": "Spectating: you can only watch",
+  "靠前": "Front",
+  "靠中": "Middle",
+  "靠后": "Back"
 }

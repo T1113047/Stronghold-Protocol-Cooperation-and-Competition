@@ -5,7 +5,7 @@
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { unitStatsEntry } from '../../../shared/protocol.js';
-import { PHASE, ERR, EMOTES, EMOTE_COOLDOWN_MS, GEO } from '../../../shared/constants.js';
+import { PHASE, ERR, EMOTES, EMOTE_COOLDOWN_MS, CHAT_MAX_LEN, CHAT_COOLDOWN_MS, GEO } from '../../../shared/constants.js';
 import { deriveSeed } from '../../sim/rng.js';
 import { OK, fail } from './common.js';
 import { onHumanEmote } from '../botEmotes.js';
@@ -44,6 +44,8 @@ export class MatchIntents {
       case 'g.confrontTarget': return this.submitConfrontTarget(ps, msg);
       case 'g.confront': return this.submitConfront(ps, msg);
       case 'g.emote': return this.emote(ps, msg.id);
+      // [CHAT] 局内文字聊天（移植自服务服 server_patches/chat + chatlog）
+      case 'g.chat': return this.chat(ps, msg);
       // playerId: the player tapped (a shared field names two) — the watch preference (item 56)
       case 'g.watch': return this.watch(ps, msg.fieldId, msg.playerId ?? null);
       case 'g.autoplay': return this.setAutoplay(ps, !!msg.on);
@@ -68,8 +70,28 @@ export class MatchIntents {
     return OK;
   }
 
-  setAutoplay(ps, on) {
-    if (ps.autoplay === on) return OK;
+  /**
+   * [CHAT] 局内文字聊天（移植自服务服 server_patches/chat + chatlog）。服务端一条龙：
+   *   去控制字符 + trim → 截断到 CHAT_MAX_LEN → 发送冷却 → 违禁词过滤（服务端权威）→ 广播 m.chat → 写对局记录。
+   * 已淘汰但仍在线的座位可以发言（[CHATLOG] 的规则）；观战者在 lobby.routeGame 就被挡住（ERR.SPECTATOR）；
+   * 「仅登录可发言」等账号系统（第 4 批）落地后由 lobby 的 chatRequiresAccount 打开。
+   * `at` 用真实墙上时间（只作显示：客户端的气泡按 Date.now() 比较），逻辑计时仍走 sched。
+   */
+  chat(ps, { text } = {}) {
+    const body = String(text ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+    if (!body) return fail(ERR.BAD_MSG, 'empty chat');
+    const now = this.sched.now();
+    if (now - ps.lastChatAt < CHAT_COOLDOWN_MS) return fail(ERR.RATE);
+    ps.lastChatAt = now;
+    const filtered = typeof this.chatFilter === 'function' ? this.chatFilter(body) : { text: body, censored: false };
+    const out = typeof filtered?.text === 'string' ? filtered.text : body;
+    const seq = ++this.chatSeq;
+    try { this.chatLog?.addMessage({ playerId: ps.playerId, text: body, censored: !!filtered?.censored }); } catch { /* 记录失败不影响发言 */ }
+    this.broadcast({ t: 'm.chat', playerId: ps.playerId, name: ps.name, text: out, seq, at: Date.now() });
+    return OK;
+  }
+
+  setAutoplay(ps, on) {    if (ps.autoplay === on) return OK;
     ps.autoplay = on;
     this.markPublic();
     if (on) this.kickBot(ps);

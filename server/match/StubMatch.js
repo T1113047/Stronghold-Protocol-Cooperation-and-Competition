@@ -61,7 +61,7 @@
 // 'g.emote' is relayed as m.emote (1 s cooldown) so clients can test broadcast plumbing.
 
 import { C2S } from '../../shared/protocol.js';
-import { PHASE, ERR, EMOTE_COOLDOWN_MS, GEO, modeIdFor } from '../../shared/constants.js';
+import { PHASE, ERR, EMOTE_COOLDOWN_MS, CHAT_MAX_LEN, CHAT_COOLDOWN_MS, GEO, modeIdFor } from '../../shared/constants.js';
 import { getConfig, getMode } from '../data.js';
 
 const GAME_TYPES = new Set(Object.keys(C2S).filter((t) => Object.hasOwn(C2S, t) && t.startsWith('g.')));
@@ -141,6 +141,15 @@ export class StubMatch {
         p.lastEmoteAt = now;
         this.broadcastFn({ t: 'm.emote', playerId, id: msg.id });
       }
+    } else if (msg.t === 'g.chat') {
+      // [CHAT] 桩：与真实 Match 同形（冷却 + m.chat 广播），过滤/记录不参与（桩没有 chatFilter/chatLog）
+      const now = this.now();
+      const text = String(msg.text ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+      if (!text) return { error: ERR.BAD_MSG };
+      if (now - p.lastChatAt < CHAT_COOLDOWN_MS) return { error: ERR.RATE };
+      p.lastChatAt = now;
+      p.chatSeq = (p.chatSeq || 0) + 1;
+      this.broadcastFn({ t: 'm.chat', playerId, name: p.name, text, seq: p.chatSeq, at: Date.now() });
     }
     return { ok: true };
   }

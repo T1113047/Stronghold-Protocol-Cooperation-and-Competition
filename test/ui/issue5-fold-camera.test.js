@@ -105,8 +105,10 @@ describe('hudBands: the folded shop\'s band', () => {
     assert.match(shop, /\.shopbar-tab__btn \{[^}]*height: \.44rem;/);
     assert.equal(HUD_REM.shopTabTop, 0.2 + 0.08 * 2 + 0.44);
     assert.equal(HUD_REM.shopTabBorderPx, 3);
-    // corner (fallback when it cannot be measured): bottom .24rem + a .56rem desktop row
-    assert.match(game, /\.gm__corner \{ position: absolute; left: \.24rem; bottom: \.24rem;/);
+    // corner (fallback when it cannot be measured): bottom .24rem + a .56rem desktop row — the [CHAT] bar sits in the
+    // same stack ABOVE that row (.gm__corner-stack, measured by ui/fieldHost.js cornerBand), the row itself is unchanged
+    assert.match(game, /\.gm__corner-stack \{ position: absolute; left: \.24rem; bottom: \.24rem;/);
+    assert.match(game, /\.gm__corner \{ position: static; display: flex; align-items: flex-end; gap: \.1rem; \}/);
     assert.match(game, /\.gm__gear \{\n {2}width: \.56rem; height: \.56rem;/);
     assert.ok(Math.abs(HUD_REM.cornerTop - (0.24 + 0.56)) < 1e-9);
     // folded, the narrow phones' corner is one row again (the bar that made it wrap is gone)

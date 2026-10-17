@@ -393,14 +393,57 @@
 .efftip__kind { font-size: .12rem; color: var(--text-dim); }
 .efftip p { font-size: .15rem; line-height: 1.55; color: var(--text-md); }
 
-/* ---- corner: emote + settings --------------------------------------------------------------------------------- */
-.gm__corner { position: absolute; left: .24rem; bottom: .24rem; display: flex; align-items: flex-end; gap: .1rem; }
+/* ---- corner: chat + emote + settings --------------------------------------------------------------------------- */
+/* 左下角竖排：聊天条在最上（.gchat 自带 position: relative，所以它的记录框向上展开到空处），交流 / 设置那一行在下面
+   （.gm__corner 在这里变成 static，整排不再绝对定位）。交流面板自带 z-index: 5（emotes.css）仍画在聊天条之上，
+   所以展开表情轮盘时会盖住聊天条——表情轮盘可用，且没人压住它。ui/fieldHost.js cornerBand 也量了 .gchat__toggle，
+   收起商店的准备镜头会把整备区抬到聊天条之上。 */
+.gm__corner-stack { position: absolute; left: .24rem; bottom: .24rem; display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; }
+.gm__corner { position: static; display: flex; align-items: flex-end; gap: .1rem; }
 .gm__gear {
   width: .56rem; height: .56rem; display: grid; place-items: center; background: rgba(8, 11, 10, .85);
   border: 1px solid var(--line-2); color: var(--text-lo); transition: color var(--t-fast), border-color var(--t-fast);
 }
 .gm__gear .icon { width: .28rem; height: .28rem; }
 .gm__gear:hover { color: var(--mint-400); border-color: var(--mint-700); }
+
+/* ---- [CHAT] in-match text chat (independent bar in the corner stack, above the 交流 row) ----------------------- */
+.gchat { position: relative; display: flex; align-items: center; gap: .06rem; width: max(3.6rem, 240px); max-width: 72vw; }
+.gchat__toggle, .gchat__send {
+  position: relative; width: max(.56rem, 34px); height: max(.56rem, 34px); flex: none; display: grid; place-items: center;
+  background: rgba(8, 11, 10, .85); border: 1px solid var(--line-2); color: var(--text-lo);
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.gchat__toggle .icon { width: max(.3rem, 18px); height: max(.3rem, 18px); color: var(--mint-500); }
+.gchat__send { color: var(--mint-500); }
+.gchat__send .icon { width: max(.28rem, 17px); height: max(.28rem, 17px); transform: translateX(1px); }
+.gchat__toggle:hover, .gchat.is-open .gchat__toggle, .gchat__send:hover:not(:disabled) { color: var(--mint-400); border-color: var(--mint-700); }
+.gchat__toggle:disabled, .gchat__input:disabled { opacity: .5; cursor: not-allowed; }
+.gchat__send:disabled { opacity: .4; cursor: not-allowed; }
+.gchat__badge {
+  position: absolute; top: -.02rem; right: -.02rem; width: max(.16rem, 10px); height: max(.16rem, 10px);
+  border-radius: 99px; background: #ff5454;
+  box-shadow: 0 0 0 max(.02rem, 1px) rgba(8, 11, 10, .9);
+}
+.gchat__input {
+  flex: 1 1 auto; min-width: 0; height: max(.56rem, 34px); padding: 0 max(.16rem, 10px); background: rgba(8, 11, 10, .85);
+  border: 1px solid var(--line-2); color: var(--text-hi); font-size: calc(.16 * var(--t));
+}
+.gchat__input::placeholder { color: var(--text-lo); }
+.gchat__input:focus { outline: none; border-color: var(--mint-700); }
+.gchat__log {
+  position: absolute; left: 0; bottom: calc(100% + .08rem); width: max(4.4rem, 260px); max-width: 80vw; max-height: 3.2rem; overflow-y: auto;
+  padding: .1rem .12rem; background: linear-gradient(180deg, rgba(20, 26, 24, .97), rgba(10, 14, 12, .97));
+  border: 1px solid var(--line-2); box-shadow: 0 .1rem .3rem rgba(0, 0, 0, .6); animation: pop-in var(--t-med) var(--ease-out);
+}
+.gchat__line { display: flex; gap: .1rem; font-size: calc(.15 * var(--t)); line-height: 1.5; color: var(--text-md); word-break: break-word; }
+.gchat__line + .gchat__line { margin-top: .04rem; }
+.gchat__name { flex: none; max-width: 1.6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mint-400); font-weight: 700; }
+.gchat__line.is-self .gchat__name { color: var(--gold); }
+.gchat__text { color: var(--text-hi); }
+.gchat__empty { padding: .1rem 0; font-size: calc(.14 * var(--t)); color: var(--text-lo); text-align: center; }
+/* 收起时只剩小图标（未读时带红点）：输入框与发送键跟记录一起隐藏，点图标展开 */
+.gchat:not(.is-open) .gchat__input, .gchat:not(.is-open) .gchat__send { display: none; }
 
 .ewheel { position: relative; }
 .ewheel__btn {
@@ -446,8 +489,21 @@
 .ebubble--art { padding: .02rem .14rem .02rem .16rem; }
 .ebubble .eart { width: .62rem; height: .62rem; object-fit: contain; }
 .ebubble__txt { color: var(--mint-400); }
-.ebubble--text { background: rgba(236, 244, 241, .96); border: 0; }
+/* 聊天文字气泡（ui/chat.js ChatBubble）: emotes.css 的 .ebubble 是表情图专用的固定 1.08 × .97rem 方框，这里用具体度
+   更高的选择器把它覆盖成一段浅色文字气泡，动画沿用 --ebubble-ttl / --ebubble-age 这条时间线。 */
+.ebubble.ebubble--text {
+  width: max-content; max-width: 3.2rem; height: auto; padding: .05rem .14rem .05rem .22rem;
+  font-size: calc(.15 * var(--t)); line-height: 1.35; font-weight: 700; text-align: left; white-space: normal;
+  background: rgba(236, 244, 241, .96); border: 0; color: #0b1310;
+  clip-path: polygon(.1rem 0, 100% 0, 100% 100%, .1rem 100%, .1rem 62%, 0 50%, .1rem 38%);
+  animation: emo-bubble-pop 240ms var(--ease-out) calc(0ms - var(--ebubble-age)) both,
+    emo-bubble-out 300ms var(--ease-in-out) calc(var(--ebubble-ttl) - 300ms - var(--ebubble-age)) forwards;
+}
+.ebubble.ebubble--text::before, .ebubble.ebubble--text::after { content: none; }
 .ebubble--text .ebubble__txt { color: #0b1310; }
+@media (prefers-reduced-motion: reduce) {
+  .ebubble.ebubble--text { animation: emo-bubble-out 1ms linear calc(var(--ebubble-ttl) - 1ms - var(--ebubble-age)) forwards; }
+}
 @keyframes bubble-in { from { opacity: 0; transform: translateY(-50%) scale(.6); } }
 @keyframes bubble-out { to { opacity: 0; } }
 

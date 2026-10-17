@@ -42,6 +42,9 @@ function randomIntent(rng, m, ps) {
     }
     case 'g.confrontTarget': return { t, targetPlayerId: rng() < 0.8 ? rng.pick([...m.players.keys()]) : `p_${'a'.repeat(8)}` };
     case 'g.emote': return { t, id: rng.pick(EMOTES) };
+    // [CHAT] a valid shape — the fuzzer only ever emits messages that pass validateC2S (the server still enforces the
+    // 80-char cap and the cooldown, and those refusals are legal)
+    case 'g.chat': return { t, text: 'fuzz 聊天' };
     case 'g.watch': return { t, fieldId: rng.pick(['n:p_0', 'n:p_1', 'n:ai_0', 'u', 'b1', 'b2', 'zz', '']) };
     case 'g.autoplay': return { t, on: rng() < 0.05 };
     case 'g.pause': return { t, on: rng() < 0.5 };

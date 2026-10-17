@@ -51,7 +51,8 @@ export function hudPadding(kind, size) {
  * button, plus its 2 px + 1 px borders; it sits inside the HUD layer, above the bottom safe-area inset) and the corner
  * buttons' top edge (css/screens/game.css .gm__corner bottom .24rem + a .56rem row — the fallback when the corner
  * cannot be measured: on phones its buttons grow to 34 px and below 768 CSS px of width they wrap into two rows,
- * css/devices.css).
+ * css/devices.css). The [CHAT] bar sits in the same stack ABOVE that row (game.css .gm__corner-stack), so `cornerBand`
+ * measures its toggle as well; the .8rem fallback stays the bare row (it only applies when nothing can be measured).
  */
 export const HUD_REM = Object.freeze({
   bondStripBottom: 2.16, shopBarTop: 2.64, shopBarBorderPx: 3, shopTabTop: 0.8, shopTabBorderPx: 3, cornerTop: 0.8,
@@ -107,14 +108,14 @@ export function hudBands(kind, size, opts) {
 }
 
 /**
- * CSS px from the viewport's bottom edge (`h` high) up to the top of the corner buttons' hit areas (交流 / ⚙ / 📖 / ⛶,
- * .gm__corner), 0 when they are not on the page. On a touch screen every one of them takes taps from an invisible area
- * of at least --tap-min (44 px) centred on it (css/devices.css touch targets), 5 px above a 34 px phone button — a bench
- * pad edge there is not pressable.
+ * CSS px from the viewport's bottom edge (`h` high) up to the top of the corner controls' hit areas (交流 / ⚙ / 📖 / ⛶,
+ * .gm__corner, and the [CHAT] bar in the same stack), 0 when they are not on the page. On a touch screen every one of
+ * them takes taps from an invisible area of at least --tap-min (44 px) centred on it (css/devices.css touch targets),
+ * 5 px above a 34 px phone button — a bench pad edge there is not pressable.
  * @param {number} h
  */
 function cornerBand(h) {
-  const btns = document.querySelectorAll('.gm__corner .gm__gear, .gm__corner .ewheel__btn');
+  const btns = document.querySelectorAll('.gm__corner .gm__gear, .gm__corner .ewheel__btn, .gchat .gchat__toggle');
   if (!btns || !btns.length) return 0;
   const root = document.documentElement;
   const tap = root?.classList?.contains('sp-coarse') ? parseFloat(getComputedStyle(root).getPropertyValue('--tap-min')) || 0 : 0;

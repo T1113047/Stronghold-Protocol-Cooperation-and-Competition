@@ -349,3 +349,7 @@ export const emoteArtGroup = (id) => { const e = emoteInfo(id); return e ? `emot
 export const emoteArtPath = (id) => { const e = emoteInfo(id); return e ? `/assets/local/emoticon/${e.dir}/${e.picId}.png` : null; };
 export const EMOTE_COOLDOWN_MS = 1000; // activity_table autoChessData.constData.chatCD (s)
 export const EMOTE_BUBBLE_MS = 3000;   // constData.chatTime (s): how long a bubble stays up
+// 局内文字聊天（移植自服务服 server_patches/chat + chatlog）：
+//   CHAT_MAX_LEN 单条上限（官方聊天 80 字）· CHAT_COOLDOWN_MS 发送冷却 · 服务器还要 trim + 去控制字符。
+export const CHAT_MAX_LEN = 80;
+export const CHAT_COOLDOWN_MS = 2000;

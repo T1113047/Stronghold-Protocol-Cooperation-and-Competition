@@ -329,7 +329,7 @@ export class MatchConfront {
     if (!ps.alive) return fail(ERR.ELIMINATED);
     if (this.confrontSubs.has(ps.playerId)) return fail(ERR.ALREADY);
     const member = this._confrontMember(ps, group, position, picks);
-    if (!member) return fail(ERR.BAD_TARGET, 'illegal 对抗期 pick');
+    if (!member) return fail(ERR.BAD_TARGET, 'illegal 对抗期 pick'); // i18n-ignore: 服务端内部 detail（客户端显示的是 ERR.BAD_TARGET 的文案）
     this.confrontSubs.set(ps.playerId, member);
     this.markPublic();
     this.maybeFinishConfront();

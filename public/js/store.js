@@ -11,7 +11,7 @@
 //                 every local clock; `leaks`: { [fieldId]: counted leaks so far } of every normal field simulated
 //                 locally (the live LP of ui/hud.js liveLp, user playtest #3 item 2). Under client-side combat `field`
 //                 is published by the runner (the m.field shape of the battle on screen, `local: true`).
-//   ticker      – recent `m.ticker` lines, emotes – recent `m.emote` events
+//   ticker      – recent `m.ticker` lines, emotes – recent `m.emote` events, chat – recent `m.chat` lines
 //   clock       – { offset, rtt } server clock correction: serverNow ≈ Date.now() + offset
 //   ui          – small bits of local UI state shared between screens
 //
@@ -82,6 +82,7 @@ export const initialState = Object.freeze({
   match: emptyMatch(),
   ticker: [],
   emotes: [],
+  chat: [], // recent m.chat lines (the in-match free-text chat; ui/chat.js)
   clock: { offset: 0, rtt: null, synced: false },
   ui: { pendingJoin: null, restoring: false, buildStale: false },
 });

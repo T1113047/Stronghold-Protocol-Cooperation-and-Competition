@@ -38,9 +38,8 @@ scripts/service.env.cmd
 .env
 .env.*
 
-# --- [ACCOUNT] the QQ account store (server/account.js) --------------------------------------------
-# ACCOUNT_DIR's default: accounts/<qq>.json, avatars/, records/ and the RSA key (server/account-secrets,
-# or ACCOUNT_KEY_DIR). Real player data + the private key: never committed.
+# --- server-local runtime data (never part of this repository) -------------------------------------
+# A deployment may keep per-player data here (outside the static dirs): real player data, never committed.
 .account/
 
 # --- OS / editor clutter ---------------------------------------------------------------------------

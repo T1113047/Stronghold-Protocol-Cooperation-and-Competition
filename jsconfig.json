@@ -25,10 +25,6 @@
   ],
   "exclude": [
     "shared/protocol.js",
-    "shared/bandBonds.js",
-    // [ACCOUNT] browser + Node in one file by design (crypto.subtle when available, a pure-JS fallback otherwise):
-    // TextEncoder / Buffer / btoa are outside this slice's lib (ES2022, types: []) and the file must stay byte-for-byte
-    // the same algorithm as the 盟约 build (accounts/accountCrypto.js interop). Same treatment as the two above.
-    "shared/accountCrypto.js"
+    "shared/bandBonds.js"
   ]
 }

@@ -206,11 +206,6 @@ export class Room {
     this.createdAt = now;
     /** [MATCHMAKE] 房主是否把本房对外开放匹配（默认开启，房主可手动关闭） */
     this.matchmake = true;
-    /**
-     * [ACH] 某玩家座位的成就评分（由 Lobby 在建房时挂上：`(playerId) => lobby.achOf(playerId)`）。
-     * @type {((playerId: string) => number | null) | null}
-     */
-    this.resolveAch = null;
     this.disposed = false;
   }
 
@@ -244,8 +239,6 @@ export class Room {
       seats: this.seats.map((s) => {
         if (!s) return null;
         const row = { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left };
-        // [ACH] 成就评分：真人座位取服务端权威（或游客上报分）；AI / 未知 → null（客户端不渲染徽章）
-        row.ach = s.isBot || !this.resolveAch ? null : this.resolveAch(s.playerId);
         if (versus) row.team = teamOfSeat(s.seat);
         return row;
       }),
@@ -268,11 +261,9 @@ export class Lobby {
    *   now?: () => number,
    *   seedFn?: () => number,
    *   options?: Partial<typeof LOBBY_DEFAULTS>,
-   *   accounts?: object|null,
-   *   records?: object|null,
    * }} opts
    */
-  constructor({ registry, log = noopLog, MatchClass = DefaultMatch, getData = defaultGetData, now = Date.now, seedFn, options = {}, accounts = null, records = null }) {
+  constructor({ registry, log = noopLog, MatchClass = DefaultMatch, getData = defaultGetData, now = Date.now, seedFn, options = {} }) {
     this.registry = registry;
     this.log = log;
     this.MatchClass = MatchClass;
@@ -280,8 +271,6 @@ export class Lobby {
     this.now = now;
     this.seedFn = seedFn || (() => randomInt(2 ** 32));
     this.opts = { ...LOBBY_DEFAULTS, ...options };
-    this.accounts = accounts; // [ACCOUNT] server/account.js（好友/邀请等；本文件只在需要时用）
-    this.records = records;   // [ACH-STORE] 成就库：绑定账号的服务端权威评分
     /** @type {Map<string, Room>} */
     this.rooms = new Map();
     /** @type {Map<string, NodeJS.Timeout>} lobby grace timers by playerId */
@@ -307,42 +296,6 @@ export class Lobby {
       spectators += r.spectators.length;
     }
     return { rooms: this.rooms.size, matches, humans, bots, spectators };
-  }
-
-  // ---------------------------------------------------------------------------------------------------
-  // [ACH] 成就评分（房间座位徽章）
-  // ---------------------------------------------------------------------------------------------------
-
-  /**
-   * [ACH] 某玩家座位的成就评分。
-   *   1. 已绑定账号且成就库**已有该号记录** → 服务端权威求和（跨设备一致，忽略客户端上报分）；
-   *   2. 否则（游客 / 绑定号但本机还没上传过记录）→ 客户端上报分 `session.ach`；
-   *   3. 无会话 / 都没有 → null（不渲染徽章）。
-   * @param {string} playerId @returns {number | null}
-   */
-  achOf(playerId) {
-    const s = this.registry.byId(playerId);
-    if (!s) return null;
-    if (this.records && s.account && this.records.has(s.account)) return this.records.scoreOf(s.account);
-    if (Number.isFinite(s.ach)) return s.ach;
-    return null;
-  }
-
-  /** [ACH] 存下客户端上报的分数并重发房间状态（同房所有人立刻看到）。 */
-  setAch(session, score) {
-    const n = Number.isInteger(score) ? Math.max(0, Math.min(1_000_000, score)) : null;
-    if (session.ach === n) return OK;
-    session.ach = n;
-    const room = this.roomOf(session);
-    if (room) this.broadcastState(room);
-    return OK;
-  }
-
-  /** [ACH-STORE] 成就库更新后重发该玩家所在房间的状态（新分数立刻到所有人）。 */
-  notifyAch(playerId) {
-    const s = this.registry.byId(playerId);
-    const room = s && this.roomOf(s);
-    if (room) this.broadcastState(room);
   }
 
   // ---------------------------------------------------------------------------------------------------
@@ -412,9 +365,6 @@ export class Lobby {
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
       // [MATCHMAKE] 快速匹配
       case 'room.matchmake': return this.matchmake(session, msg);
-      case 'room.quickmatch': return this.quickmatch(session, msg);
-      // [ACH] 客户端上报的成就评分（游客显示用；绑定账号由服务端权威记录求和、忽略上报）
-      case 'player.ach': return this.setAch(session, msg.score);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);
@@ -480,7 +430,6 @@ export class Lobby {
     if (!code) return fail(ERR.INTERNAL, 'no room code available');
     if (cur) this.removeMember(cur, session.playerId);
     const room = new Room(code, mode, difficulty, this.now());
-    room.resolveAch = (playerId) => this.achOf(playerId); // [ACH]
     room.ownerKey = key;
     room.seats[0] = this.humanSeat(0, session);
     room.hostId = session.playerId;
@@ -1105,8 +1054,6 @@ export class Lobby {
     }
     // a spectator only watches (header): nothing else of it ever reaches the match
     if (msg.t !== 'g.watch' && room.spectatorOf(session.playerId)) return fail(ERR.SPECTATOR);
-    // [CHAT] 「仅登录可发言」（[CHATLOG] 规则）：账号系统（第 4 批）落地后把 this.chatRequiresAccount 置 true 即生效
-    if (msg.t === 'g.chat' && this.chatRequiresAccount && !session.account) return fail(ERR.BAD_MSG, 'login required to chat');
     let res;
     try {
       res = room.match.handle(session.playerId, msg);

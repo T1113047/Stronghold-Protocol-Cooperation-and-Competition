@@ -26,16 +26,6 @@ const isMap = (v, max, key, val) => {
 };
 const isList = (v, max, item) => Array.isArray(v) && v.length <= max && v.every(item);
 
-// [ACCOUNT] Largest string a single client→server frame may carry (an opaque `enc` payload or a `json` blob). Kept
-// safely below the WebSocket frame limit (server/http/websocket.js WS_MAX_PAYLOAD = 1 MiB): a frame past the WS cap
-// is closed with 1009, which a client reads as a drop and reconnects into (an upload that can never finish — a login
-// loop). Every account frame is bounded by this single value so the two limits stay in step.
-export const MSG_STR_MAX = 900_000;
-/** Sum of the string fields of a list of { json?, enc? } items (used to bound one batched frame in total). */
-const itemsChars = (items) => (Array.isArray(items) ? items : []).reduce((n, it) => {
-  if (!it || typeof it !== 'object') return n;
-  return n + (typeof it.enc === 'string' ? it.enc.length : 0) + (typeof it.json === 'string' ? it.json.length : 0);
-}, 0);
 
 // ---- client-side combat (DESIGN §14): b.progress / b.result payloads -------------------------------------------
 
@@ -390,26 +380,8 @@ const target = (v) => {
 export const C2S = {
   // session & lobby
   hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6),
-    // [ACCOUNT] long-lived account token (local patch): a valid one auto-logs-in and takes the account nickname
-    account: (v) => v == null || isStr(v, 64),
-    noReplace: isBool, claimAt: (v) => isNum(v, 0, Number.MAX_SAFE_INTEGER), $optional: ['token', 'version', 'account', 'noReplace', 'claimAt'] },
+    noReplace: isBool, claimAt: (v) => isNum(v, 0, Number.MAX_SAFE_INTEGER), $optional: ['token', 'version', 'noReplace', 'claimAt'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
-  // [ACCOUNT] QQ-bound account (server/account.js): ask for a bind code the player sends to the QQ group, save one
-  // local pref (its sp.pref.* JSON string) — encrypted (`enc`, AES-GCM) or plaintext (`json`, only with consent) — or
-  // log out. `account.load` fetches one stored pref; the reply is the S2C `account.pref`.
-  'account.requestBind': {},
-  'account.save': { key: (v) => isStr(v, 32), json: (v) => typeof v === 'string' && v.length <= MSG_STR_MAX, enc: (v) => typeof v === 'string' && v.length <= MSG_STR_MAX, plainOk: (v) => v == null || v === true, $optional: ['json', 'enc', 'plainOk'] },
-  // [ACCOUNT-V2] batched save: items = [{ key, json?, enc? }]; the whole frame (sum of the items' json/enc) is bound
-  // by MSG_STR_MAX like a single save.
-  'account.saveBatch': { items: (v) => Array.isArray(v) && v.length > 0 && v.length <= 32 && itemsChars(v) <= MSG_STR_MAX, plainOk: (v) => v == null || v === true, $optional: ['plainOk'] },
-  'account.load': { key: (v) => isStr(v, 32) },
-  // [ACH-STORE] 服务端权威对局记录：上报一批记录（密文 `enc` 或已同意明文 `records`）；服务端校验后归并、评分。
-  'account.records': { records: (v) => Array.isArray(v) && v.length > 0 && v.length <= 32, enc: (v) => typeof v === 'string' && v.length <= MSG_STR_MAX, $optional: ['records', 'enc'] },
-  'account.setName': { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0 },
-  'account.logout': {},
-  // [ACH] 本机成就评分（客户端从本地 stats 算好上报）；服务端随房间座位广播，使未绑定账号的玩家也显示徽章。
-  // 已绑定账号且服务端有记录时以服务端权威为准，这个上报分被忽略。
-  'player.ach': { score: (v) => isInt(v, 0, 1_000_000) },
   'room.create': { mode: (v) => ROOM_MODES.includes(v), difficulty: (v) => DIFFICULTIES.includes(v) },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.leave': {},
@@ -523,9 +495,6 @@ export const C2S = {
 export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'room.state', 'room.closed',
-  // [ACCOUNT] account.bindCode { code, ttl } · account.bound { qq, nickname, token? } · account.data { qq, nickname,
-  // meta, salt, enc | prefs?, encUnavailable? } · account.pref { key, json } · account.logout { }
-  'account.bindCode', 'account.bound', 'account.data', 'account.logout', 'account.pref',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
   // m.chat { playerId, name, text, seq, at } — 局内文字聊天广播
   'm.chat',

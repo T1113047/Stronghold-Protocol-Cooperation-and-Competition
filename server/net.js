@@ -60,7 +60,6 @@ export const NET_DEFAULTS = Object.freeze({
   heavyPerSec: 2,               // refill of the bucket for resend-heavy intents (HEAVY_TYPES)
   heavyBurst: 6,
   trustProxy: 'auto',           // forwarding headers: 'auto' = from loopback/private peers only, true = always, false = never
-  onlineFlushMs: 5 * 60_000,    // [ACCOUNT] flush an account's online time to the shared file this often (plus once on disconnect)
 });
 
 /**
@@ -95,16 +94,6 @@ export class Session {
     this.token = token;
     /** @type {string} sanitized nickname */
     this.name = name;
-    /** @type {string|null} [ACCOUNT] the bound QQ account of this session (null = not logged in) */
-    this.account = null;
-    /** [PLAINTEXT] the client consented to plaintext account payloads when encryption is unavailable (hello.plainOk) */
-    this.plainOk = false;
-    /** @type {number|null} [ACH] client-reported achievement score (from local stats); null until reported */
-    this.ach = null;
-    /** @type {number|null} [ACCOUNT] 本次在线计时的起点（ms epoch；null = 不在计时） */
-    this.onlineSince = null;
-    /** @type {number} [ACCOUNT] 上次把在线时长落盘的时刻（心跳/下线各累加一次） */
-    this.onlineMark = 0;
     /** @type {import('ws').WebSocket | null} currently bound socket */
     this.ws = null;
     /** @type {boolean} */
@@ -545,17 +534,13 @@ export class Network {
    *   log?: { info: Function, warn: Function, error: Function, debug?: Function },
    *   now?: () => number,
    *   options?: Partial<typeof NET_DEFAULTS>,
-   *   accounts?: object|null,
-   *   records?: object|null,
    * }} opts
    */
-  constructor({ registry, handler, log = noopLog, now = Date.now, options = {}, accounts = null, records = null }) {
+  constructor({ registry, handler, log = noopLog, now = Date.now, options = {} }) {
     this.registry = registry;
     this.handler = handler;
     this.log = log;
     this.now = now;
-    this.accounts = accounts; // [ACCOUNT] server/account.js (null in tests / when disabled)
-    this.records = records; // [ACH-STORE] server/recordStore.js (null in tests / when disabled)
     this.opts = { ...NET_DEFAULTS, ...options };
     /** @type {Map<import('ws').WebSocket, Connection>} */
     this.conns = new Map();
@@ -567,9 +552,6 @@ export class Network {
     const sweepMs = Math.max(20, Math.min(15_000, Math.floor(this.opts.reconnectWindowMs / 4)));
     this.sweepTimer = setInterval(() => this.sweep(), sweepMs);
     this.sweepTimer.unref?.();
-    // [ACCOUNT] online time: the shared account file is written once per disconnect and once per this interval
-    this.onlineTimer = setInterval(() => this.onlineHeartbeat(), this.opts.onlineFlushMs);
-    this.onlineTimer.unref?.();
   }
 
   /** Number of open sockets. */
@@ -669,8 +651,6 @@ export class Network {
     }
     if (msg.t === 'hello') { this.onHelloMsg(conn, msg, now); return; }
     if (!conn.session) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'hello required')); return; }
-    // [ACCOUNT] account intents (server/account.js): requestBind / save / saveBatch / load / setName / logout
-    if (this.accounts && typeof msg.t === 'string' && msg.t.startsWith('account.')) { this.onAccountMsg(conn, msg, rid); return; }
     if (HEAVY_TYPES.has(msg.t) && !conn.heavy.take(now)) { this.reply(conn, errorMsg(ERR.RATE, rid, `${msg.t} too often`)); return; }
 
     let res;
@@ -690,202 +670,6 @@ export class Network {
       if (msg.t === 'b.progress' && !validRid(rid)) return;
       this.reply(conn, errorMsg(isErrCode(res.error) ? res.error : ERR.INTERNAL, rid, res.detail));
     } else if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
-  }
-
-  // ---- [ACCOUNT] online time (shared with 盟约: `online` in accounts/<qq>.json) -----------------
-
-  /**
-   * [ACCOUNT] 单账号单登录（方案 A，只做在狩猎这一侧）：同一个 qq 在**本服**只允许一个活跃会话。
-   * 一次新的登录（绑定成功 / token 恢复成功）把该 qq 的其它会话踢下线：
-   * 清掉它的账号绑定 → 结清在线时长 → 给它发 `account.logout { reason: 'replaced' }` → 关闭 socket（4001，
-   * 客户端既有的「已在其他页面登录」提示 + 清 token 就够用）。
-   * @param {string} qq @param {Session|null} [except] 正在建立的那条会话（绝不踢自己）
-   * @returns {number} 被踢的会话数
-   */
-  kickAccountSessions(qq, except = null) {
-    if (!this.accounts || !qq) return 0;
-    let kicked = 0;
-    for (const s of this.registry.all()) {
-      if (!s || s === except || s.account !== qq) continue;
-      s.account = null; // 旧会话不再是登录态（房间/对局本身不受影响，它变成访客）
-      this.onlineFlush(s, { stop: true });
-      sendSession(s, { t: 'account.logout', reason: 'replaced' });
-      if (s.ws) this.detachReplaced(s.ws); // 4001：客户端停止自动重连
-      kicked += 1;
-    }
-    if (kicked) this.log.info(`[account] kicked ${kicked} session(s) of qq=${qq} (single login)`);
-    return kicked;
-  }
-
-  /** Start counting this session's online time (once; a repeated hello keeps the running interval). */
-  onlineStart(session) {
-    if (!this.accounts || !session || !session.account) return;
-    if (session.onlineSince != null) return;
-    session.onlineSince = this.now();
-    session.onlineMark = session.onlineSince;
-  }
-
-  /**
-   * Add the time since the last mark to the account's shared `online` block. `stop` ends the interval (disconnect /
-   * logout); otherwise the interval keeps running (the 5-minute heartbeat). One disk write per call, by design.
-   * @param {Session|null} session @param {{ stop?: boolean }} [opts]
-   */
-  onlineFlush(session, { stop = false } = {}) {
-    if (!this.accounts || !session || session.onlineSince == null || !session.account) return;
-    const t = this.now();
-    const ms = Math.max(0, t - (session.onlineMark || session.onlineSince));
-    session.onlineMark = t;
-    if (stop) session.onlineSince = null;
-    try { this.accounts.addOnlineSec(session.account, ms); } catch (e) { this.log.warn?.('[net] online flush failed', e); }
-  }
-
-  /** [ACCOUNT] Every `onlineFlushMs`: persist the online time of every signed-in session (lastSeenAt included). */
-  onlineHeartbeat() {
-    if (!this.accounts) return;
-    for (const session of this.registry.all()) {
-      if (session.onlineSince != null) this.onlineFlush(session);
-    }
-  }
-
-  /**
-   * [ACCOUNT] Build an `account.data` frame: `enc` = AES-GCM(k_user, JSON.stringify(prefs))（敏感载荷密文），
-   * 明文只带 qq/nickname/meta/salt/online（非敏感）。加密不可用且客户端已同意时才退回明文 prefs，否则标记
-   * `encUnavailable` 让客户端询问（[PLAINTEXT]）。
-   */
-  _accountData(qq, plainOk = false) {
-    const prefs = this.accounts.prefsOf(qq);
-    const nickname = this.accounts.nicknameOf(qq) || '';
-    const meta = typeof this.accounts.prefsMetaOf === 'function' ? this.accounts.prefsMetaOf(qq) : {};
-    let enc = null;
-    try { enc = this.accounts.enc ? this.accounts.enc(qq, JSON.stringify(prefs)) : null; } catch { /* ignore */ }
-    const frame = { t: 'account.data', qq, nickname, meta };
-    // [ACCOUNT] 在线时长（共享字段）：标题页的账号信息用它显示 ONLINE 时长
-    try { frame.online = typeof this.accounts.onlineOf === 'function' ? this.accounts.onlineOf(qq) : null; } catch { frame.online = null; }
-    // 公开盐随帧下发（客户端据此派生 k_user；避免客户端走被网关挡掉的 /api/*）
-    try { if (typeof this.accounts.salt === 'function') frame.salt = this.accounts.salt(); } catch { /* ignore */ }
-    // [PLAINTEXT] 服务端加密不可用时：客户端同意明文（hello.plainOk）才发明文，否则标记 encUnavailable
-    if (enc != null) frame.enc = enc;
-    else if (plainOk) frame.prefs = prefs;
-    else frame.encUnavailable = true;
-    return frame;
-  }
-
-  /**
-   * [ACCOUNT] `account.requestBind` / `account.save` / `account.saveBatch` / `account.load` / `account.setName` /
-   * `account.logout` from an established session; [ACH-STORE] `account.records`.
-   * @param {Connection} conn @param {any} msg @param {number} rid
-   */
-  onAccountMsg(conn, msg, rid) {
-    const s = conn.session;
-    if (!s) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'hello required')); return; }
-    if (msg.t === 'account.requestBind') {
-      // already logged in on this session (e.g. an auto-login from cache): never mint a new code — just re-ack the login
-      if (s.account) {
-        const a = typeof this.accounts.accountOf === 'function' ? this.accounts.accountOf(s.account) : null;
-        const nickname = (a && a.nickname) || this.accounts.nicknameOf(s.account) || s.name;
-        const frame = { t: 'account.bound', qq: s.account, nickname };
-        // 客户端若在绑定时掉线、本地没存下凭据，再点一次「QQ 同步数据」也能补到 token
-        if (a && typeof a.token === 'string') frame.token = a.token;
-        this.reply(conn, frame);
-        this.reply(conn, this._accountData(s.account, s.plainOk));
-        return;
-      }
-      const { code, ttlMs } = this.accounts.newCode((qq, nickname, token) => {
-        s.account = qq;
-        if (nickname) s.name = nickname;
-        // [ACCOUNT] 单账号单登录：绑定成功 = 一次新登录 → 踢掉该 qq 的其它会话，并给这条开始计时
-        try { this.kickAccountSessions(qq, s); } catch { /* ignore */ }
-        this.onlineStart(s);
-        // 玩家可能是切到 QQ 群发码才导致这条 socket 掉线/被换。发给**当前**拥有该会话的 socket
-        sendSession(s, { t: 'account.bound', qq, nickname, token });
-        sendSession(s, this._accountData(qq, s.plainOk));
-      });
-      const frame = { t: 'account.bindCode', code, ttl: ttlMs };
-      if (validRid(rid)) frame.rid = rid;
-      this.reply(conn, frame);
-      return;
-    }
-    if (msg.t === 'account.save') {
-      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
-      // [PLAINTEXT] 明文载荷仅在客户端已同意（hello.plainOk）时接受；正常路径一律走密文 enc
-      if (typeof msg.json === 'string' && !s.plainOk) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'plaintext not allowed')); return; }
-      // 载荷可为明文 json 或密文 enc（AES-GCM，k_user）
-      let json = typeof msg.json === 'string' ? msg.json : null;
-      if (json == null && typeof msg.enc === 'string' && this.accounts.dec) json = this.accounts.dec(s.account, msg.enc);
-      if (typeof json !== 'string') { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'bad payload')); return; }
-      const r = this.accounts.setPref(s.account, msg.key, json);
-      if (r.error) this.reply(conn, errorMsg(ERR.BAD_MSG, rid, r.error));
-      else if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
-      return;
-    }
-    // [ACCOUNT-V2] 批量保存（多条 key 一次帧）
-    if (msg.t === 'account.saveBatch') {
-      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
-      const items = Array.isArray(msg.items) ? msg.items : [];
-      // [PLAINTEXT] 含明文条目时同样要求已同意
-      if (!s.plainOk && items.some((it) => it && typeof it.json === 'string')) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'plaintext not allowed')); return; }
-      let ok = 0, bad = 0;
-      for (const it of items) {
-        if (!it || typeof it.key !== 'string') { bad++; continue; }
-        let json = typeof it.json === 'string' ? it.json : null;
-        if (json == null && typeof it.enc === 'string' && this.accounts.dec) json = this.accounts.dec(s.account, it.enc);
-        if (typeof json !== 'string') { bad++; continue; }
-        const r = this.accounts.setPref(s.account, it.key, json);
-        if (r && r.error) bad++; else ok++;
-      }
-      if (validRid(rid)) this.reply(conn, { t: 'ok', rid, ok, bad });
-      return;
-    }
-    if (msg.t === 'account.load') {
-      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
-      const prefs = this.accounts.prefsOf(s.account);
-      const json = typeof prefs[msg.key] === 'string' ? prefs[msg.key] : null;
-      // 单个 account.pref 应答（手动下载用，明文；自动同步走加密的 account.data/save）
-      this.reply(conn, { t: 'account.pref', key: msg.key, json });
-      return;
-    }
-    // [ACH-STORE] 绑定账号上报一批对局记录（明文 records 需已同意明文；正常走密文 enc），
-    // 服务端校验 + 归并进成就库 → 房间徽章改用服务端权威分。
-    if (msg.t === 'account.records') {
-      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
-      if (!this.records) { if (validRid(rid)) this.reply(conn, { t: 'ok', rid, accepted: 0, ignored: true }); return; }
-      let incoming = null;
-      if (Array.isArray(msg.records)) {
-        if (!s.plainOk) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'plaintext not allowed')); return; }
-        incoming = msg.records;
-      } else if (typeof msg.enc === 'string' && this.accounts.dec) {
-        const plain = this.accounts.dec(s.account, msg.enc);
-        if (typeof plain === 'string') {
-          try { const o = JSON.parse(plain); if (o && Array.isArray(o.records)) incoming = o.records; } catch { /* bad payload below */ }
-        }
-      }
-      if (!Array.isArray(incoming) || !incoming.length) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'bad payload')); return; }
-      const r = this.records.merge(s.account, incoming);
-      if (r.error) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, r.error)); return; }
-      // 新记录可能改变该玩家在房间里的徽章：让同房所有人立刻看到（大厅/对局中不涉及）
-      try { this.handler.notifyAch?.(s.playerId); } catch { /* ignore */ }
-      if (validRid(rid)) this.reply(conn, { t: 'ok', rid, accepted: r.accepted, rejected: r.rejected, duplicated: r.duplicated });
-      return;
-    }
-    if (msg.t === 'account.setName') {
-      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
-      const n = sanitizeName(msg.name);
-      if (!n) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'bad name')); return; }
-      const r = this.accounts.setNickname(s.account, n);
-      if (r.error) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, r.error)); return; }
-      s.name = r.nickname;
-      this.reply(conn, { t: 'account.bound', qq: s.account, nickname: r.nickname });
-      if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
-      return;
-    }
-    if (msg.t === 'account.logout') {
-      this.onlineFlush(s, { stop: true }); // [ACCOUNT] 下线：在线时长写一次
-      s.account = null;
-      if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
-      this.reply(conn, { t: 'account.logout' }); // echo so the client clears its stored token
-      return;
-    }
-    this.reply(conn, errorMsg(ERR.BAD_MSG, rid, `unknown type ${String(msg.t).slice(0, 32)}`));
   }
 
   /** @param {Connection} conn @param {any} msg @param {number} now */
@@ -926,42 +710,11 @@ export class Network {
     session.addr = conn.ip;
     session.limitKey = conn.key;
 
-    // [ACCOUNT] a valid account token auto-logs-in and takes the account nickname
-    let acc = null;
-    let staleAccount = false;
-    if (this.accounts && typeof msg.account === 'string' && msg.account) {
-      acc = this.accounts.byToken(msg.account);
-      // [ACCOUNT-V2] token 过期 → 视为失效（客户端会清 token 重新绑定）
-      if (acc && typeof this.accounts.tokenValid === 'function' && !this.accounts.tokenValid(acc.qq)) acc = null;
-      if (acc) {
-        const reLogin = !repeat || session.account !== acc.qq; // 同一条连接上的重复 hello（改名/幂等重发）不是新登录
-        session.account = acc.qq;
-        if (acc.nickname) session.name = acc.nickname;
-        // [ACCOUNT] 单账号单登录：一次**新登录**轮换 token（旧凭据立即失效），并踢掉该 qq 在本服的其它会话。
-        // 同一条连接重复 hello 时 except = 本会话 → 不踢自己、也不轮换（幂等：客户端在途的 hello 不会带着作废的 token）。
-        if (reLogin) { try { this.accounts.rotateToken(acc.qq); } catch { /* ignore */ } }
-        try { this.kickAccountSessions(acc.qq, session); } catch { /* ignore */ }
-        try { this.accounts.touchToken(acc.qq); } catch { /* ignore */ }
-        this.onlineStart(session);
-      } else { session.account = null; staleAccount = true; } // revoked / expired / unknown token
-    } else {
-      session.account = null;
-    }
-
     let extra = null;
     try { extra = this.handler.welcomeInfo?.() ?? null; } catch (e) { this.log.error('[net] welcomeInfo crashed', e); }
     const welcome = { ...(extra && typeof extra === 'object' ? extra : null), t: 'welcome', playerId: session.playerId, token: session.token, name: session.name, serverNow: now, version: PROTOCOL_VERSION, resumed };
     if (validRid(rid)) welcome.rid = rid;
     this.reply(conn, welcome);
-
-    // [ACCOUNT] the account's canonical prefs go down on EVERY login/connect (resumed reload included): the client
-    // re-applies them, so the cloud copy wins where local data is missing. A stale token says so explicitly.
-    if (acc) {
-      this.reply(conn, { t: 'account.bound', qq: acc.qq, nickname: acc.nickname, token: acc.token });
-      this.reply(conn, this._accountData(acc.qq, session.plainOk));
-    } else if (staleAccount) {
-      this.reply(conn, { t: 'account.logout' }); // tell the client its stored token is no longer valid
-    }
 
     try {
       this.handler.onHello?.(session, { resumed, repeat });
@@ -994,7 +747,6 @@ export class Network {
     s.ws = null;
     s.connected = false;
     s.disconnectedAt = this.now();
-    this.onlineFlush(s, { stop: true }); // [ACCOUNT] 断线=下线：在线时长写一次（重连后 hello 再开始计时）
     if (this.closed) return;
     try { this.handler.onDisconnect?.(s); } catch (e) { this.log.error('[net] onDisconnect crashed', e); }
   }
@@ -1041,7 +793,6 @@ export class Network {
     this.closed = true;
     clearInterval(this.heartbeatTimer);
     clearInterval(this.sweepTimer);
-    clearInterval(this.onlineTimer);
     for (const conn of this.conns.values()) {
       conn.close(code, reason);
       const t = setTimeout(() => { try { conn.ws.terminate(); } catch { /* ignore */ } }, 1000);

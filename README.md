@@ -175,7 +175,7 @@ English summary: [below](#english).
 2. **每局都能换 build。** 事件期一局 3 次，每次在「对面 A / 对面 B / 队友 / 自己」里四选一，配 24 条我方词条与 12 条怪物词条。它不是单纯的抽卡运气——**把词条给谁**才是决策：给对面可能养肥对手，给队友是稳，给自己是 ×2 的高方差赌博；2V2 里三次目标还不能重复。
 3. **把击杀收益变成节奏决策。** 赏金不直接进金币，而是存在坎诺特那里，按回合比率折价取钱。早取更贵、晚取更划算，但普通回合最多取 4 金，R15 才 1:1 且不限。你必须在「现在补强」和「再等等」之间做选择，击杀收益不再是无脑通胀。
 4. **信息差与时间胜负。** 对手从开局一直隐藏到 R13，最终攻势起才公开；结算先比两场领袖战的**剩余时间占比（4:5）**，而不是只比谁血多。藏阵容、抢时间、在最终攻势里冒险，都有了意义。
-5. **轻量运维。** 仍然是**单个 Node.js 进程 + WebSocket**，战斗在各玩家浏览器里模拟；一台低功耗小主机就能开服。账号库可与盟约部署**共用同一份数据**（身份、在线时长、配装 / 设置同源），同一 QQ 在本服**单账号单登录**，新登录会踢掉旧会话。
+5. **轻量运维。** 仍然是**单个 Node.js 进程 + WebSocket**，战斗在各玩家浏览器里模拟；一台低功耗小主机就能开服。
 6. **手机与低配友好。** 手机横屏优先，结算页分两栏；界面字号跟随设置里的「文字大小」；可切**简化平面 / 2D 棋盘**、关闭角色模型；核显 / 软件渲染会按 GPU 自动降档，玩家显式选择优先。
 
 ## 功能一览
@@ -214,7 +214,6 @@ English summary: [below](#english).
 - **交互细节**：漏怪时顶栏用红字 + 「−N」标记待扣的目标生命值（结算时才扣除）；点选、拖放和配发装备都按地上的方格；购买、升级和机变选卡都需要点两次确认；只有一名玩家时除作战外不计时。
 - **画面与声音**：真实 Spine 小人、官方 BGM 与音效、表情（6 套 × 6 个）、作战特效；可选的官方 3D 棋盘（需要从本机客户端提取贴图）。
 - **手机与电脑**：触摸拖拽、长按查看详情，推荐横屏；设置里可以调低画质、选文字大小。
-- **账号（可选）**：QQ 绑定 + 云存档；账号库可与盟约部署共用（身份 / 在线时长 / 配装同源），同一 QQ 在本服单账号单登录；不登录仍可匿名游玩。绑定方式由部署方提供。
 
 ## 下载
 
@@ -284,8 +283,6 @@ npm start          # 启动服务器：http://localhost:3000
 | `SP_COMBAT` | `client` | `client`：各玩家浏览器模拟自己的战斗（服务器负载极低）；`server`：由服务器模拟并推流 |
 | `SP_VERIFY` | `off` | 服务器复算客户端上报的战斗结果：`off` / `sample`（约 1/8 抽查）/ `all`（全部复算，更耗 CPU） |
 | `TRUST_PROXY` | `auto` | 是否信任 `X-Forwarded-For` 等转发头：`auto` 只信任来自本机 / 内网的代理；`1` 总是；`0` 从不 |
-| `ACCOUNT_DIR` | `<app>/.account` | 账号库根目录；与盟约部署共用账号时，两边指向同一个目录 |
-| `ACCOUNT_KEY_DIR` | `<ACCOUNT_DIR>/account-secrets` | RSA 私钥目录（`server.key`）；绝不进仓库 |
 | `DEBUG` | 空 | 设为任意值输出详细日志 |
 | `SP_NO_BROWSER` | 空 | 设为 `1` 时启动脚本不自动打开浏览器 |
 | `SP_BOT_EMOTES` | 空 | AI 队友的对局表情回应（战斗、整备、合成、联防、收礼时即刻的 `m.emote` 广播）；设为 `0` 时整体关闭 |
@@ -318,7 +315,7 @@ npm start          # 启动服务器：http://localhost:3000
 
 - 游戏是**单个常驻 Node.js 进程 + WebSocket**（路径 `/ws`），只能跑一个实例，必须部署在域名根路径；Vercel 之类的 Serverless 平台和 GitHub Pages 之类的静态托管都不适用。反向代理要转发 WebSocket 升级。
 - 从 CDN 节点打开时，游戏 WebSocket 会**直连源站**，绕开「玩家 → CDN → 源站」的中转（页面由源站直接打开时仍走同源）。
-- 账号是**可选**的：不登录也能匿名游玩；**知道地址的人都能进来**。请只把地址发给朋友，不要公开发布，也不要搭建公开大厅；这同时能降低素材版权方面的风险。开启账号后，同一 QQ 在本服只保留一个活跃会话，新登录会替换旧会话。
+- 本仓库**不带账号系统**：不登录也能匿名游玩，**知道地址的人都能进来**。请只把地址发给朋友，不要公开发布，也不要搭建公开大厅；这同时能降低素材版权方面的风险。
 - 有公网 IPv4 时也可以在路由器上做端口转发，但这会把家里的电脑直接暴露在公网上，优先考虑上面的方式。
 
 ## 操作
@@ -390,7 +387,7 @@ node tools/perfbench.mjs --cpu 1,4,6 --profile             # 真实战斗的帧�
 
 | 路径 | 内容 |
 |---|---|
-| `server/` | 入口 `index.js`；Node HTTP 静态服务 + WebSocket（`/ws`，代码在 `http/`）、大厅、对局引擎（`match/`）、战斗模拟（`sim/`，浏览器与服务器共用）、账号（`account.js`） |
+| `server/` | 入口 `index.js`；Node HTTP 静态服务 + WebSocket（`/ws`，代码在 `http/`）、大厅、对局引擎（`match/`）、战斗模拟（`sim/`，浏览器与服务器共用） |
 | `shared/` | 前后端共用的常量与网络协议 |
 | `public/` | 浏览器客户端（原生 ES 模块，PixiJS + pixi-spine、three.js 3D 棋盘、Preact + htm UI） |
 | `data/` | 由官方数据表生成的游戏数据与素材清单 `assets.json` |
@@ -436,7 +433,6 @@ An **unofficial, non-commercial fan remake** of Arknights' seasonal auto-chess t
 - **Three event periods per match** (the drawn start round, +4, and R13): each draws an ally entry — in 2V2, four targets (opponent A / opponent B / teammate / yourself, no target twice in a match) from 24 entries, with E1/E2/E3 odds of 15/45/40, 30/40/30 and 45/30/25 and double magnitude on yourself — plus one of 12 monster entries (35/40/25, 25/40/35, 20/35/45) and a 10–25% elite-attribute subset. Percentages use an event-only multiplicative bucket; flat aspd / SP values go onto the panel first.
 - **Endgame by time:** the two duos share a boss battlefield in R14, each team fights its own leader, and the result is decided by the **4:5 time score** (R14 and R15 remaining-time shares) before shared HP. The R15 Hidden Core threshold is **> 600 layers per team** (2V2). Opponents stay hidden through R13 and are revealed from R14; spectators see everyone from round 1.
 - **Also built in:** in-match text chat with **server-side banned-word filtering**, per-match logs on disk (7-day retention), a **server-wide notice banner**, a **damage / healing board** (healing credited to whoever granted it), a **teammate overview** (HP / level / deployed), **operator asset prefetch**, **quick match**, a **text-size setting**, and a **graphics auto-adjust** mode (2D/3D board + a character-model toggle, with GPU-based auto-downgrade).
-- **Accounts (optional):** QQ-bound accounts with cloud saves; the account store can be shared with the Alliance deployment (identity, online time and loadouts come from the same data), and one QQ has a single active session on this server. Anonymous play still works.
 - **Run:** download the full bundle `…-v<version>.zip` (~560 MB, all the art inside, the Chinese and Japanese operator voices and the official battlefield scenes included) from [Releases](../../releases/latest) — or the lite one, `…-v<version>-lite.zip` (~22 MB), which downloads the art (~550 MB) on its first start; the update bundle `…-v<version>-update.zip` holds only the files changed since the earlier releases: stop the server, extract it over an existing install and start again — install Node.js 22 or 24, then double-click `scripts\start-windows.bat` (Windows) or run `./scripts/start.sh` (macOS / Linux) and open <http://localhost:3000>. From source: `git clone https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation.git`, then `npm install && npm run setup && npm start` (setup downloads ~550 MB of art from public mirrors; the official 3D board and some HUD art come from a local Arknights client — without one the game uses the 2D board and look-alike stand-ins).
 - **Languages:** Chinese (the default), English, 日本語, 한국어 and 繁體中文 — switch on the title screen or in Settings. Game texts come from the official clients; the Japanese, Korean and Traditional Chinese interface strings are machine translations (corrections welcome: [docs/I18N.md](docs/I18N.md)).
 - **Play with friends:** create a room and share the 4-letter key or the `?room=KEY` link, or open the room to **quick match** so anyone can join a same-difficulty room in one click. On a LAN, use the address printed at start; otherwise use a virtual-LAN tool, a tunnel or a VPS — see [docs/DEPLOY.md](docs/DEPLOY.md).

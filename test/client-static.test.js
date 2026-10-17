@@ -687,45 +687,6 @@ describe('net.js', () => {
     net.close();
   });
 
-  // ---- [ACCOUNT] ---------------------------------------------------------------------------------
-
-  test('a stored account token is replayed in hello; an over-long one is not sent', async () => {
-    const { net, ws } = await makeNet({ getAccount: () => 'acc-token-1' });
-    net.setName('A');
-    ws().open();
-    assert.equal(ws().last('hello').account, 'acc-token-1', '长期 token 随 hello 上行（自动登录）');
-    const long = await makeNet({ getAccount: () => 'x'.repeat(65) });
-    long.net.setName('B');
-    long.ws().open();
-    assert.equal(long.ws().last('hello').account, undefined, '超过协议长度就不发');
-    const broken = await makeNet({ getAccount: () => { throw new Error('privacy mode'); } });
-    broken.net.setName('C');
-    broken.ws().open();
-    assert.equal(broken.ws().last('hello').account, undefined, '取不到 token 也不影响 hello');
-  });
-
-  test('account frames: saveAccountEnc / saveAccountBatch / requestBind / load / setName / logout', async () => {
-    const { net, ws } = await onlineNet();
-    net.saveAccountEnc('loadout', 'AAAA');
-    assert.deepEqual(ws().last('account.save'), { t: 'account.save', key: 'loadout', enc: 'AAAA' });
-    net.saveAccountBatch([{ key: 'lang', enc: 'BBBB' }]);
-    assert.deepEqual(ws().last('account.saveBatch'), { t: 'account.saveBatch', items: [{ key: 'lang', enc: 'BBBB' }] });
-    net.requestBind();
-    assert.deepEqual(ws().last('account.requestBind'), { t: 'account.requestBind' });
-    net.loadAccount('lang');
-    assert.deepEqual(ws().last('account.load'), { t: 'account.load', key: 'lang' });
-    net.accountSetName('凯尔希');
-    assert.deepEqual(ws().last('account.setName'), { t: 'account.setName', name: '凯尔希' });
-    net.logoutAccount();
-    assert.deepEqual(ws().last('account.logout'), { t: 'account.logout' });
-    // server → client frames are emitted by type like every other push
-    const seen = [];
-    net.on('account.bindCode', (m) => seen.push(m.code));
-    net.on('account.data', (m) => seen.push(m.salt));
-    ws().recv({ t: 'account.bindCode', code: '123456', ttl: 180000 });
-    ws().recv({ t: 'account.data', qq: '123456', salt: 'ab', enc: 'CCCC' });
-    assert.deepEqual(seen, ['123456', 'ab']);
-  });
 });
 
 // ---- unit: identity ----------------------------------------------------------------------------------------
@@ -1035,20 +996,6 @@ describe('data.js', () => {
 // ---- unit: screen helpers & components ----------------------------------------------------------------------
 
 describe('screen helpers', () => {
-  test('title: hudDuration formats the ONLINE line (digits + unit letters only)', async () => {
-    const { hudDuration } = await mod('screens/title.js');
-    assert.equal(hudDuration(0), '0s');
-    assert.equal(hudDuration(9), '9s');
-    assert.equal(hudDuration(60), '1m');
-    assert.equal(hudDuration(3599), '59m');
-    assert.equal(hudDuration(3600), '1h 00m');
-    assert.equal(hudDuration(3600 + 12 * 60 + 5), '1h 12m');
-    assert.equal(hudDuration(90 * 3600), '90h 00m');
-    assert.equal(hudDuration(-5), '0s');
-    assert.equal(hudDuration(NaN), '0s');
-    assert.equal(hudDuration('120'), '2m');
-  });
-
   test('title: sanitizeName / isValidName / findUiAsset', async () => {
     const { sanitizeName, isValidName, findUiAsset } = await mod('screens/title.js');
     assert.equal(sanitizeName('  凯尔希  '), '凯尔希');

@@ -284,14 +284,3 @@ html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .3em; }
   letter-spacing: .02em;
 }
 
-/* ---- [ACCOUNT] QQ login row under 开始 ---- */
-.title-account { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .1rem .16rem; margin-top: .12rem; }
-.title-account__who { display: inline-flex; align-items: center; gap: .06rem; font-size: calc(.15 * var(--t)); color: var(--mint-400); }
-.title-account__who .icon { width: .18rem; height: .18rem; }
-.title-account__code { display: inline-flex; align-items: center; gap: .06rem; font-size: calc(.15 * var(--t)); color: var(--text-md);
-  padding: .04rem .12rem; background: rgba(8, 11, 10, .7); border: 1px solid var(--line-2); }
-.title-account__code b { color: var(--mint-400); font-size: calc(.18 * var(--t)); letter-spacing: .04em; }
-.title-account__online { font-size: calc(.14 * var(--t)); color: var(--text-lo); letter-spacing: .02em;
-  padding: .02rem .08rem; border: 1px solid var(--line-2); background: rgba(8, 11, 10, .55); }
-.title-account__online b { color: var(--mint-400); font-size: calc(.15 * var(--t)); letter-spacing: .04em; }
-.title-account__note { margin: .06rem 0 0; text-align: center; font-size: calc(.12 * var(--t)); color: var(--text-lo); letter-spacing: .02em; }

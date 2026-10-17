@@ -17,11 +17,15 @@
 //   * [ACCOUNT] GET /api/account/salt (the public salt the client derives its per-qq key from) and
 //     POST /api/account/confirm { code, qq, nickname } — the local QQ bot proves a
 //     bind code from the group; loopback only, exactly like the rooms API;
+//   * [ACH] GET /api/records?qq=&limit= — the achievement record store's summary (score + chess piece + the newest
+//     matches) for the local bot; loopback only and read-only, guarded exactly like the rooms API;
 //   * everything else → the static files (static.js).
 // Every response's body bytes count in the traffic counters (traffic.js meter). A route that throws is logged and
 // answers 500.
 
 import { PROTOCOL_VERSION, APP_VERSION } from '../../shared/constants.js';
+import { pieceOf } from '../../shared/achievement.js'; // [ACH] 评分 → 棋子称号（回环记录查询）
+import { scoreRecords } from '../records.js'; // [ACH-STORE] 权威记录求和
 import { buildTag } from './buildTag.js';
 import { setSecurityHeaders, sendError, sendJson, splitUrl } from './common.js';
 import { isReapPath, readBody, reapRooms, roomsApiAllowed, roomsPayload, REAP_BODY_MAX } from './rooms.js';
@@ -61,12 +65,14 @@ const wantsTraffic = (query) => /(?:^|&)traffic(?:=(?:1|true|yes))?(?:&|$)/i.tes
  * @param {{ serveStatic: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse,
  *             rawPath: string, query: string) => Promise<void>,
  *           health: Parameters<typeof healthReport>[0], log: object, trustProxy?: 'auto' | boolean,
- *           accounts?: import('../account.js').createAccountStore | null }} deps
+ *           accounts?: import('../account.js').createAccountStore | null,
+ *           records?: import('../recordStore.js').createRecordStore | null }} deps
  *   trustProxy: whose forwarding headers name the client (net.js clientAddress; the server's TRUST_PROXY)
  *   accounts: [ACCOUNT] the QQ account store (null in tests / when disabled)
+ *   records: [ACH-STORE] the achievement record store (null in tests / when disabled)
  * @returns {(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void}
  */
-export function createRequestHandler({ serveStatic, health, log, trustProxy = 'auto', accounts = null }) {
+export function createRequestHandler({ serveStatic, health, log, trustProxy = 'auto', accounts = null, records = null }) {
   async function handleRequest(req, res) {
     const url = req.url || '/';
     if (url.length > MAX_URL_LENGTH) { sendError(req, res, 414, '请求地址过长 · URI too long'); return; }
@@ -109,6 +115,25 @@ export function createRequestHandler({ serveStatic, health, log, trustProxy = 'a
       const r = accounts.confirm(body.code, body.qq, body.nickname);
       if (r && r.error) sendJson(req, res, r.error === 'BAD_CODE' || r.error === 'BAD_QQ' ? 400 : 500, { ok: false, error: r.error });
       else sendJson(req, res, 200, { ok: true, qq: r.qq, nickname: r.nickname });
+      return;
+    }
+    // [ACH] 对局记录查询（插件 `/卫戍协议 对局记录`）：仅回环，按 qq 返回成就库汇总 + 最近若干局。
+    if (parts.rawPath === '/api/records') {
+      if (!roomsApiAllowed(req) || !records) { sendError(req, res, 404, '未找到 · Not found'); return; }
+      const params = new URLSearchParams(parts.query || '');
+      const qq = (params.get('qq') || '').trim();
+      if (!/^\d{5,12}$/.test(qq)) { sendJson(req, res, 400, { ok: false, error: 'bad-qq' }); return; }
+      let limit = Number(params.get('limit'));
+      if (!Number.isFinite(limit) || limit <= 0) limit = 8;
+      limit = Math.min(Math.round(limit), 50);
+      const all = records.recordsOf(qq);
+      const score = scoreRecords(all);
+      const piece = pieceOf(score);
+      sendJson(req, res, 200, {
+        ok: true, qq, count: all.length, score,
+        piece: { id: piece.id, name: piece.name, min: piece.min, glyph: piece.glyph },
+        records: all.slice(0, limit),
+      });
       return;
     }
     // [ROOMS-API] 运维查询接口（本机 QQ 机器人）：GET /api/rooms 快照 · POST /api/rooms/reap 收房。

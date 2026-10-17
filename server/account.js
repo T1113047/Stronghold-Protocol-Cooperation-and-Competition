@@ -13,9 +13,17 @@
 //                   `server.key`，则**直接沿用**它，这样两端的公开盐（salt = sha256(spki)）就是同一个
 //                   （客户端按 qq 缓存派生密钥，两端盐不同会解不开对方的载荷）。
 //
-// 写盘：每账号一个**跨进程文件锁**（`accounts/.lock-<qq>`，带超时与陈旧锁回收）+ 临时文件 rename 原子替换；
-// 写前在锁里**合并**磁盘上更新的 pref（按 `prefsMeta[key]` 比时间），这样同一玩家在两个游戏里同时玩时，
-// 两边各自改的存档键都不会丢。
+// 写盘：每账号一个**跨进程文件锁**（`accounts/.lock-<qq>`，带超时与陈旧锁回收）+ 临时文件 rename 原子替换。
+//
+// [ACCOUNT] **与盟约完全共享同一份账号数据**（用户 2026-10-17 口径，改回全共享）：同一份
+// `accounts/<qq>.json`，同一套字段、同一套白名单、同一套写前合并——干员配装 / 持有 / 自选 / 设置 / 语言 /
+// 表情主题 / 最近房间 / 大厅偏好全部共用，两边谁改另一边都能看到。
+//   * 共享字段：qq / nickname / token / created / updatedAt / tokenIssuedAt / version / terms(+termsAt) /
+//     friends / reqIn / reqOut / invites（[FRIEND] 用）/ **prefs + prefsMeta** / online。
+//   * 在线时长（额外加的、两服兼容的最小字段，只增不改别人的键）：
+//       online = { totalSec, lastSeenAt, games: { hunt: { sec, lastSeenAt }, covenant?: {...} } }
+//     狩猎只累加 `totalSec` 与 `games.hunt`，`games.covenant`（以及其它未知键）原样保留；
+//     下线写一次、在线时每 5 分钟一次（net.js 的心跳，见 NET_DEFAULTS.onlineFlushMs）。
 //
 // Identity = the QQ number. A player proves it by sending the 6-digit code the GAME shows into the QQ group
 // (`/绑定 <code>`, the local bot's bind flow); the bot calls the loopback endpoint
@@ -38,7 +46,8 @@ const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 
 /**
  * [ACCOUNT] The account store's directories, from the environment (never a hard-coded server path):
- *   ACCOUNT_DIR      the shared root — `accounts/` (one JSON per qq), `avatars/`, `records/` live under it.
+ *   ACCOUNT_DIR      the shared root — `accounts/<qq>.json` (the account itself, shared with 盟约), `avatars/`,
+ *                    `records/` live under it.
  *   ACCOUNT_KEY_DIR  where `server.key` lives (the RSA key whose SPKI hash is the public salt).
  * @param {Record<string, string | undefined>} [env]
  */
@@ -86,6 +95,15 @@ export const FRIEND_INVITE_TTL_MS = 60 * 60_000;
 const QQ_RE = /^\d{5,12}$/;
 const noopLog = { info() {}, warn() {}, error() {}, debug() {} };
 
+/** A plain object (not an array / null). */
+const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+/** A finite, non-negative number of seconds (missing → 0). */
+const secOf = (o) => (isPlain(o) && Number.isFinite(o.sec) && o.sec > 0 ? Math.round(o.sec) : 0);
+/** The same for an `online` block's `totalSec`. */
+const totalSecOf = (o) => (isPlain(o) && Number.isFinite(o.totalSec) && o.totalSec > 0 ? Math.round(o.totalSec) : 0);
+/** The empty `online` block a shared account file gets when it has none yet (see the header). */
+const emptyOnline = () => ({ totalSec: 0, lastSeenAt: 0, games: {} });
+
 /** Every store's `flush`, for the single process `exit` hook (`createAccountStore` adds itself). */
 const flushers = new Set();
 let exitHookInstalled = false;
@@ -116,7 +134,7 @@ function newCode(digits, taken) {
 
 /**
  * @param {{ dir?: string, keyDir?: string, log?: object, now?: () => number }} [opts]
- *   dir / keyDir: override the ACCOUNT_DIR / ACCOUNT_KEY_DIR environment (tests pass a temp dir).
+ *   dir / keyDir: override ACCOUNT_DIR / ACCOUNT_KEY_DIR (tests pass a temp dir).
  */
 export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now } = {}) {
   const dirs = accountDirs(dir || keyDir ? { ...process.env, ACCOUNT_DIR: dir, ACCOUNT_KEY_DIR: keyDir } : process.env);
@@ -128,6 +146,11 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
   const confirmFails = new Map();
   /** [ACCOUNT-V2] coalesced writes: qq → pending timer */
   const writeTimers = new Map();
+  /** [ACCOUNT] 在线时长：还没落盘的整秒（qq → sec）与不足一秒的余数（qq → ms） */
+  const onlinePendingSec = new Map();
+  const onlineRemainderMs = new Map();
+  /** [ACCOUNT] 本次写入要不要刷新 `online.lastSeenAt`（只有上下线/心跳才刷） */
+  const onlineTouch = new Map();
 
   // The store is built for every server (tests included), so the expensive work is deferred to the first use:
   // creating the shared dirs, loading or generating `server.key`, and reading the account files.
@@ -162,25 +185,28 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
       saltHex = crypto.createHash('sha256').update(spki).digest('hex');
     } catch (e) { log.error('[account] server key init failed', e); }
 
-    // load existing accounts
+    // load the accounts (`accounts/<qq>.json`) — the SAME file 盟约 reads and writes
     try {
       for (const name of fs.readdirSync(root)) {
         if (!name.endsWith('.json')) continue;
         try {
           const acc = JSON.parse(fs.readFileSync(path.join(root, name), 'utf8'));
           if (acc && typeof acc.qq === 'string' && QQ_RE.test(acc.qq)) {
-            if (!acc.prefs || typeof acc.prefs !== 'object') acc.prefs = {};
+            if (!isPlain(acc.prefs)) acc.prefs = {};
             ensureFriendFields(acc);
-            // [ACCOUNT-V2] 迁移旧文件：补 version / updatedAt / prefsMeta / tokenIssuedAt（不动数据）
+            if (!isPlain(acc.online)) acc.online = emptyOnline();
+            // [ACCOUNT-V2] 迁移旧文件：补 version / updatedAt / prefsMeta / tokenIssuedAt / online（不动数据）
             if (!acc.version || acc.version < 2) {
               acc.version = 2;
               acc.updatedAt = acc.updatedAt || acc.created || now();
               if (!acc.tokenIssuedAt) acc.tokenIssuedAt = acc.created || now();
-              if (!acc.prefsMeta || typeof acc.prefsMeta !== 'object') {
+              if (!isPlain(acc.prefsMeta)) {
                 acc.prefsMeta = {};
                 for (const k of Object.keys(acc.prefs)) acc.prefsMeta[k] = acc.updatedAt;
               }
               try { writeNow(acc); } catch { /* ignore */ }
+            } else if (!isPlain(acc.prefsMeta)) {
+              acc.prefsMeta = {};
             }
             byQQ.set(acc.qq, acc);
             if (typeof acc.token === 'string' && acc.token) tokenToQQ.set(acc.token, acc.qq);
@@ -191,7 +217,7 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
   }
   const keyForQQ = (qq) => deriveKeyNode(qq, saltHex, crypto);
 
-  /** The account's JSON file inside the shared root's `accounts/` (`accounts/<qq>.json`). */
+  /** The account file (`accounts/<qq>.json`) — shared with 盟约: identity, prefs, online. */
   const fileOf = (qq) => path.join(root, `${qq}.json`);
   /** The per-account cross-process lock file (never a `.json`, so the loader skips it). */
   const lockOf = (qq) => path.join(root, `.lock-${qq}`);
@@ -226,18 +252,28 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
     try { return fn(); } finally { if (held) { try { fs.unlinkSync(lock); } catch { /* ignore */ } } }
   }
 
+  /** Write one JSON file atomically (same directory → same file system, then rename). 0600. */
+  function atomicWrite(file, value) {
+    const tmp = `${file}.tmp-${randomBytes(4).toString('hex')}`;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      throw e;
+    }
+  }
+
   /**
    * [ACCOUNT] Fold a newer on-disk copy of this account into `acc` before we overwrite it, so two processes sharing
    * the account dir (盟约 + 狩猎 on the same player) cannot lose each other's writes. Per pref key the newer
    * `prefsMeta` stamp wins (equal stamps: ours, the write in progress); queued invites are unioned by code.
    */
-  function mergeDisk(acc) {
-    let disk;
-    try { disk = JSON.parse(fs.readFileSync(fileOf(acc.qq), 'utf8')); } catch { return; }
+  function mergeDisk(acc, disk) {
     if (!disk || disk.qq !== acc.qq) return;
-    const dPrefs = disk.prefs && typeof disk.prefs === 'object' ? disk.prefs : {};
-    const dMeta = disk.prefsMeta && typeof disk.prefsMeta === 'object' ? disk.prefsMeta : {};
-    const aMeta = acc.prefsMeta && typeof acc.prefsMeta === 'object' ? acc.prefsMeta : (acc.prefsMeta = {});
+    const dPrefs = isPlain(disk.prefs) ? disk.prefs : {};
+    const dMeta = isPlain(disk.prefsMeta) ? disk.prefsMeta : {};
+    const aMeta = isPlain(acc.prefsMeta) ? acc.prefsMeta : (acc.prefsMeta = {});
     for (const [k, v] of Object.entries(dPrefs)) {
       if (typeof v !== 'string') continue;
       const ours = typeof acc.prefs[k] === 'string';
@@ -261,22 +297,42 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
     }
   }
 
-  function writeNow(acc) {
+  /**
+   * [ACCOUNT] The `online` block to persist: the DISK copy is the base (so two hunt processes, or a later covenant
+   * writer, add up instead of overwriting), we add the pending seconds to `totalSec` and `games.hunt.sec` only.
+   * Every other key (`games.covenant`, unknown fields) is carried over untouched.
+   */
+  function onlineOf(acc, base) {
+    const src = isPlain(base) ? base : (isPlain(acc.online) ? acc.online : {});
+    const games = isPlain(src.games) ? { ...src.games } : {};
+    const delta = onlinePendingSec.get(acc.qq) || 0;
+    if (delta) onlinePendingSec.delete(acc.qq);
+    const prevHunt = isPlain(games.hunt) ? games.hunt : {};
+    const touch = delta > 0 || onlineTouch.get(acc.qq) === true;
+    if (onlineTouch.get(acc.qq)) onlineTouch.delete(acc.qq);
+    const out = { ...src, totalSec: totalSecOf(src) + delta, games };
+    if (touch) out.lastSeenAt = now();
+    // `games.hunt` 只在真有在线时长（或本次是上下线/心跳）时出现；别的游戏的条目原样带过
+    if (delta > 0 || touch) games.hunt = { ...prevHunt, sec: secOf(prevHunt) + delta, ...(touch ? { lastSeenAt: out.lastSeenAt } : null) };
+    return out;
+  }
+
+  /** Write the account file: identity + token + prefs + online (atomic, under the per-account lock). */
+  function writeNow(acc, { touchOnline = false } = {}) {
     if (!acc || typeof acc.qq !== 'string') return;
+    if (touchOnline) onlineTouch.set(acc.qq, true);
     withLock(acc.qq, () => {
-      mergeDisk(acc);
-      const tmp = `${fileOf(acc.qq)}.tmp-${randomBytes(4).toString('hex')}`;
-      try {
-        fs.writeFileSync(tmp, JSON.stringify(acc), { encoding: 'utf8', mode: 0o600 });
-        fs.renameSync(tmp, fileOf(acc.qq));
-      } catch (e) {
-        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-        throw e;
-      }
+      let disk = null;
+      try { disk = JSON.parse(fs.readFileSync(fileOf(acc.qq), 'utf8')); } catch { /* new account */ }
+      mergeDisk(acc, disk);
+      acc.online = onlineOf(acc, disk && disk.online);
+      atomicWrite(fileOf(acc.qq), acc);
+      log.debug?.('[account] write', 'main', acc.qq);
     });
     const t = writeTimers.get(acc.qq);
     if (t) { clearTimeout(t); writeTimers.delete(acc.qq); }
   }
+
   // [ACCOUNT-V2] 合并去抖：连续小改动 50ms 内只落盘一次（避免整文件反复重写）；flush()/进程退出时立即写。
   function persist(acc) {
     if (!acc || typeof acc.qq !== 'string') return;
@@ -285,7 +341,9 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
     if (t.unref) t.unref();
     writeTimers.set(acc.qq, t);
   }
-  function flush() { for (const qq of [...writeTimers.keys()]) { try { writeNow(byQQ.get(qq)); } catch (e) { log.error('[account] flush failed', e); } } }
+  function flush() {
+    for (const qq of [...writeTimers.keys()]) { try { writeNow(byQQ.get(qq)); } catch (e) { log.error('[account] flush failed', e); } }
+  }
   // One process-level flush hook for every store (a store per server; tests create many).
   flushers.add(flush);
   installExitHook();
@@ -294,7 +352,7 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
     let acc = byQQ.get(qq);
     if (!acc) {
       const t = now();
-      acc = { qq, nickname: cleanNickname(nickname) || qq, token: randomBytes(24).toString('hex'), created: t, updatedAt: t, tokenIssuedAt: t, version: 2, prefs: {}, prefsMeta: {}, friends: [], reqIn: [], reqOut: [], invites: [] };
+      acc = { qq, nickname: cleanNickname(nickname) || qq, token: randomBytes(24).toString('hex'), created: t, updatedAt: t, tokenIssuedAt: t, version: 2, prefs: {}, prefsMeta: {}, friends: [], reqIn: [], reqOut: [], invites: [], online: emptyOnline() };
       byQQ.set(qq, acc);
       tokenToQQ.set(acc.token, qq);
       writeNow(acc);
@@ -340,8 +398,38 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
       return qq ? byQQ.get(qq) || null : null;
     },
     hasQQ(qq) { return typeof qq === 'string' && byQQ.has(qq); },
+    /** The account's cloud prefs (`prefs` in the shared file — the SAME data 盟约 reads and writes). */
     prefsOf(qq) { const a = byQQ.get(qq); return a ? { ...a.prefs } : {}; },
+    /** Per-key update stamps (used for the incremental reconcile on the client). */
+    prefsMetaOf(qq) { const a = byQQ.get(qq); return a && isPlain(a.prefsMeta) ? { ...a.prefsMeta } : {}; },
     nicknameOf(qq) { const a = byQQ.get(qq); return a ? a.nickname : null; },
+    /** [ACCOUNT] 在线时长（共享账号文件里的 `online` 块）：总时长 / 狩猎服时长 / 最后在线。 */
+    onlineOf(qq) {
+      const a = byQQ.get(qq);
+      const on = a && isPlain(a.online) ? a.online : null;
+      const games = on && isPlain(on.games) ? on.games : {};
+      return {
+        totalSec: totalSecOf(on),
+        huntSec: secOf(games.hunt),
+        lastSeenAt: on && Number.isFinite(on.lastSeenAt) ? on.lastSeenAt : 0,
+      };
+    },
+    /**
+     * [ACCOUNT] 累加在线时长（net.js 在**下线时一次** + 在线期间**每 5 分钟一次**调用；不频繁写盘）。
+     * 只增 `online.totalSec` 与 `online.games.hunt.sec`，不碰 `games.covenant` 或其它键。
+     * @param {string} qq @param {number} ms 本次要累加的毫秒
+     */
+    addOnlineSec(qq, ms) {
+      const acc = byQQ.get(qq);
+      if (!acc) return { error: 'NOT_FOUND' };
+      const add = Number.isFinite(ms) && ms > 0 ? ms : 0;
+      const total = (onlineRemainderMs.get(qq) || 0) + add;
+      const sec = Math.floor(total / 1000);
+      onlineRemainderMs.set(qq, total - sec * 1000);
+      if (sec > 0) onlinePendingSec.set(qq, (onlinePendingSec.get(qq) || 0) + sec);
+      writeNow(acc, { touchOnline: true }); // 下线/心跳各写一次（即使不足一秒也刷 lastSeenAt）
+      return { ok: true, sec, online: this.onlineOf(qq) };
+    },
     /** [BIND-RESUME] 完整账号记录（含 token）——用于把「连接已断时确认的绑定」回补给恢复的会话。 */
     accountOf(qq) { return (typeof qq === 'string' && byQQ.get(qq)) || null; },
 
@@ -424,7 +512,8 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
     },
 
     /**
-     * Store one pref value (the client's JSON string). Returns { ok:true } or { error }.
+     * Store one pref value (the client's JSON string) in the SHARED account file — the same `prefs` / `prefsMeta`
+     * 盟约 reads and writes, so both servers see the same loadout / settings / language.
      * @param {string} qq @param {string} key @param {string} json
      */
     setPref(qq, key, json) {
@@ -436,15 +525,13 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
       for (const [k, v] of Object.entries(acc.prefs)) if (k !== key) total += (typeof v === 'string' ? v.length : 0);
       if (total > ACCOUNT_MAX_CHARS) return { error: 'TOO_BIG' };
       acc.prefs[key] = json;
-      acc.prefsMeta = acc.prefsMeta && typeof acc.prefsMeta === 'object' ? acc.prefsMeta : {};
+      acc.prefsMeta = isPlain(acc.prefsMeta) ? acc.prefsMeta : {};
       acc.prefsMeta[key] = now();
       acc.updatedAt = now();
       try { persist(acc); } catch (e) { log.error('[account] persist failed', e); return { error: 'IO' }; }
       return { ok: true };
     },
 
-    /** [ACCOUNT-V2] 该账号各 key 的更新时间（用于增量对账）。 */
-    prefsMetaOf(qq) { const a = byQQ.get(qq); return a && a.prefsMeta ? { ...a.prefsMeta } : {}; },
     /** [ACCOUNT-V2] token 是否在有效期内（活动会续期）。 */
     tokenValid(qq, at = now()) { const a = byQQ.get(qq); if (!a) return false; const iat = a.tokenIssuedAt || a.created || 0; return at - iat <= TOKEN_TTL_MS; },
     /** [ACCOUNT-V2] 活动续期（在 hello 命中账号时调用）：内存始终刷新，**落盘节流**（见 TOKEN_TOUCH_PERSIST_MS）。 */
@@ -516,8 +603,9 @@ export function createAccountStore({ dir, keyDir, log = noopLog, now = Date.now 
       // create with the group nickname the first time; a re-bind keeps any in-game rename
       const existing = byQQ.get(q);
       const acc = existing || getOrCreate(q, nickname);
-      // [ACCOUNT-V2] 重新绑定 = 明确的重认证：轮换 token，吊销旧 token（泄露 / 其它设备的旧凭证立即失效）
-      if (existing) rotateTokenOf(acc);
+      // [ACCOUNT] **每次绑定成功都轮换 token**（单账号单登录）：盟约那边的旧 token 随之失效，
+      // 它的旧会话只会在下一次 hello / 重连时拿到 account.logout（方案 A 的边界，不碰盟约代码）。
+      rotateTokenOf(acc);
       try { entry.fn(acc.qq, acc.nickname, acc.token); } catch (e) { log.error('[account] bind fn failed', e); }
       return { ok: true, qq: acc.qq, nickname: acc.nickname };
     },

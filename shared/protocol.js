@@ -403,8 +403,13 @@ export const C2S = {
   // by MSG_STR_MAX like a single save.
   'account.saveBatch': { items: (v) => Array.isArray(v) && v.length > 0 && v.length <= 32 && itemsChars(v) <= MSG_STR_MAX, plainOk: (v) => v == null || v === true, $optional: ['plainOk'] },
   'account.load': { key: (v) => isStr(v, 32) },
+  // [ACH-STORE] 服务端权威对局记录：上报一批记录（密文 `enc` 或已同意明文 `records`）；服务端校验后归并、评分。
+  'account.records': { records: (v) => Array.isArray(v) && v.length > 0 && v.length <= 32, enc: (v) => typeof v === 'string' && v.length <= MSG_STR_MAX, $optional: ['records', 'enc'] },
   'account.setName': { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0 },
   'account.logout': {},
+  // [ACH] 本机成就评分（客户端从本地 stats 算好上报）；服务端随房间座位广播，使未绑定账号的玩家也显示徽章。
+  // 已绑定账号且服务端有记录时以服务端权威为准，这个上报分被忽略。
+  'player.ach': { score: (v) => isInt(v, 0, 1_000_000) },
   'room.create': { mode: (v) => ROOM_MODES.includes(v), difficulty: (v) => DIFFICULTIES.includes(v) },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.leave': {},

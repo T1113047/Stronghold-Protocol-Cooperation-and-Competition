@@ -52,16 +52,17 @@ export function narrowDeflateOffer(header) {
 /**
  * The session stack of one server.
  * @param {{ MatchClass?: Function, seedFn?: () => number, [option: string]: any }} opts startServer() options
- * @param {{ data: object, log: object, accounts?: object|null }} deps the game data the lobby's matches use, the
- *   logger, the account store (server/account.js; null in tests / when disabled)
+ * @param {{ data: object, log: object, accounts?: object|null, records?: object|null }} deps the game data the lobby's
+ *   matches use, the logger, the account store (server/account.js; null in tests / when disabled) and the achievement
+ *   record store (server/recordStore.js; null in tests / when disabled)
  * @returns {{ registry: SessionRegistry, lobby: Lobby, network: Network }}
  */
-export function createSessionStack(opts, { data, log, accounts = null }) {
+export function createSessionStack(opts, { data, log, accounts = null, records = null }) {
   const netOptions = netOptionsFrom(opts);
   const registry = new SessionRegistry({ reconnectWindowMs: netOptions.reconnectWindowMs ?? NET_DEFAULTS.reconnectWindowMs });
   const lobbyOptions = lobbyOptionsFrom(opts);
-  const lobby = new Lobby({ registry, log, MatchClass: opts.MatchClass, getData: () => data, seedFn: opts.seedFn, options: lobbyOptions });
-  const network = new Network({ registry, handler: lobby, log, options: netOptions, accounts }); // [ACCOUNT]
+  const lobby = new Lobby({ registry, log, MatchClass: opts.MatchClass, getData: () => data, seedFn: opts.seedFn, options: lobbyOptions, accounts, records }); // [ACH] / [ACH-STORE]
+  const network = new Network({ registry, handler: lobby, log, options: netOptions, accounts, records }); // [ACCOUNT] / [ACH-STORE]
   return { registry, lobby, network };
 }
 

@@ -26,6 +26,7 @@ import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch, isSpectating } from '../store.js';
 import { difficultyInfo } from './lobby.js';
 import { t, tc } from '../../../shared/i18n.js';
+import { pieceOf } from '../../../shared/achievement.js'; // [ACH] 成就评分 → 棋子徽章
 
 /**
  * Seats padded to the room's capacity (co-op 4, solo 1), each null or a seat record.
@@ -99,6 +100,15 @@ export function inviteLink(code) {
  */
 export { copyText };
 
+/**
+ * [ACH] 座位徽章数据：分数 → 棋子档（`pieceOf`），无有效分数 → null（不渲染）。
+ * 纯函数，供 UI 与测试共用。
+ * @param {unknown} ach `room.state.seats[].ach`
+ */
+export function seatAchBadge(ach) {
+  return Number.isFinite(ach) ? pieceOf(ach) : null;
+}
+
 function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot, onKick, drag = false, onDrop = null }) {
   const coop = room.mode !== 'solo';
   // 2V2: drag an occupied seat onto another to swap them (the host only); dropping across the teams changes team
@@ -129,6 +139,7 @@ function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot,
   const isMe = seat.playerId === myId;
   const isHostSeat = seat.playerId === room.hostId;
   const offline = seat.connected === false && !seat.isBot;
+  const ach = seatAchBadge(seat.ach); // [ACH] 成就评分 → 棋子称号
   // The host never needs to toggle ready: starting the match readies them (server rule).
   const state = offline ? 'offline' : seat.ready || seat.isBot ? 'ready' : isHostSeat ? 'host' : 'waiting';
   return html`<article class=${`seat brackets${isMe ? ' is-me' : ''}${isHostSeat ? ' is-host' : ''}${seat.isBot ? ' is-bot' : ''} is-${state}${seat.team != null ? ` seat--team-${seat.team}` : ''}${over ? ' is-dragover' : ''}`}
@@ -147,6 +158,7 @@ function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRemoveBot,
     <div class="seat__who">
       <span class="seat__name">${seat.name || t('博士')}</span>
       ${isMe ? html`<span class="seat__you">${t('你')}</span>` : null}
+      ${ach ? html`<span class="seat__ach" style=${`--ach-bg:${ach.color};--ach-fg:${ach.ink}`} aria-label=${`${ach.glyph} ${seat.ach}`} title=${`${ach.glyph} ${seat.ach}`}><span class="seat__ach-piece" aria-hidden="true">${ach.glyph}</span>${seat.ach}</span>` : null}
     </div>
     <${MicroLabel}>${seat.isBot ? 'AUTONOMOUS UNIT' : `DOCTOR #${doctorNo(seat.playerId)}`}<//>
     <footer class="seat__foot">

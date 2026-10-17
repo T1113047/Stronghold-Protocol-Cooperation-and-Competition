@@ -199,6 +199,16 @@ const QQ_GROUP = (typeof window !== 'undefined' && window.__SP_QQ_GROUP__) || ''
 /** [ACCOUNT] the command the player pastes into the group — a literal protocol string, never translated. */
 const bindCommand = (code) => `/绑定 ${code}`; // i18n-ignore: the QQ bot's command is fixed Chinese
 
+/** [ACCOUNT] Compact duration for the HUD-style account line (`3h 12m`, `47m`, `9s`) — digits + unit letters only. */
+export function hudDuration(totalSec) {
+  const s = Math.max(0, Math.round(Number(totalSec) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
 /**
  * The big name plate: this fork's own name (`FORK_NAME`), split around the colon so the two-line look survives in every
  * language (a name without a colon falls back to one run instead of inventing a break).
@@ -352,6 +362,7 @@ export function TitleScreen() {
         <div class="title-account">
           ${account
             ? html`<span class="title-account__who"><${GIcon} name="user" />${t('已登录：{name}（QQ {qq}）', { name: account.nickname || name, qq: account.qq })}</span>
+                ${account.online && account.online.totalSec > 0 ? html`<span class="title-account__online">${t('累计时长')} <b>${hudDuration(account.online.totalSec)}</b></span>` : null}
                 ${valid && sanitizeName(name) !== (account.nickname || '') ? html`<${Button} variant="secondary" size="sm" onClick=${saveNick}>${t('保存昵称')}<//>` : null}
                 <${Button} variant="ghost" size="sm" onClick=${logout}>${t('退出登录')}<//>`
             : html`<${Button} variant="secondary" size="sm" icon="user" disabled=${!valid || bindBusy} onClick=${startBind}>${bindBusy ? t('登录中…') : t('QQ 同步数据')}<//>`}

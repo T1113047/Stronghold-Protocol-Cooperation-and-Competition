@@ -142,6 +142,20 @@
 .seat__who { display: flex; align-items: center; gap: .08rem; max-width: 100%; }
 .seat__name { font-size: calc(.26 * var(--t)); font-weight: 700; max-width: 3rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seat__you { flex: none; padding: .01rem .07rem; background: var(--mint-500); color: var(--text-on-mint); font-size: calc(.13 * var(--t)); font-weight: 700; }
+/* [ACH] 成就评分：棋子徽章 + 分数（分档配色由行内 --ach-bg / --ach-fg 给出） */
+.seat__ach {
+  flex: none; display: inline-flex; align-items: center; gap: .03rem;
+  padding: .01rem .07rem; border-radius: .04rem;
+  border: 1px solid var(--ach-bg, var(--amber)); color: var(--ach-bg, var(--amber));
+  font-size: calc(.14 * var(--t)); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.seat__ach-piece {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: .22rem; height: .22rem; border-radius: .03rem;
+  background: var(--ach-bg, var(--amber)); color: var(--ach-fg, #1a1205);
+  font-size: calc(.17 * var(--t)); line-height: 1;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", serif;
+}
 .seat__foot {
   align-self: stretch;
   display: flex;

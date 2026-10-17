@@ -52,13 +52,14 @@ import { GuideHost } from './ui/guide.js';
 import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { StatsHost } from './screens/stats.js';
-import { recordResult, installStatsRecorder } from './ui/stats.js';
+import { recordResult, installStatsRecorder, compactRecord } from './ui/stats.js';
 import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
 import { t, N_, translateWire } from '../../shared/i18n.js';
 import { recordError, installTrafficMeter } from './diag.js';
-import { applyAccountPrefs, localStatsJson, statsIdsOf, syncPrefJson } from './ui/accountSync.js'; // [ACCOUNT] [BOARDMODE]
+import { applyAccountPrefs, localRecords, localStatsJson, statsIdsOf, syncPrefJson } from './ui/accountSync.js'; // [ACCOUNT] [BOARDMODE] [ACH-STORE]
+import { scoreStats } from '../../shared/achievement.js'; // [ACH] 本地记录 → 成就评分
 import { deriveKeyBytes, encryptPayload, decryptPayload } from '../../shared/accountCrypto.js'; // [ACCOUNT] 传输加密
 
 const RESTORE_GRACE_MS = 1500;
@@ -93,6 +94,32 @@ async function encPref(json) {
     if (!key) return null;
     return await encryptPayload(String(json), key);
   } catch { return null; }
+}
+
+/** [ACH] 本机成就评分上报（从本地 `sp.pref.stats` 求和）。游客的分数就这样显示在所有房间里；
+ *  已绑定账号且服务端成就库已有记录时，服务端会忽略这个分、用权威求和（server/lobby.js achOf）。 */
+function reportAch() {
+  let score;
+  try { score = scoreStats(localStatsJson()); } catch { score = 0; }
+  try { net.send('player.ach', { score }); } catch { /* ignore */ }
+}
+
+/**
+ * [ACH-STORE] 已绑定账号：把本机对局记录（逐条压紧，服务端只评「帧 + 自己行」）分批上传，让服务端算出
+ * 权威分（跨设备一致）。全量只在每次登录后传一次；新结算逐条补传（见 m.result）。无密文能力就跳过本轮
+ * （记录里有队友名字/阵容，不明文上行）。
+ * @param {any|null} [only] 只上传这一条（新结算）
+ */
+async function uploadRecords(only = null) {
+  if (!store.get().me.account?.qq) return;
+  const records = only ? [only] : localRecords();
+  if (!records.length) return;
+  for (let i = 0; i < records.length; i += 32) {
+    const chunk = records.slice(i, i + 32).map((r) => compactRecord(r));
+    const enc = await encPref(JSON.stringify({ records: chunk }));
+    if (!enc) return; // 无密钥：本轮不上传（下次登录再试）
+    try { net.send('account.records', { enc }); } catch { /* ignore */ }
+  }
 }
 
 const SCREENS = { title: TitleScreen, lobby: LobbyScreen, room: RoomScreen, game: GameScreen };
@@ -188,6 +215,7 @@ function onWelcome(msg) {
   store.set({ me: { playerId: msg.playerId ?? null, name, token: typeof msg.token === 'string' ? msg.token : null } });
   welcomeAt = Date.now();
   accountAppliedFor = null; // [ACCOUNT] each connect reconciles the cloud copy again
+  reportAch(); // [ACH] report the local score so the room can show a badge for everyone
 
   if (prevId != null && prevId !== msg.playerId) {
     // A brand-new server session (the server restarted — crashed / killed, so no room.closed arrived — or this session
@@ -319,6 +347,13 @@ async function onAccountData(msg) {
   const statsMode = localIds.size === 0 ? 'replace' : 'skip'; // 本地为空 → 用云端那份；否则本地统计不动
   applyingAccount = true;
   try { applyAccountPrefs(prefs, { stats: statsMode }); } finally { applyingAccount = false; }
+  // [ACCOUNT] 在线时长（与盟约共享的 online 块）落到 store：标题页的账号信息显示「累计时长」
+  if (msg.online && typeof msg.online === 'object') {
+    const online = { totalSec: Number(msg.online.totalSec) || 0, huntSec: Number(msg.online.huntSec) || 0, lastSeenAt: Number(msg.online.lastSeenAt) || 0 };
+    store.set((s) => (s.me.account ? { me: { ...s.me, account: { ...s.me.account, online } } } : {}));
+  }
+  // [ACH-STORE] 登录后把本机记录交给服务端（幂等：服务端按 id 去重），权威分随房间座位下发
+  void uploadRecords();
 }
 
 function wireNet() {
@@ -353,6 +388,7 @@ function wireNet() {
     setAccountToken(null);
     accountAppliedFor = null;
     store.set((s) => ({ me: { ...s.me, account: null } }));
+    reportAch(); // [ACH] 回到游客：重新上报本机分（服务端不再用权威分）
   });
   net.on('room.state', onRoomState);
   net.on('room.closed', (msg) => {
@@ -372,7 +408,8 @@ function wireNet() {
     store.patch('match', { result: res });
     // 本机统计 (PR #323): every arrival, including the lobby's result replay after a reconnect / reload —
     // replays dedupe by content id inside recordResult (spectator seats' copies build no record at all)
-    recordResult(res, { myId: store.get().me.playerId, roomMode: store.get().room?.mode ?? null, now: Date.now() });
+    const rec = recordResult(res, { myId: store.get().me.playerId, roomMode: store.get().room?.mode ?? null, now: Date.now() });
+    if (rec) { reportAch(); void uploadRecords(rec); } // [ACH] 分数变了；[ACH-STORE] 绑定账号补传这一局
   });
   net.on('m.toast', (msg) => {
     const kind = ['info', 'success', 'warn', 'error'].includes(msg.kind) ? msg.kind : 'info';

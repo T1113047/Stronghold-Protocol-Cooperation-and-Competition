@@ -41,6 +41,7 @@ import { createTrafficCounter } from './http/traffic.js';
 import { createAssetIndex } from './http/assetIndex.js';
 import { createManifestViews } from './http/assetViews.js';
 import { createAccountStore } from './account.js'; // [ACCOUNT] QQ-bound accounts + cloud prefs
+import { createRecordStore } from './recordStore.js'; // [ACH-STORE] 成就库：账号对局记录独立存储
 import { answerClientError } from './http/common.js';
 import { lanUrls, displayHost, isProcessEntry, runMain } from './http/boot.js';
 
@@ -62,14 +63,18 @@ export {
  *   heavyPerSec?: number, heavyBurst?: number, trustProxy?: 'auto' | boolean, soloReconnectWindowMs?: number,
  *   assetIndex?: boolean | { cacheFile?: string | null, delayMs?: number },
  *   accounts?: boolean | { dir?: string, keyDir?: string },
+ *   records?: boolean | { dir?: string, accountsDir?: string },
  * }} [opts]
  *   assetIndex: the content-hash index (default on; false or SP_ASSET_INDEX=0: off — config.js assetIndexOptionsFrom)
  *   accounts: [ACCOUNT] the QQ account store (default on, lazily initialized; false disables it, an object overrides
  *             ACCOUNT_DIR / ACCOUNT_KEY_DIR — server/account.js)
+ *   records: [ACH-STORE] the achievement record store (default on, lazily initialized; false disables it, an object
+ *             overrides its dir / accountsDir — server/recordStore.js)
  * @returns {Promise<{ port: number, host: string, url: string, server: http.Server, wss: import('ws').WebSocketServer,
  *                     lobby: import('./lobby.js').Lobby, network: import('./net.js').Network,
  *                     registry: import('./net.js').SessionRegistry, packs: ReturnType<typeof createPackRegistry>,
  *                     accounts: ReturnType<typeof createAccountStore> | null,
+ *                     records: ReturnType<typeof createRecordStore> | null,
  *                     traffic: ReturnType<typeof createTrafficCounter>, assetIndex: ReturnType<typeof createAssetIndex> | null,
  *                     views: ReturnType<typeof createManifestViews> | null, close: () => Promise<void> }>}
  */
@@ -84,7 +89,10 @@ export async function startServer(opts = {}) {
   // The store is lazy: it touches the disk on the first account frame (or /api/account/*), never at boot.
   const accounts = opts.accounts === false ? null
     : createAccountStore({ log, ...(opts.accounts && typeof opts.accounts === 'object' ? opts.accounts : null) });
-  const { registry, lobby, network } = createSessionStack(opts, { data, log, accounts });
+  // [ACH-STORE] 成就库（绑定账号的权威记录；游客仍然只靠客户端上报分）。同样懒加载：第一次用到才碰盘。
+  const records = opts.records === false ? null
+    : createRecordStore({ log, ...(opts.records && typeof opts.records === 'object' ? opts.records : null) });
+  const { registry, lobby, network } = createSessionStack(opts, { data, log, accounts, records });
   // content packs (docs/PACKS.md): scanned now — the start log names them — and again whenever their folders change
   const packs = createPackRegistry({ publicDir, dataDir, packsDir }, { log });
   packs.refresh(true);
@@ -99,7 +107,7 @@ export async function startServer(opts = {}) {
   buildTag();
 
   const traffic = createTrafficCounter();
-  const server = http.createServer(createRequestHandler({ serveStatic, health: { startedAt, network, registry, lobby, traffic, assetIndex, views, accounts }, log, trustProxy: network.opts.trustProxy, accounts }));
+  const server = http.createServer(createRequestHandler({ serveStatic, health: { startedAt, network, registry, lobby, traffic, assetIndex, views, accounts }, log, trustProxy: network.opts.trustProxy, accounts, records }));
   server.on('clientError', answerClientError);
   const wss = attachWebSocket(server, { network, log, traffic });
 
@@ -150,6 +158,7 @@ export async function startServer(opts = {}) {
     closing = (async () => {
       try { lobby.shutdown('shutdown'); } catch (e) { log.error('[shutdown] lobby', e); }
       network.close();
+      try { records?.flush(); } catch (e) { log.error('[shutdown] records', e); } // [ACH-STORE] debounced writes land
       assetIndex?.close();
       await new Promise((resolve) => {
         server.close(() => resolve());
@@ -161,7 +170,7 @@ export async function startServer(opts = {}) {
     return closing;
   }
 
-  return { port: actualPort, host: boundHost, url, server, wss, lobby, network, registry, packs, accounts, traffic, assetIndex, views, close };
+  return { port: actualPort, host: boundHost, url, server, wss, lobby, network, registry, packs, accounts, records, traffic, assetIndex, views, close };
 }
 
 // `node server/index.js` / npm start: listen, print the banner, stop on SIGINT / SIGTERM (http/boot.js).

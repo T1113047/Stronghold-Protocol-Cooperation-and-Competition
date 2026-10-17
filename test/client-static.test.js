@@ -1035,6 +1035,20 @@ describe('data.js', () => {
 // ---- unit: screen helpers & components ----------------------------------------------------------------------
 
 describe('screen helpers', () => {
+  test('title: hudDuration formats the ONLINE line (digits + unit letters only)', async () => {
+    const { hudDuration } = await mod('screens/title.js');
+    assert.equal(hudDuration(0), '0s');
+    assert.equal(hudDuration(9), '9s');
+    assert.equal(hudDuration(60), '1m');
+    assert.equal(hudDuration(3599), '59m');
+    assert.equal(hudDuration(3600), '1h 00m');
+    assert.equal(hudDuration(3600 + 12 * 60 + 5), '1h 12m');
+    assert.equal(hudDuration(90 * 3600), '90h 00m');
+    assert.equal(hudDuration(-5), '0s');
+    assert.equal(hudDuration(NaN), '0s');
+    assert.equal(hudDuration('120'), '2m');
+  });
+
   test('title: sanitizeName / isValidName / findUiAsset', async () => {
     const { sanitizeName, isValidName, findUiAsset } = await mod('screens/title.js');
     assert.equal(sanitizeName('  凯尔希  '), '凯尔希');

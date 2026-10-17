@@ -151,8 +151,8 @@ export class MatchPlatform {
     }
     this.guard(() => {
       ps.left = true;
-      // a leaver must not strand a pending setup-reroll vote (INFO_CHECK has no countdown while one is open):
-      // drop them from it, then void the vote of THEIR team only (the other team's stays)
+      // a leaver must not strand a pending setup-reroll vote (their consent can never arrive): drop them from it,
+      // then void the vote of THEIR team only (the other team's stays). The briefing gets its interrupted time back.
       this._dropFromSetupVotes(playerId);
       this.cancelSetupVote(this.setupVotes ? this.teamIdOf(ps) : 0);
       ps.connected = false;

@@ -147,22 +147,22 @@ import { promotionsOf } from './promote.js';
 import { ensurePixi } from './app/pixi.js';
 import { pieceDirOf, pickUnitOf } from './app/pick.js';
 import { CAMERA_MS, BOARD3D_STABLE_MS, BOARD3D_RETRY_MS, PEN_CAMERA_MS, RANGE_GROUPS, LEADER_HIT_STYLE, DRAG_HOLD_TILES, CHAIN_KINDS, DROP_PENDING_MS, DEPLOY_REPLAY_MS } from './app/tune.js';
-import { boardPreference, unitSetting, switchableBox, bandFor, fieldRows, boardArea, viewKind, penShown, leaderShown } from './app/view.js';
+import { boardPreference, boardSetting, unitSetting, switchableBox, bandFor, fieldRows, boardArea, viewKind, penShown, leaderShown } from './app/view.js';
 import { renderInfo, FORCED_EXIT, showsDeathFx } from './app/info.js';
 import { resolveAssets, makeData, withTimeout, QUALITY_RES, BOARD_RES, releaseGl } from './app/host.js';
 import { t } from '../../../shared/i18n.js';
 
 export { ensurePixi } from './app/pixi.js';
 export { PEN_CAMERA_MS, LEADER_HIT_STYLE, DRAG_HOLD_TILES, DEPLOY_REPLAY_MS } from './app/tune.js';
-export { viewKind, boardArea, bandFor, fieldRows, penShown, leaderShown, boardPreference, unitSetting, switchableBox } from './app/view.js';
+export { viewKind, boardArea, bandFor, fieldRows, penShown, leaderShown, boardPreference, boardSetting, unitSetting, switchableBox } from './app/view.js';
 export { FORCED_EXIT, showsDeathFx, renderInfo } from './app/info.js';
 export { releaseGl } from './app/host.js';
 
 /**
  * Create the battlefield view inside `host` (an element sized by CSS; the canvas fills it).
  * @param {HTMLElement} host
- * @param {{ data?: any, assets?: any, audio?: any, settings?: { damageNumbers?: boolean, officialDamageNumbers?: boolean, ammoCount?: boolean, quality?: string, pictureAuto?: boolean, unitsForce?: 'on'|'off' }, signal?: AbortSignal,
- *           weakGpu?: boolean, padding?: object|((kind:string, size:{width:number,height:number}) => object),
+ * @param {{ data?: any, assets?: any, audio?: any, settings?: { damageNumbers?: boolean, officialDamageNumbers?: boolean, ammoCount?: boolean, quality?: string, pictureAuto?: boolean, boardForce?: '3d'|'flat', unitsForce?: 'on'|'off' }, signal?: AbortSignal,
+ *           weakGpu?: boolean, onBoardNotice?: (text: string, kind?: string) => void, padding?: object|((kind:string, size:{width:number,height:number}) => object),
  *           hud?: {top:number,bottom:number}|((kind:'prep'|'bossPrep', size:{width:number,height:number}, o:{shop:boolean}) => {top:number,bottom:number}|null) }} [opts]
  */
 export async function createFieldView(host, options = {}) {
@@ -181,8 +181,13 @@ export async function createFieldView(host, options = {}) {
   const weakGpu = !!opts.weakGpu;
   settings.unitModels = unitSetting(settings, weakGpu);
   // the 3D board (three.js + the official art) loads in parallel with everything else
-  const boardPref = boardPreference(opts.board);
-  const want3d = boardPref !== '2d' && webgl2Available(boardPref === '3d');
+  // [BOARDMODE] 设置里的棋盘样式（画面自动调节关掉后强制 3D|2D）先算；URL `?board=` 仍覆盖（boardPreference）。
+  //   `let`: a settings change mid-match (setSettings → applyBoardMode) updates both for the lost-context recovery.
+  let boardPref = boardPreference(opts.board || boardSetting(settings));
+  let want3d = boardPref !== '2d' && webgl2Available(boardPref === '3d');
+  // [BOARDMODE] a requested 3D board this device cannot run stays on the 2D atlas board inside the engine: say so
+  // (an explicit 3D request only — the automatic mode never asks for it).
+  if (!want3d && boardPref === '3d') opts.onBoardNotice?.(t('无法启用 3D 棋盘，已保持 2D 画面'));
   // three.js (~2 MB) is fetched only when the local-art manifest lists the board atlas (in parallel with the art)
   const artListed = want3d ? boardArtListed(assets).catch(() => false) : Promise.resolve(false);
   const threePromise = artListed.then((ok) => (ok ? loadThree() : null)).catch(() => null);
@@ -483,13 +488,40 @@ export async function createFieldView(host, options = {}) {
     }, delay);
   }
   // Attach the board only after synchronous setup completes; enable3d also guards late arrivals.
-  const boardReady = Promise.all([threePromise, packPromise]).then(([THREE, pack]) => (THREE && pack ? enable3d(THREE, pack) : false), () => false);
+  // [BOARDMODE] an explicitly requested 3D board that three.js / the art pack cannot bring up stays on the 2D atlas
+  // board — say so (the automatic mode never asks for it: a device without the local art is silently on 2D, as before).
+  const boardReady = Promise.all([threePromise, packPromise]).then(([THREE, pack]) => {
+    const on = THREE && pack ? enable3d(THREE, pack) : false;
+    // (`want3d` false already toasted above: a device without WebGL2 never asks for three.js)
+    if (!on && want3d && boardPref === '3d') opts.onBoardNotice?.(t('无法启用 3D 棋盘，已保持 2D 画面'));
+    return on;
+  }, () => false);
   let boardRetry = null;
   function retryBoard() {
     if (!want3d || destroyed || board3d || recover.off || recover.timer || boardRetry) return;
     boardRetry = Promise.all([loadThree(), loadBoardPack(assets)])
       .then(([THREE, pack]) => enable3d(THREE, pack), () => false)
       .finally(() => { boardRetry = null; });
+  }
+  /**
+   * [BOARDMODE] Apply a board-style choice immediately (设置 →「画面质量」, or the dev hook): 'auto' follows the device,
+   * '3d' / '2d' force it. URL `?board=` still wins (boardPreference). Refreshes `boardPref` / `want3d`, which the
+   * lost-context recovery and the late-asset retry above read, and returns whether the 3D board is (now) on — a false
+   * for a requested '3d' means the 2D atlas board stayed, and setSettings toasts about it.
+   * @param {'auto'|'3d'|'2d'} m
+   * @returns {Promise<boolean>}
+   */
+  async function applyBoardMode(m) {
+    if (destroyed) return false;
+    const want = m === '2d' || m === '3d' ? m : 'auto';
+    boardPref = boardPreference(want);
+    want3d = boardPref !== '2d' && webgl2Available(boardPref === '3d');
+    if (boardPref === '2d') { clearTimeout(recover.timer); recover.off = true; disable3d(); return false; }
+    recover.off = false; recover.tries = 0;
+    if (board3d) return true;
+    if (!webgl2Available(boardPref === '3d')) return false; // an explicit '3d' accepts a slow GPU (the caller's choice)
+    const [THREE, pack] = await Promise.all([loadThree(), loadBoardPack(assets)]);
+    return destroyed ? false : enable3d(THREE, pack);
   }
   // the official soft shadow sprite replaces the procedural one once loaded (may already be cached; asked again when the
   // manifest arrives late)
@@ -1650,6 +1682,13 @@ export async function createFieldView(host, options = {}) {
         if (n > 0) fx.pop(fx.tex.coin, `+${n}`, COLORS.gold, 3);
         break;
       }
+      case 'bank': {
+        // 2V2 赏金 (economy.js addBank): a placed monster's bounty is banked at 坎诺特 — never gold — so it gets its own
+        // pop, in the placed monster's amber-red ring colour and without the coin glyph (gold keeps the 'bounty' one).
+        const n = Number(e[2]) || 0;
+        if (n > 0) fx.pop(null, `+${n}`, 0xff9a86, 4);
+        break;
+      }
       default: break;
     }
   }
@@ -2019,23 +2058,28 @@ export async function createFieldView(host, options = {}) {
       if (typeof s.ammoCount === 'boolean') settings.ammoCount = s.ammoCount;   // the units read it every frame (ctx.settings)
       if (s.quality === 'high' || s.quality === 'medium' || s.quality === 'low') settings.quality = s.quality;
       if (q !== settings.quality) { board3d?.setQuality?.(settings.quality); resize(); }
-      // [UNITMODELS] 画面自动调节 / 角色模型「加载·不加载」改动：立即生效（跨「简化平面/引擎」边界时由 fieldHost 重挂载）
+      // [BOARDMODE]/[UNITMODELS] 画面自动调节 + 棋盘样式 / 角色模型强制档改动：立即生效（跨「简化平面/引擎」边界时由
+      // fieldHost 重挂载，这里是边界之内：引擎的 3D 棋盘 ↔ 引擎的 2D 贴图地块）。
+      const boardBefore = boardPreference(boardSetting(settings));
       const unitsBefore = settings.unitModels;
       if (typeof s.pictureAuto === 'boolean') settings.pictureAuto = s.pictureAuto;
+      if (s.boardForce === '3d' || s.boardForce === 'flat') settings.boardForce = s.boardForce;
       if (s.unitsForce === 'on' || s.unitsForce === 'off') settings.unitsForce = s.unitsForce;
+      const boardAfter = boardPreference(boardSetting(settings));
+      if (boardAfter !== boardBefore) {
+        applyBoardMode(boardAfter).then((on) => {
+          if (!on && boardAfter === '3d') opts.onBoardNotice?.(t('无法启用 3D 棋盘，已保持 2D 画面'));
+        }).catch(() => {});
+      }
       const unitsAfter = unitSetting(settings, weakGpu);
       if (unitsAfter !== unitsBefore) applyUnitModels(unitsAfter);
     },
     resize,
-    /** Dev / settings: switch the board layer ('3d' loads three.js + the art when available; '2d' = atlas board). */
-    async setBoardMode(m) {
-      if (destroyed) return false;
-      if (m === '2d') { recover.off = true; clearTimeout(recover.timer); disable3d(); return false; }
-      recover.off = false; recover.tries = 0;
-      if (board3d) return true;
-      if (!webgl2Available(true)) return false; // an explicit request: a slow GPU is the caller's choice
-      const [THREE, pack] = await Promise.all([loadThree(), loadBoardPack(assets)]);
-      return enable3d(THREE, pack);
+    /** Dev / settings: switch the board layer ('auto' follows the device; '3d' loads three.js + the art and accepts a
+     * slow GPU; '2d' = the atlas board). [BOARDMODE] 设置里的切换也走这里。 */
+    setBoardMode(m) {
+      if (m !== '2d' && m !== '3d' && m !== 'auto') return Promise.resolve(false);
+      return applyBoardMode(m);
     },
     destroy() {
       if (destroyed) return;

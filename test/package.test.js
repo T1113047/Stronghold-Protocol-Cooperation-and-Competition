@@ -325,7 +325,7 @@ test('the stage drops dishonest npm scripts and rewrites unshipped doc links', {
     const stagedPkg = JSON.parse(fs.readFileSync(path.join(stage, 'package.json'), 'utf8'));
     assert.deepEqual(Object.keys(stagedPkg.scripts).sort(), ['assets', 'doctor', 'launch', 'postinstall', 'setup', 'start', 'vendor']);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).scripts.test, 'node --test');
-    const host = 'https://github.com/sganggs/Stronghold-Protocol';
+    const host = 'https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation';
     const got = fs.readFileSync(path.join(stage, 'README.md'), 'utf8');
     assert.equal(got, `# r\n\n[design](${host}/blob/v9.9.9/docs/DESIGN.md)\n[play](docs/PLAYING.md)\n[rel](${host}/releases/latest)\n![shot](${host}/raw/v9.9.9/docs/img/x.jpg)\n`);
     assert.equal(fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), readme, 'the git checkout keeps its relative links');

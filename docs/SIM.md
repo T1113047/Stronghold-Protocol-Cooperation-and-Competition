@@ -215,6 +215,9 @@ A `bounty` pays `coins` once, when the enemy really dies (not a knock-out it sur
 `Battle._bountyPayee`: the player of the operator or summon that dealt the blow, if that player is in the battle; any
 other death (无来源 damage such as 活性源石, its own HP loss, another enemy, an ownerless unit) pays `ownerPlayerId` when
 that player is in the battle, else — 联防, where it is the leaker — the helper whose half the enemy fell on (0.2.0).
+A bounty the *opponent placed* (`bounty.bank: true`, 2V2 狩猎期) is **not gold**: `Battle.addBank` pays the same payee's
+`bank` (`PlayerState.bountyBank`, the event `['bank', playerId, n]`) and the match turns it into funds only when the player
+withdraws it at 坎诺特 in prep (`Match.withdrawBounty`).
 
 Leader parts (`tag:'part'`) pass damage to their leader with `loseHp(leader, share, { source, from, sourceless: true })`
 (无来源, credited to the attacker's `bossDamage`): `PART_TRANSFER` 1 for 斩胄之剑 / 破胄之锤 (`BLADE_TRANSFER`, the same
@@ -1440,7 +1443,9 @@ Unknown subprofessions fall back to the profession default (test `professions.te
   行动开始 voice, DESIGN §21.30), `['die', id, reason]`, `['leak', id]`, `['status', id, key, 1|0]`,
   `['fx', kind, x, y, extra]` (`hitCap` `{ id, n }`: a leader's hit cancelled by 限伤 — the renderer draws nothing;
   `extra.form` = the unit's model form from then on — an enemy's `content/enemies/helpers.js setForm`, a 傀儡师's 替身 — `shared/protocol.js fxForm`),
-  `['layer', playerId, bondId, n]` (n = the layers actually added, capped at 999), `['bounty', playerId, coins]`.
+  `['layer', playerId, bondId, n]` (n = the layers actually added, capped at 999), `['bounty', playerId, coins]`,
+  `['bank', playerId, n]` (the bounties of a monster the OPPONENT PLACED, 2V2 狩猎期: banked at 坎诺特, never gold — the
+  match only turns them into funds through a prep withdrawal; `Economy.addBank`).
 - `UnitInfo = { id, kind, side, ownerId, defId, name, tier, golden, spine, avatar, x, y, facing, dir, maxHp, motion?, boss?, uid?, form?, skillIndex?, moduleId?, items?, standInFor?, diy?, potential?, cultivate? }` (`potential` / `cultivate`: an ally operator's potential below 6 and its 练度 tier, 0.2.2 — a teammate's card composes its numbers from them) (`standInFor`: a 补位 stand-in's replaced operator charId — `spine` / `avatar` / `name` are the stand-in's, DATA.md §18; the prep scouting units of `Match.prepFieldMeta` carry it too, board and held pieces alike with the stand-in's art (the owner's recall of the official mode, 2026-10-06), and so do the m.result lineups; `diy`: a 自选 piece's pick `{ charId, skillIndex, uniEquipId }` — `defId` is its slot, `spine` / `avatar` / `name` the operator's; the prep scouting units of `Match.prepFieldMeta` and the m.result lineups carry it too (server/match/player/diy.js, the client composes the operator's card from it); `skillIndex`: an ally's equipped skill, DESIGN §16; `form`: the unit's current model form — `content/enemies/helpers.js setForm`: 掠海漂移体 `'crawl'`, 暴鸰 `'bombed'` after its drop, 转译基底·α's forms …; a 傀儡师 fighting as its 替身 `'doll'` — so a view built mid-battle from `fieldMeta()` starts on that clip set; `items`: an ally operator's equipped item ids — a 变形同构体 wearer is a member of the bond it grants on the client too, the bond popup and the detail card's chips)
   (`dir` = the unit direction, allies meaningful, enemies 'RIGHT'; `facing` = its horizontal sign for sprite flipping)
   (`spine`/`avatar` are asset ids from data).

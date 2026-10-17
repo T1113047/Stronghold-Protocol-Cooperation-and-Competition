@@ -11,7 +11,7 @@ import { applyCard } from '../../server/match/choices.js';
 import {
   placementContext, canPlace, deploySets, stageOverrides, deployMap, effectiveStage, normalizeResult, disabledBondSets,
   briefingBondTip, watchTarget, switcherLabel, dropIntent, dropFailureReason, shopBlockReason,
-  completesMerge, handFull, tileKey,
+  completesMerge, handFull, tileKey, watchedOverview,
 } from '../../public/js/ui/gameLogic.js';
 import { PHASE, GEO } from '../../shared/constants.js';
 
@@ -173,6 +173,38 @@ describe('watch targets and the view switcher', () => {
     assert.deepEqual(watchTarget(pub.players[2], dead, 'me'), { fieldId: 'b2' });
     // prep scouting: the teammate's own board
     assert.deepEqual(watchTarget(pub.players[1], { ...pub, phase: PHASE.PREP }, 'me'), { fieldId: 'n:mate' });
+  });
+
+  test('2V2 watch targets: the opponent opens after R13; the stub leaks nothing; a spectator sees everyone', () => {
+    const pub = {
+      phase: PHASE.PREP, round: 13,
+      players: [
+        { playerId: 'me', seat: 0, team: 0, alive: true, name: '我' },
+        { playerId: 'mate', seat: 1, team: 0, alive: true, name: '搭档' },
+        { playerId: 'foe', seat: 2, team: 1, alive: true, name: '敌', hidden: true },
+        { playerId: 'foe2', seat: 3, team: 1, alive: true, name: '敌2', hidden: true },
+      ],
+    };
+    assert.match(watchTarget(pub.players[2], pub, 'me').reason, /R13 之后/);
+    // R14: the server sends the real rows — the same call opens the board and [OVERVIEW] has the numbers
+    const revealed = pub.players.map((p) => (p.team === 1 ? { ...p, hidden: undefined, shopLevel: 3, boardCount: 2 } : p));
+    const pub14 = { phase: PHASE.PREP, round: 14, players: revealed };
+    assert.deepEqual(watchTarget(pub14.players[2], pub14, 'me'), { fieldId: 'n:foe' });
+    assert.deepEqual(watchedOverview(pub14, 'foe'), { lp: null, level: 3, board: 2 });
+    assert.equal(watchedOverview(pub, 'foe'), null, 'a stub row gives the spectator no intel');
+    // a spectator (no own row) may target anyone at any round — the rows are real and no team check applies
+    assert.deepEqual(watchTarget(pub14.players[3], { ...pub14, round: 5 }, 's_spec'), { fieldId: 'n:foe2' });
+    // Final Assault: the other team's boss field opens at the reveal, but not before
+    const fa = {
+      phase: PHASE.FINAL_ASSAULT, round: 14,
+      players: revealed.map((p) => ({ ...p, fieldId: p.team === 0 ? 'b1' : 'b2' })),
+      fields: [
+        { fieldId: 'b1', kind: 'boss', players: ['me', 'mate'], live: true },
+        { fieldId: 'b2', kind: 'boss', players: ['foe', 'foe2'], live: true },
+      ],
+    };
+    assert.deepEqual(watchTarget(fa.players[2], fa, 'me'), { fieldId: 'b2' }, 'a revealed opponent boss field opens');
+    assert.match(watchTarget(fa.players[2], { ...fa, round: 13 }, 'me').reason, /R13 之后/);
   });
 
   test('switcher label names a watched field whose battle already ended', () => {

@@ -5,7 +5,7 @@ rem starts the server, prints the LAN addresses and opens the browser. Extra arg
 rem scripts\launch.mjs, e.g.:  start-windows.bat --port 3001 --no-local
 chcp 65001 >nul
 setlocal EnableExtensions
-title 卫戍协议：盟约 - Stronghold Protocol
+title 卫戍协议：狩猎模拟 - Stronghold Protocol
 cd /d "%~dp0.."
 
 where node >nul 2>nul

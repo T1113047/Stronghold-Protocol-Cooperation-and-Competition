@@ -126,3 +126,30 @@ test('co-op trophies / victory follow each player\'s OWN rounds passed: a teamma
   assert.equal(res.victory, true, 'the team result is still a win');
   m.dispose();
 });
+
+test('2V2 rows carry the squad and the 坎诺特 counters (本局赏金收入 / 已取出金币 / 剩余存款)', async () => {
+  const { buildResult } = await import('../../server/match/results.js');
+  const seats = [
+    { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+    { seat: 1, playerId: 'ai_1', name: 'A1', isBot: true, connected: true, team: 0 },
+    { seat: 2, playerId: 'ai_2', name: 'B0', isBot: true, connected: true, team: 1 },
+    { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
+  ];
+  const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats, seed: 21, fake: true }).start();
+  const m = h.m;
+  const ps = h.ps('p_0');
+  ps.bountyEarned = 12;
+  ps.withdrawnGold = 4;
+  ps.bountyBank = 7;
+  const res = buildResult(m, { victory: false, hiddenReached: false, hiddenCleared: false, reason: 'test' });
+  const row = (pid) => res.players.find((p) => p.playerId === pid);
+  assert.equal(row('p_0').team, 0, 'the row names its squad');
+  assert.deepEqual(row('p_0').bounty, { earned: 12, withdrawn: 4, bank: 7 }, '赏金 income, gold withdrawn, 赏金 still held');
+  assert.deepEqual(row('ai_1').bounty, { earned: 0, withdrawn: 0, bank: 0 }, 'a player without 赏金 still carries the counters');
+  assert.equal(row('ai_2').team, 1);
+  for (const p of res.players) {
+    assert.ok(Number.isInteger(p.team), `${p.playerId}: a 2V2 row always names its team`);
+    for (const k of ['earned', 'withdrawn', 'bank']) assert.ok(Number.isFinite(p.bounty[k]), `${p.playerId}: ${k}`);
+  }
+  m.dispose();
+});

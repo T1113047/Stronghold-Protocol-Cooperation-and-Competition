@@ -15,8 +15,8 @@ test('buying Matterhorn sends two live layer cues through the real client; resyn
       const mediaHits = [];
       c.page.on('response', (r) => { const p = new URL(r.url()).pathname; if (p.startsWith('/media/')) mediaHits.push({ p, status: r.status(), cache: r.headers()['cache-control'] }); });
       await c.enter('叠层音效测试');
-      await c.click('.mode-card', '独立模拟'); await c.click('.diff-card', '险境');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.mode-card', '独立狩猎'); await c.click('.diff-card', '险境');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor(s => !!s.room, 'solo room');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟');
       await c.waitFor(s => s.phase === 'INFO_CHECK', 'briefing');

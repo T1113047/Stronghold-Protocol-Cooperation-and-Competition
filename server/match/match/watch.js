@@ -5,6 +5,9 @@
 // pushes (GitHub #87). Eliminated humans and spectator seats follow a player through every phase reset (community
 // report of 2026-10-06, item 56; the official DeadAutoObDn { obIndex, state, preparation }, research 09 §3.1; the idea
 // of PR #189): the player they last watched with a manual g.watch (`watchPref`), else the first player still in.
+// 2V2 ('versus'): a player's prep scouting / other-group boss field is team-scoped until the opponent is revealed
+// (`Match#opponentRevealed` — R14 on, shared/constants.js opponentRevealed); a spectator seat (`Match#isSpectator`) is
+// outside every team restriction and watches any player / field from the start.
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, ERR } from '../../../shared/constants.js';
@@ -55,9 +58,12 @@ export class MatchWatch {
     const f = this.fields.find((x) => x.fieldId === fieldId);
     if (f) {
       // 最终攻势 / 隐秘核心: "两名参与者会处于同一个战场，但无法查看另一组队友的战场情况" — a fighting player sees its own
-      // boss field only (eliminated / departed players spectate freely)
+      // boss field only (co-op keeps this), UNLESS the 2V2 opponent has been revealed (R14+, `Match#opponentRevealed`;
+      // spectator seats have no own field and always watch anything). Eliminated / departed players spectate freely.
       const own = this.fieldOf(ps);
-      if ((f.kind === 'boss' || f.kind === 'hidden') && own && own !== f.fieldId) return fail(ERR.BAD_TARGET, 'other group hidden');
+      const revealed = this.isVersus && this.opponentRevealed;
+      if ((f.kind === 'boss' || f.kind === 'hidden') && own && own !== f.fieldId
+        && !this.isSpectator(ps) && !revealed) return fail(ERR.BAD_TARGET, 'other group hidden');
       this.watchers.set(ps.playerId, fieldId);
       this._watchPrefSet(ps, f, playerId);
       this._sendField(ps.playerId, fieldId);
@@ -71,9 +77,11 @@ export class MatchWatch {
       if (this.fields.length) return fail(ERR.BAD_TARGET, 'no such field');
       const target = this.players.get(fieldId.slice(2));
       if (!target || !target.alive) return fail(ERR.BAD_TARGET);
-      // 2V2 ('versus'): prep scouting is TEAM-ONLY — the opponent's board (their lineup, hand and coming wave) must
-      // never be visible before the Final Assault reveals it.
-      if (this.isVersus && this.teamIdOf(target) !== this.teamIdOf(ps)) return fail(ERR.BAD_TARGET, 'opponent hidden');
+      // 2V2 ('versus'): prep scouting is TEAM-ONLY until the opponent is revealed — the opponent's board (their lineup,
+      // hand and coming wave) must never be visible before the Final Assault. From R14 on (`Match#opponentRevealed`)
+      // it opens; a spectator seat (no team) scouts anyone from the start.
+      if (this.isVersus && !this.isSpectator(ps) && !this.opponentRevealed
+        && this.teamIdOf(target) !== this.teamIdOf(ps)) return fail(ERR.BAD_TARGET, 'opponent hidden');
       this.watchers.set(ps.playerId, fieldId);
       if (target !== ps) this.watchPref.set(ps.playerId, target.playerId);
       this._notifyPrepScouts(target, { to: ps.playerId });
@@ -102,9 +110,10 @@ export class MatchWatch {
     const ok = (pid) => { const t = typeof pid === 'string' && pid !== ps.playerId ? this.players.get(pid) : null; return !!t && t.alive && !t.left; };
     const pref = this.watchPref.get(ps.playerId);
     if (ok(pref)) return pref;
-    // 2V2: an eliminated player follows its OWN team only (never spies on the opponent)
-    const team = this.teamIdOf(ps);
-    const pool = this.isVersus ? this.order.filter((q) => this.teamIdOf(q) === team) : this.order;
+    // 2V2: an eliminated player follows its OWN team only (never spies on the opponent) — unless the opponent is
+    // revealed (R14+). A spectator seat has no team and follows anyone, `opponentRevealed` or not.
+    const ownTeamOnly = this.isVersus && !this.isSpectator(ps) && !this.opponentRevealed;
+    const pool = ownTeamOnly ? this.order.filter((q) => this.teamIdOf(q) === this.teamIdOf(ps)) : this.order;
     return pool.find((q) => ok(q.playerId))?.playerId ?? null;
   }
 
@@ -137,14 +146,18 @@ export class MatchWatch {
   /**
    * g.watch under client-side combat: the watcher gets the field's spec (b.start, display only) and runs a local
    * replica fast-forwarded to the field's clock. No watching while the own normal battle runs; the other pair's boss
-   * field is never shown to a fighting player; eliminated players may watch anything.
+   * field is shown to a fighting player only once the 2V2 opponent is revealed (R14+); eliminated players (and
+   * spectator seats, which have no own field) may watch anything.
    */
   _watchClient(ps, fieldId, playerId = null) {
     const f = this.fields.find((x) => x.fieldId === fieldId) || null;
     if (!f) return fail(ERR.BAD_TARGET, 'no such field');
     const own = this.fields.find((x) => x.players.includes(ps.playerId)) || null;
     if (ps.alive) {
-      if ((f.kind === 'boss' || f.kind === 'hidden') && own && own !== f) return fail(ERR.BAD_TARGET, 'other group hidden');
+      // the other pair's boss field opens with the 2V2 reveal (R14+): see watch(); co-op keeps it closed
+      const revealed = this.isVersus && this.opponentRevealed;
+      if ((f.kind === 'boss' || f.kind === 'hidden') && own && own !== f
+        && !this.isSpectator(ps) && !revealed) return fail(ERR.BAD_TARGET, 'other group hidden');
       if (f.kind === 'normal' && own && own !== f && own.live) return fail(ERR.WRONG_PHASE, 'own battle running');
     }
     this.watchers.set(ps.playerId, f.fieldId);

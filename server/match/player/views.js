@@ -64,6 +64,8 @@ export class PlayerViews {
       alive: this.alive,
       lp: this.lp,
       funds: this.funds,
+      // 2V2 商人「坎诺特」: the banked 赏金 (NOT gold) and this round's withdrawal panel — null outside versus
+      merchant: typeof this.m.merchantView === 'function' ? this.m.merchantView(this) : null,
       bandId: this.bandId,
       ready: this.ready,
       canReady: this.alive && this.tempEmpty && !this.personalChoice && this.m.phase === PHASE.PREP,

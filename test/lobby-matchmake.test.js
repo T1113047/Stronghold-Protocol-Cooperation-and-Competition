@@ -1,4 +1,4 @@
-// test/lobby-matchmake.test.js — 快速匹配（移植自服务服 server_patches/matchmake）：房主开关本房是否对外开放
+// test/lobby-matchmake.test.js — 快速匹配：房主开关本房是否对外开放
 // （room.matchmake，room.state 回显），以及 room.quickmatch 把玩家放进「同难度、已开放、未开局、有空座、房主在线」
 // 的最佳房间（人多优先 → 已占座优先 → 等最久优先）；没有房间就 ROOM_NOT_FOUND，绝不自动建房。
 // 独立 describe + 独立 server：房间会跨测试残留，隔离才不会有假命中。

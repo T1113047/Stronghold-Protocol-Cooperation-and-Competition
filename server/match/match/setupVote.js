@@ -1,6 +1,8 @@
 // INFO_CHECK full setup reroll: unanimous human consent, keeping the room and player settings.
-// [ASSUMED] Remake convenience: unanimous human vote, pause/resume timer, independent reroll stream and
-// a 300 ms request guard. These are not official mode rules; DESIGN §28.21.
+// [ASSUMED] Remake convenience: unanimous human vote, independent reroll stream and a 300 ms request guard. These are
+// not official mode rules; DESIGN §28.21. While a vote runs the briefing clock STAYS UP (the vote gets a full window of
+// its own, not the time left), confirming the current setup is still allowed, a rejection / cancellation / disconnect
+// hands the interrupted time back, and a vote nobody answers expires with the window and lets the briefing advance.
 // 2V2 ('versus', design 2026-10-17): the reroll is PER TEAM — a team rerolls only its OWN disabled core bonds (the
 // stage / boss / 特训敌人 stay shared), with that team's humans' consent, and the two teams' rerolls are independent.
 // Installed on Match.prototype like the other method containers. The lobby authorizes host-only actions.
@@ -24,8 +26,27 @@ export class MatchSetupVote {
     else this.setupVote = vote;
   }
 
-  /** The window a reroll vote runs in when INFO_CHECK itself has no countdown left (never leave the phase unstoppable). */
-  _setupVoteWindowMs() { return Math.max(5000, (Number(this.gd.timer('infoCheck')) || 25) * 1000); }
+  /**
+   * The vote's own window in REAL ms: the WHOLE briefing countdown (25 s co-op / 45 s 2V2, `timerScale` applied) — NOT
+   * the time left. A reroll proposed with one second left must still give every voter a full window to answer
+   * (DESIGN §28.21 "last-second"), otherwise the vote would expire before anyone could agree.
+   */
+  _setupVoteWindowMs() {
+    const secs = this.isVersus ? VERSUS_INFO_SECONDS : (Number(this.gd.timer('infoCheck')) || 25);
+    return Math.max(5000, this.scaled(secs * 1000));
+  }
+
+  /**
+   * Arm the phase deadline in REAL ms. The values here are already `timerScale`d, so `setDeadline` must not scale them a
+   * second time; the `_phaseTimer` bookkeeping is the same one setDeadline uses.
+   */
+  _armPhaseDeadline(ms, fn) {
+    this.cancel(this._phaseTimer);
+    this._phaseTimer = null;
+    if (!(ms > 0)) { this.deadline = 0; return; }
+    this.deadline = this.sched.now() + ms;
+    this._phaseTimer = this.later(ms, () => { this._phaseTimer = null; fn(); });
+  }
 
   /**
    * A human left: drop them from every pending reroll vote. A voter who cannot answer must never freeze INFO_CHECK — the
@@ -43,10 +64,11 @@ export class MatchSetupVote {
     }
   }
 
-  /** The humans whose consent a team's reroll needs (2V2: that team; solo/coop: every human). A seat with nobody at the
-   *  keyboard (disconnected, or left and AI-run) does not vote. */
+  /** The humans whose consent a team's reroll needs (2V2: that team; solo/coop: every human). A human who LEFT is out
+   *  (its seat is gone); one who is only DISCONNECTED still counts — its silence is never consent, so the request is
+   *  refused (ERR.NOT_READY) until it comes back (a vote already open drops it instead: `_dropFromSetupVotes`). */
   _rerollHumans(team) {
-    const humans = this.humans().filter((p) => p.connected !== false);
+    const humans = this.humans();
     return this.setupVotes ? humans.filter((p) => this.teamIdOf(p) === team) : humans;
   }
 
@@ -62,7 +84,7 @@ export class MatchSetupVote {
     const now = this.sched.now();
     if (now - this._lastSetupVoteAt < 300) return fail(ERR.RATE);
     this._lastSetupVoteAt = now;
-    const ms = this.deadline > 0 ? Math.max(1, this.deadline - now) : this._setupVoteWindowMs();
+    const ms = this._setupVoteWindowMs();
     const vote = {
       id: ++this._setupVoteSeq,
       team,
@@ -70,13 +92,16 @@ export class MatchSetupVote {
       voters: voters.map((p) => p.playerId),
       agreed: new Set([playerId]),
       remainingMs: ms,
+      /** the briefing time the vote interrupts: handed back when the vote is rejected / cancelled (never on its expiry) */
+      savedRemainingMs: this.deadline > now ? this.deadline - now : ms,
     };
     this._setSetupVote(team, vote);
     this.cancel(this._infoAdvanceTimer);
     this._infoAdvanceTimer = null;
-    // Keep a VISIBLE countdown while the vote runs: the phase deadline becomes the vote's own window, and its expiry
-    // cancels the vote. (Clearing it here made the clock vanish and the briefing look hung.)
-    this.setDeadline(ms / 1000, () => { if (this._setupVoteOf(team) === vote) this.cancelSetupVote(team); });
+    // Keep a VISIBLE countdown while the vote runs: the phase deadline becomes the vote's own FULL window, and its
+    // expiry cancels the vote and lets the briefing advance — a voter who never answers must not strand INFO_CHECK.
+    // (Clearing the deadline made the clock vanish and the briefing look hung.)
+    this._armPhaseDeadline(ms, () => { if (this._setupVoteOf(team) === vote) this.cancelSetupVote(team, { restore: false }); });
     if (voters.length <= 1) return this.completeSetupReroll(team);
     this.markPublic();
     this.flush(true);
@@ -109,30 +134,41 @@ export class MatchSetupVote {
     return OK;
   }
 
-  cancelSetupVote(team) {
+  cancelSetupVote(team, opts) {
     // `team` omitted (a player left / the match is winding down): every pending vote goes
     const teams = team == null
       ? (this.setupVotes ? [...this.setupVotes.keys()] : (this.setupVote ? [0] : []))
       : [team];
-    for (const t of teams) this._cancelSetupVoteOf(t);
+    for (const t of teams) this._cancelSetupVoteOf(t, opts);
   }
 
-  _cancelSetupVoteOf(team) {
+  /**
+   * Close a team's vote. `restore` (the default: a rejection, host cancellation, disconnect or leave) hands the
+   * briefing back the time the vote interrupted, so the confirmation keeps its remaining countdown. `restore: false`
+   * is the vote's own window running out — it already absorbed that time, so the briefing advances at once instead of
+   * granting the same seconds a second time (a voter who never answers must never strand INFO_CHECK).
+   */
+  _cancelSetupVoteOf(team, { restore = true } = {}) {
     const vote = this._setupVoteOf(team);
     if (!vote) return;
     this._setSetupVote(team, null);
-    if (this.phase === PHASE.INFO_CHECK && !this.disposed && !this.ended && !this._anySetupVote()) {
-      // A vote must never strand the briefing — and it already consumed its own window — so this goes straight in on the
-      // next tick (no countdown to re-arm, no waiting for the players to re-confirm).
-      this.setDeadline(0);
-      this.cancel(this._infoAdvanceTimer);
-      this._infoAdvanceTimer = this.later(0, () => {
-        this._infoAdvanceTimer = null;
-        if (this.phase === PHASE.INFO_CHECK && !this._anySetupVote()) this.enterBandDraft();
-      });
+    if (this.phase !== PHASE.INFO_CHECK || this.disposed || this.ended || this._anySetupVote()) return;
+    if (restore && vote.savedRemainingMs > 0) {
+      this._armPhaseDeadline(vote.savedRemainingMs, () => this.enterBandDraft());
       this.markPublic();
       this.flush(true);
+      // everyone may already have confirmed the CURRENT setup: hand the briefing on rather than waiting out the clock
+      this.maybeEndInfo();
+      return;
     }
+    this.setDeadline(0);
+    this.cancel(this._infoAdvanceTimer);
+    this._infoAdvanceTimer = this.later(0, () => {
+      this._infoAdvanceTimer = null;
+      if (this.phase === PHASE.INFO_CHECK && !this._anySetupVote()) this.enterBandDraft();
+    });
+    this.markPublic();
+    this.flush(true);
   }
 
   completeSetupReroll(team) {

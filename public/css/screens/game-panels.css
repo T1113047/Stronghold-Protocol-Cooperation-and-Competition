@@ -706,6 +706,25 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .confov__body { display: grid; grid-template-columns: 1fr 1fr; gap: .14rem; flex: 1 1 auto; min-height: 0; }
 .confov__pool, .confov__placed { display: flex; flex-direction: column; min-height: 0; }
 .confov__h { font-size: calc(.17 * var(--t)); margin: 0 0 .06rem; flex: 0 0 auto; }
+/* 本回合还能放 n 只 (user 2026-10-17): resident above the picking body — remaining value ÷ the current type's
+   cheapest monster, plus the protocol's picks cap. */
+.confov__remain { display: flex; align-items: baseline; gap: .1rem; flex: 0 0 auto; margin: 0; padding: .04rem .12rem;
+  border-left: 2px solid var(--mint-400); background: rgba(23, 249, 183, .06); font-size: calc(.14 * var(--t)); color: var(--text-md); }
+.confov__remain b { color: var(--mint-400); font-size: calc(.16 * var(--t)); font-weight: 800; }
+.confov .spov__turntxt.is-final { color: var(--gold-2); text-shadow: 0 0 .16rem rgba(242, 189, 62, .4); }
+/* Both picking columns scroll on their own — a thin, half-transparent bar and real touch scrolling on phones — and a
+   max-height in vh keeps the panel inside a landscape phone (the header's 提交 stays reachable). */
+.confov__chips, .confov__list {
+  max-height: min(46vh, calc(4.4 * var(--t)));
+  overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin; scrollbar-color: rgba(234, 255, 248, .28) transparent;
+}
+.confov__chips::-webkit-scrollbar, .confov__list::-webkit-scrollbar { width: .08rem; height: .08rem; }
+.confov__chips::-webkit-scrollbar-track, .confov__list::-webkit-scrollbar-track { background: transparent; }
+.confov__chips::-webkit-scrollbar-thumb, .confov__list::-webkit-scrollbar-thumb {
+  background: rgba(234, 255, 248, .26); border-radius: .04rem;
+}
+.confov__chips::-webkit-scrollbar-thumb:hover, .confov__list::-webkit-scrollbar-thumb:hover { background: rgba(234, 255, 248, .42); }
 .confov__chips { display: flex; flex-wrap: wrap; gap: .05rem; flex: 1 1 auto; min-height: 1.2rem; overflow-y: auto; overscroll-behavior: contain; }
 .cchip { display: inline-flex; align-items: center; gap: .04rem; padding: .03rem .07rem; border: 1px solid var(--line-3); border-radius: .09rem; background: rgba(255, 255, 255, .04); cursor: pointer; color: inherit; }
 .cchip:disabled { opacity: .4; cursor: default; }
@@ -756,6 +775,66 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .confpos__opt.is-on { border-color: var(--mint-400); color: var(--mint-400); background: rgba(23, 249, 183, .08); }
 .confpos__pct { font-size: calc(.11 * var(--t)); color: var(--text-lo); }
 
+/* 2V2 事件期 overlay (ui/eventOverlay.js) — reuses the .spov shell classes. The monster entry of the round sits on top
+   (visible before anyone picks), the four targets and the match's three selections scroll under it. */
+.evov .spov__inner { gap: .1rem; }
+.evov .spov__timer { display: inline-flex; }
+.evov__foe { flex: 0 0 auto; display: flex; flex-direction: column; gap: .04rem; padding: .07rem .14rem .08rem;
+  border-left: 2px solid var(--orange); background: rgba(232, 90, 26, .07); }
+.evov__h { font-size: calc(.17 * var(--t)); margin: 0 0 .05rem; flex: 0 0 auto; }
+.evov__foecard { display: flex; align-items: baseline; gap: .14rem; flex-wrap: wrap; }
+.evov__foe .evov__h { margin: 0; color: var(--text-lo); font-size: calc(.13 * var(--t)); letter-spacing: .08em; }
+.evov__name { font-size: calc(.26 * var(--t)); font-weight: 900; color: var(--orange-hi); letter-spacing: .04em; }
+.evov__eff { font-size: calc(.14 * var(--t)); color: var(--text-md); }
+.evov__elite { display: flex; align-items: baseline; gap: .1rem; flex-wrap: wrap; margin: 0; padding-top: .05rem;
+  border-top: 1px dashed var(--line-3); font-size: calc(.14 * var(--t)); color: var(--text-md); }
+.evov__elite b { color: var(--gold); font-weight: 800; }
+.evov__elite .num { color: var(--gold-2); }
+.evov__body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: rgba(234, 255, 248, .28) transparent; padding-right: .04rem; }
+.evov__body::-webkit-scrollbar { width: .08rem; }
+.evov__body::-webkit-scrollbar-thumb { background: rgba(234, 255, 248, .26); border-radius: .04rem; }
+.evov__targets { display: grid; grid-template-columns: repeat(4, 1fr); gap: .1rem; flex: 0 0 auto; }
+/* 同盟狩猎 has only 队友 / 自己: two targets, two columns (no dead 对面 seats) */
+.evov__targets--duo { grid-template-columns: repeat(2, 1fr); }
+.evotarget { display: flex; flex-direction: column; align-items: flex-start; gap: .03rem; padding: .09rem .12rem;
+  border: 2px solid var(--line-3); background: rgba(255, 255, 255, .04); color: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast), transform var(--t-fast); }
+.evotarget:hover:not(:disabled) { border-color: var(--mint-400); background: rgba(23, 249, 183, .08); transform: translateY(-.02rem); }
+.evotarget.is-sel { border-color: var(--mint-400); background: rgba(23, 249, 183, .12); box-shadow: inset 0 0 0 1px var(--mint-400); }
+.evotarget:disabled { opacity: .45; cursor: default; }
+.evotarget.is-sel:disabled { opacity: .85; }
+.evotarget__label { font-size: calc(.12 * var(--t)); font-weight: 700; letter-spacing: .08em; color: var(--text-lo); }
+.evotarget__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: calc(.19 * var(--t)); font-weight: 700; }
+.evotarget__p { color: var(--text-md); }
+.evotarget__why { font-size: calc(.11 * var(--t)); color: var(--orange-hi); }
+.evov__result { display: flex; align-items: center; gap: .08rem; flex-wrap: wrap; flex: 0 0 auto; margin: .1rem 0 0;
+  padding: .05rem .12rem; border-left: 2px solid var(--mint-400); background: rgba(23, 249, 183, .07);
+  font-size: calc(.15 * var(--t)); font-weight: 700; color: var(--text-hi); }
+.evov__result .icon { width: .22rem; height: .22rem; color: var(--mint-400); }
+.evov__auto { font-size: calc(.11 * var(--t)); font-weight: 700; padding: 0 .06rem; color: var(--gold-2);
+  border: 1px solid rgba(242, 189, 62, .45); background: rgba(242, 189, 62, .08); }
+.evov__hint { margin: .07rem 0 .1rem; font-size: calc(.12 * var(--t)); flex: 0 0 auto; }
+.evohist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .04rem; flex: 0 0 auto; }
+.evohist__row { display: flex; align-items: center; gap: .12rem; padding: .04rem .1rem; border: 1px solid var(--line);
+  font-size: calc(.13 * var(--t)); color: var(--text-md); }
+.evohist__row.is-cur { border-color: var(--mint-800); background: rgba(23, 249, 183, .05); }
+.evohist__n { min-width: .66rem; font-weight: 800; color: var(--mint-400); }
+.evohist__round { min-width: .42rem; color: var(--text-lo); }
+.evohist__target { min-width: 1.1rem; color: var(--text-hi); }
+.evohist__card { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-height: 431.98px) {
+  /* landscape phone: the monster block stays compact and the body does the scrolling */
+  .evov .spov__inner { gap: .06rem; }
+  .evov__foe { padding: .04rem .1rem .05rem; }
+  .evov__name { font-size: calc(.2 * var(--t)); }
+  .evov__targets { gap: .06rem; }
+  .evotarget { padding: .05rem .08rem; }
+  .evov__hint { margin: .04rem 0 .06rem; }
+  .evohist__row { padding: .02rem .08rem; }
+}
+
 /* 对抗期 clash: after both sides are locked, the own team's pairs collide on screen (display only, self-fading) */
 /* 悬赏名单: once the bounty phase closes, BOTH teams' boards are revealed (who sent what at whom, and the bounty) */
 .confclash { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(4, 6, 6, .86); animation: clashVeil 5.2s ease both; pointer-events: none; }
@@ -781,6 +860,20 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .confclash__mid img { width: .36rem; height: .36rem; object-fit: contain; }
 .confclash__vs { font-size: .46rem; font-weight: 700; color: var(--orange-hi); animation: clashHit 5.2s ease both; }
 .confclash .confclash__coin { font-size: calc(.14 * var(--t)); font-weight: 700; color: var(--gold); white-space: nowrap; }
+/* The seat / source line (P1 / P2 …, "P1 已选择", the P label of a bounty row): one step BELOW body text, always a
+   single horizontal line, ellipsised instead of wrapping into a stack on a narrow phone (user 2026-10-17). */
+.confseat { font-size: calc(.10 * var(--t)); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.confclash__row { flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+.confclash__mid { flex-wrap: nowrap; overflow: hidden; }
+@media (max-height: 431.98px) {
+  /* landscape phone: the two picking columns keep ≥ 3 rows of chips without pushing the panel past the screen */
+  .confov__remain { font-size: calc(.12 * var(--t)); padding: .02rem .08rem; }
+  .confov__chips, .confov__list { min-height: 0; max-height: 38vh; }
+  .confclash__inner { gap: .08rem .18rem; max-height: 92vh; }
+  .confclash__row { gap: .1rem; }
+  .confclash__side { width: 1rem; height: 1.15rem; }
+  .confclash__mid img { width: .3rem; height: .3rem; }
+}
 @keyframes clashVeil { 0% { opacity: 0; } 8% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes clashRow { 0% { transform: translateY(.4rem); opacity: 0; } 14% { transform: translateY(0); opacity: 1; } }
 @keyframes clashHit { 0%, 24% { transform: scale(.6); opacity: 0; } 32% { transform: scale(1.35); opacity: 1; } 44% { transform: scale(1); } 100% { transform: scale(1); opacity: 1; } }

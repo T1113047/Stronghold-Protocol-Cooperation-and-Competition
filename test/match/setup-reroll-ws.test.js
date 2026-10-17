@@ -54,7 +54,8 @@ test('real four-player sockets: host-only proposal, unanimous sync, reconnect an
   await ok(guests[0], { t: 'g.infoReady', setupRevision: 0 });
   await ok(host, { t: 'room.rerollSetup', setupRevision: 0 });
   const voting = await host.waitFor('m.public', (p) => !!p.rerollVote);
-  assert.equal(voting.deadline, 0);
+  // the vote keeps a visible countdown (its own full window) — the briefing clock never drops to 0 while it runs
+  assert.ok(voting.deadline > voting.serverNow, 'the briefing countdown stays up while the vote runs');
   assert.equal(voting.rerollVote.voters.length, 4);
   assert.deepEqual(voting.rerollVote.agreed, [host.id]);
   const voteId = voting.rerollVote.id;

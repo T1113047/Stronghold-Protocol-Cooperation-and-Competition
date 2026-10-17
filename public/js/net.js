@@ -128,6 +128,7 @@ export class Net {
     this.WS = opts.WebSocket || null;
     this.getToken = typeof opts.getToken === 'function' ? opts.getToken : () => null;
     this.getTokenClaim = typeof opts.getTokenClaim === 'function' ? opts.getTokenClaim : () => null;
+    this.getAccount = typeof opts.getAccount === 'function' ? opts.getAccount : () => null; // [ACCOUNT]
     this.now = opts.now || (() => Date.now());
     this.random = opts.random || Math.random;
     this.timers = opts.timers || {
@@ -367,6 +368,24 @@ export class Net {
 
   // ---- handshake -------------------------------------------------------------------------------
 
+  // ---- account ([ACCOUNT] server/account.js) ---------------------------------------------------
+
+  /** Ask the server for a bind code to show in-game (reply arrives as the `account.bindCode` event). */
+  requestBind() { return this.send('account.requestBind'); }
+  /** Save one local pref (sp.pref.* as its JSON string) to the account. Fire-and-forget. `plainOk` = the player agreed
+   *  to plaintext (only used when the client could not encrypt — see the [PLAINTEXT] consent). */
+  saveAccount(key, json, plainOk = false) { return this.send('account.save', { key, json, ...(plainOk ? { plainOk: true } : {}) }); }
+  /** [ACCOUNT] 保存一条加密载荷（AES-GCM，k_user = SHA-256(salt:qq)）。Fire-and-forget。 */
+  saveAccountEnc(key, enc) { return this.send('account.save', { key, enc }); }
+  /** [ACCOUNT-V2] 批量保存：items = [{ key, enc? }]。Fire-and-forget。 */
+  saveAccountBatch(items) { return this.send('account.saveBatch', { items }); }
+  /** Ask the server for one stored pref; the reply arrives as the `account.pref` event ({ key, json }). */
+  loadAccount(key) { return this.send('account.load', { key }); }
+  /** Change the account nickname (the server replies with a fresh `account.bound`). */
+  accountSetName(name) { return this.send('account.setName', { name }); }
+  /** Log out: the server forgets the account on this session (the client clears its token separately). */
+  logoutAccount() { return this.send('account.logout'); }
+
   _sendHello() {
     if (!this.name) return;
     const rid = this._nextRid();
@@ -379,6 +398,11 @@ export class Net {
       if (claim?.noReplace) msg.noReplace = true;
       if (Number.isFinite(claim?.claimAt)) msg.claimAt = claim.claimAt;
     }
+    // [ACCOUNT] a stored account token auto-logs-in (server/account.js): the server answers `account.bound` +
+    // `account.data`, or `account.logout` when the token is stale.
+    let account = null;
+    try { account = this.getAccount(); } catch { /* ignore */ }
+    if (typeof account === 'string' && account.length > 0 && account.length <= 64) msg.account = account;
     this._helloToken = token;
     this._helloRid = rid;
     this._helloSentName = this.name;
@@ -969,4 +993,18 @@ export function createIdentity(deps = {}) {
 export const identity = createIdentity({ onYield: () => net.reconnectNow(net.helloName || net.name) });
 
 /** Browser connection singleton (created lazily-safe: nothing touches the network until connect()). */
-export const net = new Net({ getToken: () => identity.getToken(), getTokenClaim: () => identity.getTokenClaim() });
+export const net = new Net({ getToken: () => identity.getToken(), getTokenClaim: () => identity.getTokenClaim(), getAccount: () => getAccountToken() });
+
+// ---- [ACCOUNT] token persistence (localStorage) ------------------------------------------------
+const K_ACCOUNT = 'sp.account';
+/** @returns {string|null} the stored account token */
+export function getAccountToken() {
+  try { return globalThis.localStorage?.getItem(K_ACCOUNT) || null; } catch { return null; }
+}
+/** Store (or, with null, clear) the account token. */
+export function setAccountToken(token) {
+  try {
+    if (token) globalThis.localStorage?.setItem(K_ACCOUNT, String(token));
+    else globalThis.localStorage?.removeItem(K_ACCOUNT);
+  } catch { /* quota / privacy mode */ }
+}

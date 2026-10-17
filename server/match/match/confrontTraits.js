@@ -1,6 +1,6 @@
-// server/match/match/confrontTraits.js — 悬赏期「特性分档表」(2V2).
+// server/match/match/confrontTraits.js — 狩猎期「特性分档表」(2V2).
 //
-// The 悬赏期 values a monster by its stats AND by its traits: every enemy of the confront pool carries a grade
+// The 狩猎期 values a monster by its stats AND by its traits: every enemy of the confront pool carries a grade
 // 1 / 2 / 3 assigned by a trait review (2026-10-17; 4 parallel reviewers on a shared rubric, then a consistency
 // pass over the cross-cutting questions — unconditional enemy-buff auras count as 3, single-target damage-over-time
 // as 2, and "only inside a specific terrain / with a specific ally" effects drop one grade). The 特性 VALUE is an

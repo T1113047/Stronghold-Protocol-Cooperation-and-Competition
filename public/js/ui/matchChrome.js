@@ -20,7 +20,7 @@ import { t, tParts, N_ } from '../../../shared/i18n.js';
  * lobby straight away — no settlement screen follows, so the solo text must not promise one.
  */
 export const EXIT_TEXT = Object.freeze({
-  soloRest: N_('独立模拟的休整期没有时间限制，你可以随时继续。'),
+  soloRest: N_('独立狩猎的休整期没有时间限制，你可以随时继续。'),
   soloQuit: N_('放弃模拟将立即结束本局并返回大厅，本局进度不会保留，也不会进行结算。'),
 });
 

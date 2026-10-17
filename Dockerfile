@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# 卫戍协议：盟约 · production image (server + static client). Docs: docs/DEPLOY.md「Docker」.
+# 卫戍协议：狩猎模拟 · production image (server + static client). Docs: docs/DEPLOY.md「Docker」.
 #
 # Code: GPL-3.0-or-later (LICENSE). Game art/audio is © Hypergryph / Yostar, not covered by the GPL, non-commercial use
 # only (NOTICE.md), and never part of the repository. Two ways to get it into a container:

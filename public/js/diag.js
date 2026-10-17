@@ -20,7 +20,7 @@
 //
 // Report keys are English on purpose: the text is read by developers and searched in issues, whatever the UI language.
 
-import { APP_VERSION } from '../../shared/constants.js';
+import { APP_VERSION, FORK_VERSION } from '../../shared/constants.js';
 import { TRAFFIC_CATEGORIES, trafficCategory } from '../../shared/assetPaths.js';
 
 export const LOG_MAX = 40;
@@ -300,8 +300,8 @@ export function buildDiagnostics(input) {
   const entries = input.entries ?? errorLog();
   const now = input.now ?? Date.now();
   const lines = [];
-  lines.push('Stronghold-Protocol diagnostics');
-  lines.push(`version: ${input.version ?? APP_VERSION}`);
+  lines.push('Stronghold-Protocol-Hunt-Simulation diagnostics');
+  lines.push(`version: ${input.version ?? `${FORK_VERSION}（${APP_VERSION}）`}`);
   lines.push(`time: ${new Date(now).toISOString()} | page open ${spanOf(now - (input.pageStart ?? pageStart))}`);
   if (env.ua) lines.push(`browser: ${env.ua}`);
   if (env.gpu) lines.push(`gpu: ${env.gpu}`);

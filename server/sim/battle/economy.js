@@ -74,4 +74,18 @@ export class BattleEconomy {
     this._ev(['bounty', playerId, n]);
     return n;
   }
+
+  /**
+   * 赏金 → 存款 (2V2 商人「坎诺特」, user 2026-10-17): a kill bounty the OPPONENT PLACED (`unit.bounty.bank`) is never
+   * gold — it goes to its killer's 坎诺特 account (`pp.bank`, reported as the battle result's per-player `bank`). Only
+   * the 认钱 path (withdrawing at 坎诺特 in prep) turns it into funds; the match adds it to the player's bank at
+   * settle. The official 悬赏 card bounties carry no `bank` flag and keep paying `addCoins` (gold) as before.
+   */
+  addBank(playerId, n) {
+    const pp = this._pp(playerId);
+    if (!pp || !(n > 0) || !Number.isFinite(n)) return 0;
+    pp.bank = Math.max(0, Number(pp.bank) || 0) + n;
+    this._ev(['bank', playerId, n]);
+    return n;
+  }
 }

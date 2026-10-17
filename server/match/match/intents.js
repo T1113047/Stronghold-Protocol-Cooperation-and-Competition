@@ -43,8 +43,11 @@ export class MatchIntents {
       // 2V2 对抗期: step 1 the target this seat attacks, step 2 its monsters (confront.js)
       case 'g.confrontTarget': return this.submitConfrontTarget(ps, msg);
       case 'g.confront': return this.submitConfront(ps, msg);
+      case 'g.confront.withdraw': return this.withdrawBounty(ps, msg);
+      // 2V2 事件期: give one entry to one target (server/match/match/event.js)
+      case 'g.event.pick': return this.pickEvent(ps, msg.target);
       case 'g.emote': return this.emote(ps, msg.id);
-      // [CHAT] 局内文字聊天（移植自服务服 server_patches/chat + chatlog）
+      // [CHAT] 局内文字聊天
       case 'g.chat': return this.chat(ps, msg);
       // playerId: the player tapped (a shared field names two) — the watch preference (item 56)
       case 'g.watch': return this.watch(ps, msg.fieldId, msg.playerId ?? null);
@@ -71,7 +74,7 @@ export class MatchIntents {
   }
 
   /**
-   * [CHAT] 局内文字聊天（移植自服务服 server_patches/chat + chatlog）。服务端一条龙：
+   * [CHAT] 局内文字聊天。服务端一条龙：
    *   去控制字符 + trim → 截断到 CHAT_MAX_LEN → 发送冷却 → 违禁词过滤（服务端权威）→ 广播 m.chat → 写对局记录。
    * 已淘汰但仍在线的座位可以发言（[CHATLOG] 的规则）；观战者在 lobby.routeGame 就被挡住（ERR.SPECTATOR）；
    * 「仅登录可发言」等账号系统（第 4 批）落地后由 lobby 的 chatRequiresAccount 打开。
@@ -104,6 +107,7 @@ export class MatchIntents {
     if (this.phase === PHASE.INFO_CHECK && !ps.infoReady) { ps.infoReady = true; this.markPublic(); this.maybeEndInfo(); }
     else if (this.phase === PHASE.BAND_DRAFT && this.draftTurn() === ps.playerId) this.scheduleBandBot();
     else if (this.phase === PHASE.SP_DRAFT && this.spTurn() === ps.playerId) this.scheduleSpBot();
+    else if (this.phase === PHASE.EVENT && ps.alive && !this.event?.picks?.has(ps.playerId)) this.scheduleEventBot(ps);
     else if (this.phase === PHASE.PREP && ps.alive && !ps.ready) this.scheduleBotPrep(ps, 0);
   }
 

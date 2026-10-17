@@ -550,7 +550,7 @@
 /* 0.2.0 补位: operators marked 未持有 on the 干员持有 tab */
 .lo-entry__own { display: inline-flex; align-items: center; gap: .2em; height: 1.5em; padding: 0 .4em; font-size: .75em; font-weight: 700; color: var(--ice-900); background: var(--ice); border-radius: 1em; white-space: nowrap; }
 
-/* Untimed phases (user playtest #11 / #4 item 3: the official 独立模拟 shows no countdown outside combat — the server
+/* Untimed phases (user playtest #11 / #4 item 3: the official 独立狩猎 shows no countdown outside combat — the server
    sends deadline 0 for them, Match.soloUntimed): ui/components.js Countdown now renders nothing without a deadline;
    this rule stays as a safety net for the old "无倒计时" placeholder ("--" digits + COUNTDOWN label). */
 .countdown[aria-label="无倒计时"] { display: none; }

@@ -3,15 +3,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getLang, onLangChange, registerLangs, setLang, setMessages, setI18nWarn, t } from '../../shared/i18n.js';
 
-const TITLE = '卫戍协议：盟约 · STRONGHOLD PROTOCOL';
+// The tab title names THIS fork (shared/constants.js FORK_NAME = 卫戍协议：狩猎模拟): a CJK pack shows it with the
+// Latin line after it (ui/lang.js TITLE_EN), a pack whose own name already reads in Latin letters shows that alone.
+const NAME = '卫戍协议：狩猎模拟';                       // = shared/constants.js FORK_NAME
+const TITLE_EN = 'STRONGHOLD PROTOCOL: HUNT SIMULATION';
+const TITLE_ZH = `${NAME} · ${TITLE_EN}`;
+const TITLE_ZH_TW = '衛戍協議：狩獵模擬 · STRONGHOLD PROTOCOL: HUNT SIMULATION';
 const PACKS = {
-  en: { 开始: 'Start', 卫戍协议: 'Stronghold Protocol', [TITLE]: 'Stronghold Protocol: Alliance' },
-  'zh-TW': { 开始: '開始', 卫戍协议: '衛戍協議', [TITLE]: '衛戍協議：盟約' },
+  en: { 开始: 'Start', 卫戍协议: 'Stronghold Protocol', [NAME]: 'Stronghold Protocol: Hunt Simulation' },
+  'zh-TW': { 开始: '開始', 卫戍协议: '衛戍協議', [NAME]: '衛戍協議：狩獵模擬' },
 };
 const STATES = {
-  zh: { lang: 'zh', text: '开始', htmlLang: 'zh-CN', dataLang: 'zh', script: 'cjk', title: TITLE },
-  en: { lang: 'en', text: 'Start', htmlLang: 'en', dataLang: 'en', script: 'alphabetic', title: 'Stronghold Protocol: Alliance' },
-  'zh-TW': { lang: 'zh-TW', text: '開始', htmlLang: 'zh-TW', dataLang: 'zh-TW', script: 'cjk', title: '衛戍協議：盟約' },
+  zh: { lang: 'zh', text: '开始', htmlLang: 'zh-CN', dataLang: 'zh', script: 'cjk', title: TITLE_ZH },
+  en: { lang: 'en', text: 'Start', htmlLang: 'en', dataLang: 'en', script: 'alphabetic', title: 'Stronghold Protocol: Hunt Simulation' },
+  'zh-TW': { lang: 'zh-TW', text: '開始', htmlLang: 'zh-TW', dataLang: 'zh-TW', script: 'cjk', title: TITLE_ZH_TW },
 };
 const INDEX = { version: 1, packs: Object.keys(PACKS).map((code) => ({
   id: code, type: 'lang', lang: code, name: code, files: { ui: `/i18n/${code}.json` },
@@ -22,7 +27,7 @@ let imports = 0;
 async function setup(ctx, preference = null, address = 'https://example.test/') {
   const previous = new Map(['document', 'localStorage', 'fetch', 'location', 'history'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   const stored = new Map(preference ? [['sp.pref.lang', JSON.stringify(preference)]] : []);
-  const doc = { documentElement: { lang: 'zh-CN', dataset: { lang: 'zh', script: 'cjk' } }, title: TITLE };
+  const doc = { documentElement: { lang: 'zh-CN', dataset: { lang: 'zh', script: 'cjk' } }, title: TITLE_ZH };
   const pending = new Map();
   const calls = [];
   globalThis.document = doc;

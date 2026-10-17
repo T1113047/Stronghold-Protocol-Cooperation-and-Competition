@@ -275,7 +275,12 @@ export function gateOf(start, leader) {
 
 const isLeaderTemplate = (tpl) => !!tpl && (tpl.kind === 'boss' || tpl.kind === 'hidden');
 
-function previewInfo(gd, key, route, boss = false, leader = undefined) {
+/**
+ * The preview info of one spawn: its gate ('upper' / 'lower'), spawn tile (leaders), movement class and elite / boss
+ * flags. Also used by the 同盟狩猎 prey (confront.js applyCoopHunt), which is inserted after the wave and must show the
+ * same gate / flying marker the battle uses.
+ */
+export function previewInfo(gd, key, route, boss = false, leader = undefined) {
   const e = gd.enemy(key);
   const start = route && Array.isArray(route.start) ? route.start.slice(0, 2) : null;
   return { gate: gateOf(start, leader), start, fly: isFlyKey(gd, key), elite: !!(e && e.rank && e.rank !== 'NORMAL'), boss };
@@ -570,8 +575,11 @@ export function withBounties(gd, round, wave, bounties, playerId, { side = null 
 
 /**
  * nextEnemies preview (m.private.nextEnemies): one entry per spawn action (research 08 §4.2 input), in spawn order:
- * `{ enemyKey, count, gate: 'upper'|'lower', t, fly, elite, boss, source: 'wave'|'bounty', tag, start? }` — `tag` 'boss' /
- * 'bounty' / null kept for the drawer's grouping; Σ count = the enemies of the round (HUD). Boss parts are omitted.
+ * `{ enemyKey, count, gate: 'upper'|'lower', t, fly, elite, boss, source: 'wave'|'bounty'|'prey', tag, countInTotal,
+ * start? }` — `tag` 'boss' / 'bounty' / null kept for the drawer's grouping; Σ count = the enemies of the round (HUD)
+ * **only for entries with `countInTotal !== false`**. A 同盟狩猎 prey is `source: 'prey'` and `countInTotal: false`: it
+ * is shown for the player's information but is NOT one of the stage's scheduled enemies, so it stays out of the HUD
+ * capsule's denominator (clientCombat.js / Battle `total`). Boss parts are omitted.
  * The client places the models in the gate's pen zone (≤ 50 shown, elites and bosses always) — except a leader: its
  * entry carries its spawn tile `start` ([row, col] on the boss field) and the Final Assault / Hidden Core prep shows it
  * standing there (render/app.js, community report #12; display only).
@@ -583,6 +591,7 @@ export function previewOf(spawns) {
     if (!s || typeof s.enemyKey !== 'string' || s.tag === 'part') continue;
     const tag = s.tag === 'boss' ? 'boss' : s.tag === 'bounty' ? 'bounty' : null;
     const pv = s.preview && typeof s.preview === 'object' ? s.preview : {};
+    const prey = s.prey === true;
     out.push({
       enemyKey: s.enemyKey,
       count: Math.max(1, Math.trunc(Number(s.count) || 1)),
@@ -591,8 +600,9 @@ export function previewOf(spawns) {
       fly: !!pv.fly,
       elite: !!pv.elite || tag === 'boss',
       boss: tag === 'boss',
-      source: tag === 'bounty' ? 'bounty' : 'wave',
+      source: prey ? 'prey' : tag === 'bounty' ? 'bounty' : 'wave',
       tag,
+      countInTotal: s.countInTotal !== false,
       ...(tag === 'boss' && Array.isArray(pv.start) && pv.start.length >= 2 && pv.start.every(Number.isFinite) ? { start: [pv.start[0], pv.start[1]] } : {}),
       _seq: seq++,
     });
@@ -662,7 +672,11 @@ export function buildUniteWave(gd, leaked, helperCount, timeLimit) { // eslint-d
           preview: previewInfo(gd, l.enemyKey, routes[routeIndex]),
         };
         if (idx >= 0) spec.actionIndex = idx;
-        if (l.bounty && l.bounty.coins > 0) spec.bounty = { coins: l.bounty.coins, ownerPlayerId: l.bounty.ownerPlayerId ?? l.sourcePlayerId };
+        if (l.bounty && l.bounty.coins > 0) {
+          spec.bounty = { coins: l.bounty.coins, ownerPlayerId: l.bounty.ownerPlayerId ?? l.sourcePlayerId };
+          // 2V2: a bounty on a monster the opponent PLACED stays banked (never gold) when it re-enters a 联防
+          if (l.bounty.bank) spec.bounty.bank = true;
+        }
         if (l.tag === 'bounty') spec.tag = 'bounty';
         spawns.push(spec);
       });

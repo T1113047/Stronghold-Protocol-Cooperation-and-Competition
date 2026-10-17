@@ -78,7 +78,7 @@ describe('WebSocket permessage-deflate', () => {
   });
 });
 
-test('the real server negotiates compression at /ws and keeps the 64 KB inflated frame limit', async () => {
+test('the real server negotiates compression at /ws and keeps the 1 MiB inflated frame limit', async () => {
   const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true });
   try {
     const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/ws`);
@@ -86,7 +86,7 @@ test('the real server negotiates compression at /ws and keeps the 64 KB inflated
     assert.match(ws.extensions, /permessage-deflate/);
     // a compressed client frame whose inflated size is over the limit closes the socket (1009), like a plain one
     const closed = new Promise((resolve) => ws.once('close', (code) => resolve(code)));
-    ws.send(JSON.stringify({ t: 'hello', name: 'x'.repeat(70 * 1024) }));
+    ws.send(JSON.stringify({ t: 'hello', name: 'x'.repeat((1 << 20) + 4096) }));
     assert.equal(await closed, 1009);
   } finally {
     await srv.close();

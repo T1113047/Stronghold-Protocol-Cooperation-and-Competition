@@ -547,10 +547,10 @@ describe('websocket lobby', () => {
     await createRoom(c);
   });
 
-  test('oversized frame (> 64 KB) closes only that socket', async () => {
+  test('oversized frame (> 1 MiB) closes only that socket', async () => {
     const c = await pool.player('Big');
     const bystander = await pool.player('Bystander');
-    c.sendRaw(JSON.stringify({ t: 'ping', c: 1, pad: 'x'.repeat(70 * 1024) }));
+    c.sendRaw(JSON.stringify({ t: 'ping', c: 1, pad: 'x'.repeat((1 << 20) + 4096) }));
     const info = await c.closed;
     assert.equal(info.code, 1009);
     const pong = await bystander.request({ t: 'ping', c: 2 });

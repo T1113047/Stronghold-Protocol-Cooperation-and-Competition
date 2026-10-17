@@ -5,6 +5,7 @@
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { buildDeployMap } from '../board.js';
+import { PHASE, opponentRevealed } from '../../../shared/constants.js';
 
 export class MatchInfra {
   /** Run a callback with error isolation, then flush the views. */
@@ -65,6 +66,12 @@ export class MatchInfra {
    */
   get soloUntimed() { return this.isSolo || this.loneHuman; }
 
+  /**
+   * A hunt mode: 2V2 ('versus', the player-run 对抗期) or 同盟狩猎 (co-op, the system-run 狩猎期). Merchant / 赏金 /
+   * 事件期 read this; solo never does. The per-round window itself is `huntActive()` / `confrontActive()`.
+   */
+  get huntMode() { return this.isVersus || this.coopHuntOn; }
+
   nextUid() { return ++this.uidSeq; }
 
   alivePlayers() { return this.order.filter((p) => p.alive); }
@@ -119,6 +126,22 @@ export class MatchInfra {
 
   /** The team ids present in this match, sorted (2V2 'versus': [0,1]; solo/coop: [0]). */
   matchTeamIds() { return [...new Set(this.order.map((p) => this.teamIdOf(p)))].sort((a, b) => a - b); }
+
+  /**
+   * 2V2 ('versus'): whether the opponent's side is open RIGHT NOW — the public view sends the opponent's real rows (no
+   * `hidden` stub), `g.watch` accepts their boards / boss fields and the client offers 「前往查看」. The round rule
+   * lives in shared/constants.js `opponentRevealed(round)` (R14 最终攻势 on, i.e. after the R13 最终狩猎); the
+   * settlement (RESULT) always shows both sides. Solo/co-op have no opponent, so it is always true there.
+   */
+  get opponentRevealed() { return !this.isVersus || this.phase === PHASE.RESULT || opponentRevealed(this.round); }
+
+  /**
+   * A spectator SEAT (never a player: watch.js addSpectator's frozen stand-in, `spectator: true`). A spectator has no
+   * team and no board: it watches any player / field from the start, whatever `opponentRevealed` says (a remake
+   * feature, MAX_SPECTATORS).
+   */
+  isSpectator(ps) { return !!(ps && ps.spectator); }
+
 
   /**
    * 2V2 ('versus'): each team shares ONE HP pool = the sum of its members' chosen 策略 (band) HP (`gd.startLp`). The pool

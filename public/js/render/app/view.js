@@ -61,12 +61,29 @@ export const penShown = (vk, prevVk = null) => vk === 'pen' || prevVk === 'pen';
 /** Is the prep's leader on the boss field shown for a view kind (a flight shows it when either end is the boss-field prep)? */
 export const leaderShown = (vk, prevVk = null) => vk === 'bossPrep' || prevVk === 'bossPrep';
 
-/** '2d' | '3d' | 'auto' board preference: `?board=` in the page URL (dev), else the view option. */
+/**
+ * '2d' | '3d' | 'auto' board preference: `?board=` in the page URL (dev) wins, else the view option. The caller passes
+ * `boardSetting(settings)` (or `'2d'` for the weak-GPU default of ui/fieldHost.js); a settings-derived 'flat' has no
+ * engine equivalent (it is the DOM simplified view — fieldHost.flatFieldPreferred) and reads as 'auto' here.
+ */
 export function boardPreference(opt) {
   let q = null;
   try { q = new URLSearchParams(globalThis.location?.search || '').get('board'); } catch { /* no location */ }
   const v = q || opt;
   return v === '2d' || v === '3d' ? v : 'auto';
+}
+
+/**
+ * [BOARDMODE] The board style a settings object asks for: 'auto' unless 设置 →「画面质量」has 画面自动调节 off, in which
+ * case its 棋盘样式 (`boardForce`): '3d' (the engine's 3D board) or 'flat' (the DOM simplified view — the whole field
+ * degrades, ui/fallbackField.js; asked for by fieldHost.flatFieldPreferred). A default (or old saved) profile has
+ * `pictureAuto !== false` → 'auto'; the stored default is 'flat' (ui/gameLogic/settings.js BOARD_FORCES).
+ * @param {{ pictureAuto?: boolean, boardForce?: string }} [settings]
+ * @returns {'auto'|'3d'|'flat'}
+ */
+export function boardSetting(settings) {
+  if (!settings || settings.pictureAuto !== false) return 'auto';
+  return settings.boardForce === '3d' ? '3d' : 'flat';
 }
 
 /**

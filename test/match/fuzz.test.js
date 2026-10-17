@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateC2S, C2S } from '../../shared/protocol.js';
-import { ERR, EMOTES } from '../../shared/constants.js';
+import { ERR, EMOTES, EVENT_TARGETS } from '../../shared/constants.js';
 import { createRng } from '../../server/sim/rng.js';
 import { DATA, makeMatch, checkInvariants } from './harness.js';
 
@@ -41,7 +41,11 @@ function randomIntent(rng, m, ps) {
       return { t, group: 1 + rng.int(6), position: rng.pick(['front', 'mid', 'back']), picks: Array.from({ length: rng.int(4) }, () => ({ enemyKey: ek, gate: rng() < 0.5 ? 'upper' : 'lower' })) };
     }
     case 'g.confrontTarget': return { t, targetPlayerId: rng() < 0.8 ? rng.pick([...m.players.keys()]) : `p_${'a'.repeat(8)}` };
+    // 商人「坎诺特」: a legal gold amount (the server refuses by rate / cap / balance with a legal error)
+    case 'g.confront.withdraw': return { t, gold: 1 + rng.int(8) };
     case 'g.emote': return { t, id: rng.pick(EMOTES) };
+    // 2V2 事件期: a valid target key (the server refuses out of phase / already used with a legal error)
+    case 'g.event.pick': return { t, target: rng.pick(EVENT_TARGETS) };
     // [CHAT] a valid shape — the fuzzer only ever emits messages that pass validateC2S (the server still enforces the
     // 80-char cap and the cooldown, and those refusals are legal)
     case 'g.chat': return { t, text: 'fuzz 聊天' };

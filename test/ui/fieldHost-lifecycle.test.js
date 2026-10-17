@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { getEventListeners } from 'node:events';
 import vm from 'node:vm';
+import { boardSetting } from '../../public/js/render/app/view.js'; // [BOARDMODE] the fixture runs the production one
 
 const sourcePath = new URL('../../public/js/ui/fieldHost.js', import.meta.url);
 const source = readFileSync(sourcePath, 'utf8')
@@ -41,6 +42,10 @@ function fixture(extra = {}) {
     audio: {}, data: { get() { return null; } }, settingsStore: { get() { return {}; } },
     // [PREFETCH]: fieldHost installs the operator-asset prefetch at module load; the real module needs the store / data
     installOpPrefetch: () => {},
+    // [BOARDMODE]: the settings→board-style mapping (render/app/view.js, pure) and the toast fieldHost raises for a
+    // forced 3D board the engine cannot start (the engine itself is stubbed here)
+    boardSetting,
+    toast: () => {},
     setTimeout(fn) { timers.set(++timerId, fn); return timerId; },
     clearTimeout(id) { timers.delete(id); },
     importAssets: async () => null,
@@ -169,4 +174,67 @@ test('a timed-out factory returning late cannot remove a replacement view or unr
   assert.equal(f.timers.size, 0);
   assert.deepEqual(f.host.children, [f.unrelated, replacement.node]);
   mounted.destroy();
+});
+
+// ---- [BOARDMODE]: which view the settings / the URL ask for (ui/fieldHost.js flatFieldPreferred) ---------------
+
+test('[BOARDMODE] 设置「2D 棋盘（简化平面）」mounts the DOM view without asking for the engine', async () => {
+  const f = fixture({ settingsStore: { get: () => ({ pictureAuto: false, boardForce: 'flat' }) } });
+  const fallback = await f.mount();
+  assert.equal(fallback.kind, 'fallback');
+  assert.deepEqual(f.requests, [], 'the engine is never imported for a deliberate 2D board');
+  assert.deepEqual(f.warnings, [], 'a deliberate choice is not a failure');
+  assert.equal(f.timers.size, 0);
+  fallback.destroy();
+});
+
+test('[BOARDMODE] ?render=engine keeps the engine even when the settings ask for the simplified plane', async () => {
+  const f = fixture({ settingsStore: { get: () => ({ pictureAuto: false, boardForce: 'flat' }) }, location: { search: '?render=engine' } });
+  const pending = f.mount();
+  await flush();
+  assert.equal(f.requests.length, 1, 'the engine is attempted');
+  f.requests[0].resolve(f.view('engine'));
+  const mounted = await pending;
+  assert.equal(mounted.kind, 'engine');
+  mounted.destroy();
+});
+
+test('[BOARDMODE] the URL board wins: ?board=2d = the simplified plane, ?board=3d = the engine', async () => {
+  const flat = fixture({ location: { search: '?board=2d' } });
+  const dom = await flat.mount();
+  assert.equal(dom.kind, 'fallback');
+  assert.deepEqual(flat.requests, []);
+  dom.destroy();
+  const three = fixture({ location: { search: '?board=3d' } });
+  const pending = three.mount();
+  await flush();
+  assert.equal(three.requests.length, 1);
+  three.requests[0].resolve(three.view('engine'));
+  (await pending).destroy();
+});
+
+test('[BOARDMODE] a weak GPU keeps its 2D default, but the player’s explicit 3D board wins', async () => {
+  const weak = fixture({ gpuTier: () => 'weak' });
+  const pending = weak.mount();
+  await flush();
+  assert.equal(weak.requests[0].opts.board, '2d');
+  assert.equal(weak.requests[0].opts.weakGpu, true);
+  weak.requests[0].resolve(weak.view('engine'));
+  (await pending).destroy();
+  const forced = fixture({ gpuTier: () => 'weak', settingsStore: { get: () => ({ pictureAuto: false, boardForce: '3d' }) } });
+  const pendingForced = forced.mount();
+  await flush();
+  assert.equal(forced.requests[0].opts.board, undefined, 'the weak-GPU 2D default does not override the player');
+  assert.equal(forced.requests[0].opts.weakGpu, undefined);
+  forced.requests[0].resolve(forced.view('engine'));
+  (await pendingForced).destroy();
+});
+
+test('[BOARDMODE] the engine is handed the board notice hook (the forced-3D failure toast)', async () => {
+  const f = fixture({ settingsStore: { get: () => ({ pictureAuto: false, boardForce: '3d' }) } });
+  const pending = f.mount();
+  await flush();
+  assert.equal(typeof f.requests[0].opts.onBoardNotice, 'function', 'ui/fieldHost.js toasts it (the render layer stays ui-free)');
+  f.requests[0].resolve(f.view('engine'));
+  (await pending).destroy();
 });

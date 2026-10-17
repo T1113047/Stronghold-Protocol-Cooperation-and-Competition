@@ -1,5 +1,5 @@
 ﻿<#
-  卫戍协议：盟约 · Windows 启动脚本（PowerShell 版）。文档：docs\DEPLOY.md
+  卫戍协议：狩猎模拟 · Windows 启动脚本（PowerShell 版）。文档：docs\DEPLOY.md
   运行：右键 →「使用 PowerShell 运行」，或
         powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1 [-Port 3001] [launch.mjs 的其他参数]
   检查 Node.js（没有时可用 winget 安装）→ 首次运行 npm ci → tools\setup.mjs → 启动服务器并打开浏览器。
@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Continue'   # native tools report through $LASTEXITCOD
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
-$Host.UI.RawUI.WindowTitle = '卫戍协议：盟约 - Stronghold Protocol'
+$Host.UI.RawUI.WindowTitle = '卫戍协议：狩猎模拟 - Stronghold Protocol'
 
 function Pause-Exit([int]$code) {
   Write-Host ''

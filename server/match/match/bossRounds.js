@@ -1,14 +1,15 @@
-// server/match/match/bossRounds.js — Match methods: the Final Assault / Hidden Core / 2V2 第三关 (the rules:
+// server/match/match/bossRounds.js — Match methods: the Final Assault / Hidden Core (the rules:
 // server/match/finalAssault.js) — the boss fields and the shared pool; client-side boss fields (plausibility budgets on
 // the field clock, cumulative credits, handovers, the boss clock, the end: pool 0 → victory, team LP 0 → defeat);
 // b.pool; the merged team LP and its shares; the overtime drain; bounties after a boss field; then the next boss round
-// of the chain (隐秘核心, then the 2V2 第三关) or RESULT.
+// of the chain (隐秘核心) or RESULT.
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
-import { PHASE, GEO, VERSUS_THIRD_BOSS } from '../../../shared/constants.js';
+import { PHASE, GEO, TEAM_SIZE } from '../../../shared/constants.js';
 import { createRng, deriveSeed } from '../../sim/rng.js';
 import { buildBossWave, bountySpawns } from '../waves.js';
 import { pairPlayers, bossPoolHp, SharedBossPool, CreditPool, hiddenEligible, BOSS_HIT_STEPS } from '../finalAssault.js';
+import { bossTimeScore } from '../results.js';
 import { FieldRunner, HeadlessPacer, syntheticResult, BOSS_SILENCE_MS, CATCHUP_TICKS_PER_INTERVAL } from '../fields.js';
 import { FLOW_TICKER_PRIORITY, BOSS_CLOCK_MS, DELAYS } from './common.js';
 
@@ -83,16 +84,63 @@ export class MatchBoss {
   /** The team ids of this match's boss fight (versus: every team; solo/coop: the single team 0). */
   _teamIds() { return this.teamLps ? [...this.teamLps.keys()] : [0]; }
 
-  /** The 2V2 third-boss round (16, VERSUS_THIRD_BOSS) when this match may have one — versus + a Hidden Core in the
-   *  difficulty (標準 FUNNY has neither R15 nor R16) — else null. */
-  get thirdBossRound() { return this.isVersus && this.gd.hasThirdBoss ? VERSUS_THIRD_BOSS.round : null; }
-
-  /** Whether `r` is a boss round of the chain (最终攻势 / 隐秘核心 / the 2V2 第三关). */
-  isBossRound(r) {
-    return r === this.gd.bossRound || r === this.gd.hiddenRound || (this.thirdBossRound != null && r === this.thirdBossRound);
+  /**
+   * The countdown a team had left when ITS boss run of `round` ended — the 2V2 settlement's 4:5 time rule (user
+   * 2026-10-17). Recorded once per team and round (the first ending wins: a cleared / LP-drained field is detected at
+   * its own moment, long before the other team finishes), and never reset by the next round: `bossTeamTimes[round][team]`
+   * = { remain, limit, elapsed } in the countdown's own REAL seconds. `elapsedGt` (game seconds) is the field's own
+   * duration when the caller has it (a server-run battle's result); otherwise the team's field clock is read.
+   * @param {number} team @param {number} round @param {number} [elapsedGt]
+   */
+  _noteBossTime(team, round, elapsedGt = null) {
+    if (!this.isVersus || team == null) return;
+    const limit = this.gd.bossLevelTime(round);
+    if (!(limit > 0)) return;
+    const scale = this.gd.combatTimeScale;
+    const limitGt = limit * scale;
+    let gt = Number.isFinite(elapsedGt) ? elapsedGt : null;
+    if (gt == null) {
+      const f = Array.isArray(this.fields) ? this.fields.find((x) => x && x.team === team) : null;
+      gt = f ? this._fieldElapsed(f)
+        : ((this.sched.now() - (this._bossStartAt ?? this.sched.now())) / 1000) * this.gameSpeed;
+    }
+    gt = Math.max(0, Math.min(limitGt, Number(gt) || 0));
+    if (!this.bossTeamTimes) this.bossTeamTimes = {};
+    if (!this.bossTeamTimes[round]) this.bossTeamTimes[round] = {};
+    if (this.bossTeamTimes[round][team]) return;
+    const remain = Math.max(0, Math.min(limit, (limitGt - gt) / scale));
+    this.bossTeamTimes[round][team] = {
+      remain: Math.round(remain * 1000) / 1000,
+      limit,
+      elapsed: Math.round((limit - remain) * 1000) / 1000,
+    };
   }
 
-  /** The boss id fought in boss round `r` (the 第三关 re-fights the Hidden Core's boss in an enhanced form). */
+  /**
+   * One team's 4:5 boss-time record for the settlement: `time.r14` / `time.r15` = { remain, limit, reached } (0 left
+   * for a round the team never fought), their weighted score and share (results.js bossTimeScore).
+   * @param {number} team
+   */
+  _teamTimeOf(team) {
+    const time = {};
+    const add = (key, round) => {
+      if (round == null) return;
+      const limit = this.gd.bossLevelTime(round) || 0;
+      const rec = this.bossTeamTimes && this.bossTeamTimes[round] ? this.bossTeamTimes[round][team] : null;
+      const remain = rec && Number.isFinite(rec.remain) ? Math.max(0, Math.min(rec.remain, limit)) : 0;
+      time[key] = { remain, limit, reached: !!rec };
+    };
+    add('r14', this.gd.bossRound);
+    add('r15', this.gd.hiddenRound);
+    return { time, ...bossTimeScore(time) };
+  }
+
+  /** Whether `r` is a boss round of the chain (最终攻势 / 隐秘核心). */
+  isBossRound(r) {
+    return r === this.gd.bossRound || r === this.gd.hiddenRound;
+  }
+
+  /** The boss id fought in boss round `r`. */
   bossIdOfRound(r) { return r === this.gd.bossRound ? this.bossId : this.hiddenBossId; }
 
   startFinalAssault(hidden) {
@@ -116,14 +164,12 @@ export class MatchBoss {
       }
     }
     const bossId = hidden ? this.hiddenBossId : this.bossId;
-    // 2V2 第三关 (round 16): the same leader, an ENHANCED pool (VERSUS_THIRD_BOSS.poolMul)
-    const poolMul = this.thirdBossRound != null && this.round === this.thirdBossRound ? VERSUS_THIRD_BOSS.poolMul : 1;
     // BOSS_HIT tickers ("对敌方领袖造成的伤害超过20% / 50% / 80%"): the player's damage to THIS leader over its pool —
     // the pool's own per-player tally, one pool per boss round (2V2: one pool per team). stats.bossDamage (the result's
     // 领袖伤害) adds up both rounds, so it would credit the Final Assault's damage to the hidden leader.
     const hitSteps = new Map();
     const makePool = (count) => {
-      const p = new SharedBossPool(bossPoolHp(this.gd, bossId, count, poolMul), {});
+      const p = new SharedBossPool(bossPoolHp(this.gd, bossId, count), {});
       p.onHit = (pid, dmg) => {
         const ps = this.players.get(pid);
         if (!ps) return;
@@ -442,8 +488,9 @@ export class MatchBoss {
       for (const t of this._teamIds()) {
         if (this._finalEndings.has(t)) continue;
         const pool = this._poolOf(t);
-        if (pool && pool.hp <= 0) this._finalEndings.set(t, 'cleared');
-        else if (this._teamLpOf(t) <= 0) this._finalEndings.set(t, 'forced');
+        // the moment a team's run ends is also its remaining countdown (the settlement's 4:5 time rule)
+        if (pool && pool.hp <= 0) { this._finalEndings.set(t, 'cleared'); this._noteBossTime(t, this.round); }
+        else if (this._teamLpOf(t) <= 0) { this._finalEndings.set(t, 'forced'); this._noteBossTime(t, this.round); }
       }
       if (this._teamIds().every((t) => this._finalEndings.has(t))) this._endFinal();
       return;
@@ -660,15 +707,28 @@ export class MatchBoss {
       const elapsed = this._bossStartAt != null ? Math.max(0, (this.sched.now() - this._bossStartAt) / 1000) : 0;
       const remainingTime = Math.max(0, (this.gd.bossLevelTime(this.round) || 0) - elapsed);
       const score = lp * 2 + remainingTime;
-      return { t, bossPct, score, lp, remainingTime };
+      // the 4:5 boss-time record of this team (_noteBossTime / bossTimeScore): R14 (最终攻势) counts 4 and R15
+      // (隐秘核心) counts 5, as SHARES of each round's own countdown — a round the team never reached counts 0
+      const time = this._teamTimeOf(t);
+      return { t, bossPct, score, lp, remainingTime, time };
     });
-    entries.sort((a, b) => (b.bossPct - a.bossPct) || (b.score - a.score));
-    const tie = entries.length >= 2
-      && Math.abs(entries[0].bossPct - entries[1].bossPct) <= 1e-9
-      && Math.abs(entries[0].score - entries[1].score) <= 1e-9;
+    // User 2026-10-17 (the settlement's own rule): the 4:5 weighted remaining time decides FIRST, the shared LP pool
+    // second, and only then the leader scoring of the original _versusDecide (damage share, then converted time).
+    entries.sort((a, b) => (b.time.score - a.time.score) || (b.lp - a.lp) || (b.bossPct - a.bossPct) || (b.score - a.score));
+    const near = (x, y) => Math.abs(x - y) <= 1e-9;
+    const timeTie = entries.length >= 2 && near(entries[0].time.score, entries[1].time.score);
+    const tie = entries.length >= 2 && timeTie
+      && entries[0].lp === entries[1].lp
+      && near(entries[0].bossPct, entries[1].bossPct)
+      && near(entries[0].score, entries[1].score);
     const teams = {};
-    for (const e of entries) teams[e.t] = { bossPct: e.bossPct, score: e.score, lp: e.lp, remainingTime: e.remainingTime };
-    return { winnerTeam: tie ? null : (entries[0]?.t ?? null), doubleLoss: false, teams };
+    for (const e of entries) {
+      teams[e.t] = {
+        bossPct: e.bossPct, score: e.score, lp: e.lp, remainingTime: e.remainingTime,
+        timeScore: e.time.score, timeMax: e.time.max, timePct: e.time.pct, time: e.time.time,
+      };
+    }
+    return { winnerTeam: tie ? null : (entries[0]?.t ?? null), doubleLoss: false, timeTie, teams };
   }
 
   /** Every boss field is over: stats, bounties, then the Hidden Core or RESULT. */
@@ -705,27 +765,27 @@ export class MatchBoss {
         if (pp && ps) this.dispatch(ps, 'onBattleResult', { result: pp, lpLoss: 0, perfect: !!pp.perfect, boss: true });
       }
     }
+    // 2V2 settlement time rule (user 2026-10-17): a field's own battle duration fills in a team the client clock never
+    // saw end (server-run battles); a record taken at the exact ending moment always wins (_noteBossTime, first write).
+    for (const f of this.fields) {
+      const gt = f && f.result && Number.isFinite(f.result.time) ? f.result.time : null;
+      this._noteBossTime(f ? f.team : null, this.round, gt);
+    }
     this._syncTeamLp();
     this.deadline = 0;
     this.overtimeAt = 0;
     this.markPublic();
     this.runner = null;
-    // The boss CHAIN (design 2026-10-17): 最终攻势 (R14) → 隐秘核心 (R15) → 2V2 第三关 (R16). A cleared round opens the
-    // next one when the layers / LP also qualify; when the chain ends the match settles (2V2 decides its winner then).
-    const third = this.thirdBossRound;
-    const ahead = !hidden ? this.gd.hiddenRound : (third != null && this.round !== third ? third : null);
+    // The boss CHAIN (design 2026-10-17): 最终攻势 (R14) → 隐秘核心 (R15). A cleared round opens the next one when the
+    // layers / LP also qualify; when the chain ends the match settles (2V2 decides its winner then).
+    const ahead = hidden ? null : this.gd.hiddenRound;
     // 2V2: the round is SHARED and both teams fight their own leader, so one team's clear opens the next round for the
-    // match (requiring both would make the 隐秘核心 / 第三关 practically unreachable) — [ASSUMED].
+    // match (requiring both would make the 隐秘核心 practically unreachable) — [ASSUMED].
     const advanced = this.isVersus ? this._anyTeamCleared() : victory;
     this.later(this.scaled(DELAYS.SETTLE), () => {
       if (advanced && ahead != null && !!this.hiddenBossId && this._bossChainEligible(ahead)) {
-        if (ahead === this.gd.hiddenRound) {
-          this.hiddenReached = true;
-          this.tickerText('隐秘核心已解锁', FLOW_TICKER_PRIORITY);
-        } else {
-          this.thirdBossReached = true;
-          this.tickerText('终焉核心已解锁', FLOW_TICKER_PRIORITY);
-        }
+        this.hiddenReached = true;
+        this.tickerText('隐秘核心已解锁', FLOW_TICKER_PRIORITY);
         this.bossPool = null;
         this.startRound(ahead);
         return;
@@ -746,14 +806,16 @@ export class MatchBoss {
 
   /**
    * Whether the boss chain may continue into `round`. Solo / co-op: the official `hiddenEligible` (hidden-core layers +
-   * team LP). 2V2 [ASSUMED]: the same rule per TEAM (the round is shared, so the best team opens it), and the 第三关
-   * threshold is the Hidden Core's × `VERSUS_THIRD_BOSS.layerMul`.
+   * team LP). 2V2 [ASSUMED]: the same rule per TEAM (the round is shared, so the best team opens it), at the 2-player
+   * share of the co-op threshold (user 2026-10-17): `hiddenCore.multi × TEAM_SIZE / 4` = 600 layers per squad instead
+   * of the 1200 of the upstream 4-player co-op team. The LP bar (`minTeamLpExclusive`) and `checkedAfterRound` are
+   * unchanged; data/config.json stays as generated (AGENTS.md).
    */
   _bossChainEligible(round) {
     if (round == null) return false;
     if (!this.isVersus) return hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp });
     const hc = this.gd.hiddenCore;
-    const threshold = hc.multi * (round === this.thirdBossRound ? VERSUS_THIRD_BOSS.layerMul : 1);
+    const threshold = (hc.multi * TEAM_SIZE) / 4;
     for (const t of this._teamIds()) {
       const layerSum = this.alivePlayers().filter((p) => this.teamIdOf(p) === t).reduce((s, p) => s + p.activatedLayers(), 0);
       if (layerSum > threshold && this._teamLpOf(t) > hc.minTeamLpExclusive) return true;

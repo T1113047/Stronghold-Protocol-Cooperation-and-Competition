@@ -5,7 +5,7 @@
 //     and m.public.overtimeAt is when the overtime drain starts (bossTurnHpReduceTime, 150 real s): from then on the
 //     merged team LP loses config.bossOvertimeDrainPerSec (1) per whole real second (server gamedata.js
 //     bossOvertimeDue: the first point at overtimeAt + 1 s). `overtimeState` says what the red DOT warning shows.
-//   * Solo pause (official 独立模拟 battles): C2S g.pause {on}; the server says so in m.public.paused (optionally
+//   * Solo pause (official 独立狩猎 battles): C2S g.pause {on}; the server says so in m.public.paused (optionally
 //     m.public.pausedAt, ms epoch). Only solo battles offer it (`pauseAvailable`); while paused every HUD clock is
 //     frozen at the pause moment (`frozenNow`).
 

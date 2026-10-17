@@ -225,8 +225,8 @@ test('solo pause: g.pause {on} is solo-only and m.public.paused follows (code) �
   assert.match(DESIGN, /`g\.pause \{on\}`/);
   assert.match(DESIGN, /\*\*Solo pause/);
   assert.match(META, /`m\.public\.paused`|`paused`\n?\(solo pause/);
-  assert.match(README, /暂停（独立模拟）/);
-  assert.match(PLAYING, /同盟模拟的作战不能暂停/);
+  assert.match(README, /暂停（独立狩猎）/);
+  assert.match(PLAYING, /同盟狩猎的作战不能暂停/);
 });
 
 test('temp overflow (user playtest #3 item 3): kept through the round start, resolved at the deadline of the first prep its player can act in (code) — every doc says so', () => {

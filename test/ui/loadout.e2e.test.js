@@ -2,7 +2,7 @@
 // Chrome). Opt-in: SP_E2E=1 node --test test/ui/loadout.e2e.test.js
 //
 // Desktop 1920×1080: lobby → 干员调配 → search 隐现 → S1 + 不装备 (persisted in localStorage, synced with room.loadout)
-// → create a 独立模拟 room → start → the briefing's m.private.loadout carries the choice, the briefing entry reopens the
+// → create a 独立狩猎 room → start → the briefing's m.private.loadout carries the choice, the briefing entry reopens the
 // overlay, the solo briefing shows no countdown value from the server (deadline 0) → 准备就绪 closes the overlay
 // (auto-close when INFO_CHECK ends). Phone 844×390 (touch): the roster → tap a card → the detail slides over → back.
 // Module cards: the official module type icons from the local-client art (data/local-assets.json groups.module, optional)

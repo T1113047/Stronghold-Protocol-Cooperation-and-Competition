@@ -40,7 +40,7 @@ describe('spectator seats (community report #26, real server)', { skip: !ENABLED
     try {
       await host.open();
       await host.enter('凯尔希');
-      await host.click('.mode-card', '同盟模拟');
+      await host.click('.mode-card', '同盟狩猎');
       await host.click('.diff-card', '标准模拟');
       await host.click('.create-box button', '创建同盟');
       const room = (await host.waitFor((s) => !!s.room?.code, 'room created')).room;

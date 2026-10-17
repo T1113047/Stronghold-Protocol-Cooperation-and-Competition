@@ -77,7 +77,7 @@ export function pairPlayers(alive, rng, previous = null) {
 
 /**
  * Shared boss HP for a boss id with `aliveCount` alive players (GameData.bossPoolShare / bossPoolShareOf; omitted ⇒ a full
- * team). `mul` is an extra multiplier — the 2V2 第三关 (round 16) passes VERSUS_THIRD_BOSS.poolMul.
+ * team). `mul` is an extra multiplier.
  */
 export function bossPoolHp(gd, bossId, aliveCount, mul = 1) {
   const boss = gd.boss(bossId);

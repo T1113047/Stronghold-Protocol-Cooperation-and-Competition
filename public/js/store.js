@@ -76,7 +76,7 @@ export const emptyMatch = () => ({ public: null, private: null, field: null, res
 /** Initial app state (exported for tests and resets). */
 export const initialState = Object.freeze({
   connection: { status: 'idle', ping: null, attempt: 0, retryAt: 0, lastError: null, everOnline: false },
-  me: { playerId: null, name: '', token: null },
+  me: { playerId: null, name: '', token: null, account: null }, // [ACCOUNT] account = { qq, nickname } when logged in
   session: { entered: false },
   room: null,
   match: emptyMatch(),
@@ -182,8 +182,15 @@ export function loadPref(key, fallback) {
  * @param {any} value
  */
 export function savePref(key, value) {
-  try { globalThis.localStorage?.setItem(`sp.pref.${key}`, JSON.stringify(value)); } catch { /* ignore */ }
+  let json = null;
+  try { json = JSON.stringify(value); globalThis.localStorage?.setItem(`sp.pref.${key}`, json); } catch { /* ignore */ }
+  // [ACCOUNT] mirror the change to the bound account (main.js wires this to net.saveAccountEnc, debounced)
+  if (prefSaver && json != null) { try { prefSaver(key, json); } catch { /* ignore */ } }
 }
+
+/** [ACCOUNT] observer for savePref (set by main.js; null = not logged in / disabled). */
+let prefSaver = null;
+export function setPrefSaver(fn) { prefSaver = typeof fn === 'function' ? fn : null; }
 
 const identity = (s) => s;
 

@@ -125,7 +125,7 @@ test('public/i18n/en.json: valid, English values, placeholders kept, the pilot s
     const have = new Set([...v.matchAll(/\{([A-Za-z0-9_$]+)(?:\|[^{}]*)?\}/g)].map((m) => m[1]));
     for (const p of want) assert.ok(have.has(p), `${k}: {${p}} missing in "${v}"`);
   }
-  for (const k of ['开始', '博士代号', '设置', '语言', '同盟模拟', '创建同盟', '加入同盟', '开始模拟', 'toggle::关闭', '整备区已满',
+  for (const k of ['开始', '博士代号', '设置', '语言', '同盟狩猎', '创建同盟', '加入同盟', '开始模拟', 'toggle::关闭', '整备区已满',
     '第 {r} 回合 · 最终攻势', '本局禁用{names}盟约，此策略效果可能无法发挥', 'bond-threshold::名', 'list::、', '干员持有', '先锋', '开心',
     '{names}只能部署在召唤者攻击范围内，已退回整备区', '{name}博士的目标生命值已耗尽', '联防阶段：{names} 迎战突破防线的敌人', '【维多利亚】获得{n}件维式重锤']) {
     assert.ok(EN[k], `en.json lacks ${k}`);

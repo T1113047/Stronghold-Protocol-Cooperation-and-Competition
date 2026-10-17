@@ -15,6 +15,36 @@
 import { bondList } from './bondsMeta.js';
 import { boardOrder } from './board.js';
 
+/**
+ * The 2V2 settlement's boss-time weights (user 2026-10-17): the 最终攻势 (R14) counts 4 and the 隐秘核心 (R15) 5 —
+ * `score(team) = 4 × remain(R14)/limit(R14) + 5 × remain(R15)/limit(R15)`, in SHARES (the two rounds have their own
+ * limits), a round a team never reached counting 0. `bossTimeScore` below is the one formula; the match records the
+ * remainders (server/match/match/bossRounds.js _noteBossTime) and decides the winner with them first, the shared LP
+ * second and the leader scoring of _versusDecide last.
+ */
+export const BOSS_TIME_WEIGHTS = Object.freeze({ boss: 4, hidden: 5 });
+
+/**
+ * The weighted remaining time of one team: `time` as its per-round records ({ r14 / r15: { remain, limit, reached } }).
+ * A round without a limit, or one the team never reached, contributes 0 (and no weight to `max`).
+ * @param {{ r14?: any, r15?: any } | null} time
+ * @returns {{ score: number, max: number, pct: number | null }} the weighted score, the weights in play and score/max in %
+ */
+export function bossTimeScore(time) {
+  let score = 0;
+  let max = 0;
+  for (const [key, weight] of [['r14', BOSS_TIME_WEIGHTS.boss], ['r15', BOSS_TIME_WEIGHTS.hidden]]) {
+    const rec = time && typeof time === 'object' ? time[key] : null;
+    const limit = rec && Number.isFinite(rec.limit) ? Math.max(0, rec.limit) : 0;
+    if (!(limit > 0)) continue;
+    const remain = rec && Number.isFinite(rec.remain) ? Math.max(0, Math.min(rec.remain, limit)) : 0;
+    score += weight * (remain / limit);
+    max += weight;
+  }
+  return { score, max, pct: max > 0 ? (100 * score) / max : null };
+}
+
+
 const STAT_OF = {
   bossDamage: (ps) => ps.stats.bossDamage,
   activatedLayers: (ps) => ps.activatedLayers(),
@@ -113,6 +143,8 @@ export function buildResult(m, outcome) {
     return {
       playerId: ps.playerId,
       seat: ps.seat,
+      // 2V2: the team this row fights for (null in solo / co-op) — the settlement groups the squads by it
+      team: ps.team,
       name: ps.name,
       isBot: ps.isBot,
       left: ps.left,
@@ -124,6 +156,13 @@ export function buildResult(m, outcome) {
       bandId: ps.bandId,
       lineup,
       bonds: bondList(gd, ps.bonds).filter((b) => b.active || b.layers > 0),
+      // 2V2 商人「坎诺特」: 赏金 is NOT gold. `earned` = every 赏金 banked this match (the settlement's 「本局赏金收入」),
+      // `withdrawn` = 金币 taken out of the bank (PlayerState.withdrawnGold), `bank` = the 赏金 still held (剩余存款).
+      bounty: {
+        earned: Math.max(0, Math.trunc(Number(ps.bountyEarned) || 0)),
+        withdrawn: Math.max(0, Math.trunc(Number(ps.withdrawnGold) || 0)),
+        bank: Math.max(0, Math.trunc(Number(ps.bountyBank) || 0)),
+      },
       stats: {
         dmgDealt: Math.round(ps.stats.dmgDealt), kills: ps.stats.kills, leaks: ps.stats.leaks, gold: ps.stats.gold,
         refreshes: ps.stats.refreshes, merges: ps.stats.merges, itemsEquipped: ps.stats.itemsEquipped,
@@ -142,8 +181,13 @@ export function buildResult(m, outcome) {
     hiddenReached,
     hiddenCleared,
     reason: outcome.reason,
-    // 2V2: the per-team scoring and winner (winnerTeam = the winning team, or null on a draw / double loss)
-    versus: versus ? { winnerTeam: versus.winnerTeam, doubleLoss: versus.doubleLoss, teams: versus.teams } : undefined,
+    // 2V2: the per-team scoring and winner (winnerTeam = the winning team, or null on a draw / double loss).
+    // `timeTie`: both squads' 4:5 boss-time scores were equal — the winner then came from the shared LP (and, if that
+    // ties too, from the leader scoring); the settlement says so. `timeWeights` are the weights in play (R14 4, R15 5).
+    versus: versus ? {
+      winnerTeam: versus.winnerTeam, doubleLoss: versus.doubleLoss, timeTie: !!versus.timeTie, teams: versus.teams,
+      timeWeights: { r14: BOSS_TIME_WEIGHTS.boss, ...(gd.hiddenRound != null ? { r15: BOSS_TIME_WEIGHTS.hidden } : {}) },
+    } : undefined,
     // the merged Final Assault pool (null before round 14); players[].lp are the alive players' shares of it
     teamLp: m.teamLp != null ? Math.max(0, Math.round(m.teamLp)) : null,
     modeId: m.modeId,

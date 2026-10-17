@@ -197,9 +197,9 @@ describe('0.2.0 自选编队 — a slotted operator in the own shop and battle (
       await c.page.waitForFunction(() => !document.querySelector('.lo'), { timeout: 3000 });
 
       // 2) a solo 标准 match: the briefing's m.private carries the picks
-      await c.click('.mode-card', '独立模拟');
+      await c.click('.mode-card', '独立狩猎');
       await c.click('.diff-card', '标准模拟');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor((s) => !!s.room, 'solo room');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await c.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);

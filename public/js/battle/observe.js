@@ -9,7 +9,7 @@
 //   * eliminated: anything — each phase reset starts on the player it follows (the server's prep scout / b.start,
 //     followedScout).
 
-import { PHASE } from '../../../shared/constants.js';
+import { PHASE, opponentRevealed } from '../../../shared/constants.js';
 import { data } from '../data.js';
 import { t } from '../../../shared/i18n.js';
 
@@ -34,6 +34,9 @@ export function nameOf(pub, playerId) {
 
 /**
  * What tapping a team row does: `{ back: true }` (own row while observing), `{ fieldId }` to observe, or `{ reason }`.
+ * 2V2: the opponent row is a server stub (`hidden: true`) until the reveal — from R14 on (shared/constants.js
+ * `opponentRevealed`) the server sends its real row and any of its fields may be observed, exactly like a teammate's.
+ * The client holds no copy of the round rule; the server's rows / fields are the authority.
  * @param {any} p m.public player row
  * @param {any} pub
  * @param {string} myId
@@ -44,8 +47,15 @@ export function observeTarget(p, pub, myId, { observing = false, ownDone = false
   if (!isObj(p)) return { reason: t('无效的目标') };
   if (p.playerId === myId) return observing ? { back: true } : { reason: null };
   const me = players(pub).find((x) => x.playerId === myId) || null;
-  // 2V2 ('versus'): the opponent's row is a stub and its field is never published — peeking is not available at all
-  if (p.hidden === true || (p.team != null && me && me.team != null && p.team !== me.team)) return { reason: t('非队友视角无法查看') };
+  // 2V2 ('versus'): `me.team` exists only in a versus match. The opponent stays a stub until the reveal (R14+), when
+  // the server publishes its real row and its fields; before that its row is not observable and says when it will be.
+  const versus = !!me && me.team != null;
+  const revealed = versus && opponentRevealed(pub?.round);
+  const opponent = versus && p.team != null && p.team !== me.team;
+  if (p.hidden === true || (opponent && !revealed)) {
+    if (versus && !revealed) return { reason: t('R13 之后可以看到对面视角') };
+    return { reason: t('非队友视角无法查看') };
+  }
   if (p.alive === false || p.status === 'left') return { reason: t('该队友已被淘汰，无法查看') };
   const phase = pub?.phase;
   const meAlive = me ? me.alive !== false : true;
@@ -55,7 +65,8 @@ export function observeTarget(p, pub, myId, { observing = false, ownDone = false
   const own = fieldOf(pub, myId);
   if (!meAlive || !own) return { fieldId: target.fieldId };
   if (own.fieldId === target.fieldId) return { reason: t('队友与你在同一战场，使用 ‹ › 切换视角') };
-  if (target.kind === 'boss' || target.kind === 'hidden') return { reason: t('无法查看另一组队友的战场') };
+  // the other pair's boss field stays closed in co-op; a revealed 2V2 opponent's boss field opens
+  if ((target.kind === 'boss' || target.kind === 'hidden') && !revealed) return { reason: t('无法查看另一组队友的战场') };
   if (own.kind === 'normal' && own.live !== false && !ownDone) return { reason: t('作战中无法查看队友，作战结束后可前往查看') };
   return { fieldId: target.fieldId };
 }

@@ -274,6 +274,16 @@ export class MatchPhases {
     this.sp = null;
     this.wave = null;
     this.bossWaves = null;
+    // 同盟狩猎: this round's per-player system deployments are planned with the wave (below); stale plans never survive
+    this._coopHuntPlans = null;
+    this._coopHuntRound = 0;
+    // a 投放公示 never survives a round (a new round starts only after the previous battle / settle)
+    this.confrontStage = null;
+    this.coopRoster = false;
+    // 2V2: the previous round's 对抗期 must not leak into this round's PREP / views / wave (enterConfront rebuilds them)
+    this.confront = null;
+    this.confrontSubs = null;
+    this.confrontTargets = null;
     const alive = this.alivePlayers();
     // the round's enemies (shared composition, generated now so the prep preview is exact). Planned BEFORE the players'
     // round start: its recompute() checks the board on the field the player deploys on this round (deployFieldOf reads
@@ -284,6 +294,9 @@ export class MatchPhases {
       this._planBossWaves();
     } else {
       this.wave = buildNormalWave(this.gd, this.rngWaves, this.factions, r);
+      // 同盟狩猎: each alive player's prey for this 狩猎期 — planned once, from the round's shared wave, before any
+      // preview or deployment (a no-op on R1–R(start−1) and in every non-coop mode)
+      if (this.coopHuntActive()) this.coopHuntPlans();
     }
     for (const ps of alive) ps.startRound(r);
     for (const ps of alive) this.dispatch(ps, 'onRoundStart', { round: r });
@@ -314,6 +327,8 @@ export class MatchPhases {
   }
 
   afterRoundStart() {
+    // 2V2 事件期 (eventRoundsFor): one entry per player before the round's 机变 / 休整期 (server/match/match/event.js)
+    if (this.eventDue()) { this.enterEvent(); return; }
     if (this.gd.spRounds().includes(this.round)) this.enterSpDraft();
     else this.enterPrep();
   }

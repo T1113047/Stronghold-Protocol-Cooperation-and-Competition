@@ -1,12 +1,14 @@
-// Release metadata: one version everywhere (package.json, package-lock.json, shared/constants.js APP_VERSION shown on
-// the title screen, the server banner and /healthz), the GPL-3.0-or-later licence (LICENSE, package.json, lockfile) and
-// the notice files the README and the release bundle point at.
+// Release metadata of this fork 《卫戍协议：狩猎模拟》: its own version ('0.0.1') in package.json / package-lock.json
+// beside the upstream release it is built on (shared/constants.js APP_VERSION, kept at 0.2.6) — the build label
+// (FORK_VERSION / FORK_LABEL) and the name the README, the title screen and the boot banner show — the
+// GPL-3.0-or-later licence (LICENSE, package.json, lockfile) and the notice files the README and the release bundle
+// point at.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { APP_VERSION, PROTOCOL_VERSION, DEV_BUILD } from '../shared/constants.js';
+import { APP_VERSION, PROTOCOL_VERSION, DEV_BUILD, FORK_VERSION, FORK_LABEL } from '../shared/constants.js';
 import { isDevVersion } from '../tools/package.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -14,19 +16,32 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const pkg = JSON.parse(read('package.json'));
 const lock = JSON.parse(read('package-lock.json'));
 
-test('one release version: package.json, package-lock.json and APP_VERSION', () => {
-  // a release x.y.z, or x.y.z-dev on the public dev branch (the owner's decision of 2026-10-06)
+// This fork's own release metadata: the version it ships under, the upstream release it is built on, and the
+// repository it lives in (package.json / package-lock.json / shared/constants.js / README.md, one number everywhere).
+const PKG_NAME = 'stronghold-protocol-hunt-simulation';
+const FORK_REPO = 'https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation';
+
+test('one release version: this fork\'s 0.0.1 everywhere, the upstream 0.2.6 beside it', () => {
+  // the upstream baseline stays a release x.y.z, or x.y.z-dev on the public dev branch (the owner's decision of 2026-10-06)
   assert.match(APP_VERSION, /^\d+\.\d+\.\d+(-dev)?$/);
   assert.equal(DEV_BUILD, APP_VERSION.endsWith('-dev'));
-  assert.equal(pkg.version, APP_VERSION);
-  assert.equal(lock.version, APP_VERSION);
-  assert.equal(lock.packages[''].version, APP_VERSION);
+  // the version a player or a host reads is THIS fork's (shared/constants.js FORK_VERSION), not the upstream release
+  assert.equal(FORK_VERSION, 'V0.0.1');
+  assert.ok(FORK_LABEL.includes(FORK_VERSION) && FORK_LABEL.includes(APP_VERSION), 'the fork label pairs its own number with the upstream release');
+  assert.equal(pkg.version, '0.0.1');
+  assert.equal(lock.version, '0.0.1');
+  assert.equal(lock.packages[''].version, '0.0.1');
+  assert.equal(pkg.upstream, APP_VERSION, 'package.json names the upstream release it is built on');
   assert.equal(PROTOCOL_VERSION, 1, 'the wire protocol number is separate from the release version');
   assert.equal(pkg.private, true, 'never published to npm');
 });
 
-test('CHANGELOG.md opens with the release version, and the README links it', () => {
+test('CHANGELOG.md opens with this fork\'s entry, keeps the upstream releases below it, and the README links it', () => {
   const log = read('CHANGELOG.md');
+  // the fork's own entry first: FORK_VERSION beside the upstream release it is built on; the upstream releases stay below
+  const top = log.split('\n')[0];
+  assert.match(top, /^## V0\.0\.1/, `the fork's entry opens the file: ${top}`);
+  assert.match(top, /0\.2\.6/, 'it names the upstream release it is built on');
   const first = log.match(/^## (\d+\.\d+\.\d+) — (\d{4}-\d{2}-\d{2})/m);
   assert.ok(first, 'a "## x.y.z — date" heading');
   if (DEV_BUILD) {
@@ -34,7 +49,7 @@ test('CHANGELOG.md opens with the release version, and the README links it', () 
     const num = (v) => v.split(/[.-]/).slice(0, 3).map(Number);
     const [a, b] = [num(first[1]), num(APP_VERSION)];
     assert.ok(a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] < b[2]))), `the newest entry ${first[1]} precedes ${APP_VERSION}`);
-  } else assert.equal(first[1], APP_VERSION, 'the newest entry is the current version');
+  } else assert.equal(first[1], APP_VERSION, 'the newest upstream entry is the release the fork is built on');
   assert.match(log, /^## 0\.1\.0 — 2026-10-02/m, 'the first public release stays listed');
   const readme = read('README.md');
   assert.match(readme, /\[CHANGELOG\.md\]\(CHANGELOG\.md\)/);
@@ -46,20 +61,31 @@ test('the release version is what players see', () => {
   assert.match(read('public/js/screens/title.js'), /v\$\{APP_VERSION\}/, 'title screen footer');
   assert.ok(!/PROTOCOL v1/.test(read('public/js/screens/title.js')), 'no protocol number posing as a version');
   // the server's entry is server/index.js; the banner and /healthz live in server/http/ (boot.js, routes.js)
-  assert.match(read('server/http/boot.js'), /Stronghold Protocol: Alliance v\$\{APP_VERSION\}/, 'boot banner');
+  const boot = read('server/http/boot.js');
+  assert.match(boot, /\$\{FORK_NAME\} · Hunt Simulation \$\{VERSION_LABEL\}/, 'the fork\'s own banner line');
+  // the upstream release this fork is built on keeps its line, credited as the baseline (server/http/boot.js)
+  assert.match(boot, /Stronghold Protocol: Alliance v\$\{APP_VERSION\}/, 'upstream baseline in the boot banner');
+  assert.match(boot, /卫戍协议：盟约 · Stronghold Protocol: Alliance v/, 'upstream baseline in the boot banner');
   assert.match(read('server/http/routes.js'), /app: APP_VERSION/, '/healthz');
 });
 
-test('the English title is the official one: Stronghold Protocol: Alliance (as in the reply to GitHub issue #38, which stays open)', () => {
-  // EN client data, activity_table basicInfo.act2autochess.name = "Stronghold Protocol: Alliance" (CN 卫戍协议:盟约);
-  // the project used to call it "Covenant". The Chinese title stays 卫戍协议：盟约; the repository keeps its name.
+test('this fork names itself: README title and badges, package name, repository metadata', () => {
+  // 卫戍协议：狩猎模拟 · Stronghold Protocol: Hunt Simulation, built on 卫戍协议：盟约 · Stronghold Protocol: Alliance
+  // (the upstream mode's official English name, GitHub issue #38); the fork's number sits beside the upstream badge.
   const readme = read('README.md');
-  assert.match(readme.split('\n')[0], /^# 卫戍协议：盟约 · Stronghold Protocol: Alliance$/, 'README title');
-  assert.match(readme, /mode \*Stronghold Protocol: Alliance\*/, 'README English summary');
-  assert.match(read('server/http/boot.js'), /卫戍协议：盟约 · Stronghold Protocol: Alliance v/, 'boot banner');
-  assert.equal(pkg.name, 'stronghold-protocol-alliance');
+  assert.equal(readme.split('\n')[0], '# 卫戍协议：狩猎模拟 · Stronghold Protocol: Hunt Simulation', 'README title');
+  assert.match(readme, /Stronghold Protocol: Hunt Simulation/, 'the README names this fork');
+  assert.match(readme, /sganggs\/Stronghold-Protocol/, 'the upstream project stays credited');
+  // the README carries both badges: the upstream release this fork is built on, and the fork's own number
+  // (shields.io shows the full-width parentheses of a badge label verbatim)
+  assert.match(readme, /badge\/version-0\.2\.6-/, 'the upstream release badge stays on the README');
+  assert.match(readme, /badge\/fork-V0\.0\.1（0\.2\.6）-/, 'the fork\'s own badge');
+  assert.equal(pkg.name, PKG_NAME);
   assert.equal(lock.name, pkg.name);
   assert.equal(lock.packages[''].name, pkg.name);
+  assert.equal(pkg.repository.url, `git+${FORK_REPO}.git`);
+  assert.equal(pkg.bugs.url, `${FORK_REPO}/issues`);
+  assert.equal(pkg.homepage, `${FORK_REPO}#readme`);
   for (const f of ['README.md', 'server/index.js', 'server/http/boot.js', 'package.json', 'package-lock.json', 'NOTICE.md', 'public/index.html', 'docs/DEPLOY.md']) {
     assert.ok(!/covenant/i.test(read(f)), `${f}: no "Covenant" title left`);
   }
@@ -71,7 +97,7 @@ test('GPL-3.0-or-later: LICENSE, package metadata and notices', () => {
   assert.match(license, /END OF TERMS AND CONDITIONS/);
   assert.equal(pkg.license, 'GPL-3.0-or-later');
   assert.equal(lock.packages[''].license, 'GPL-3.0-or-later');
-  assert.match(pkg.repository.url, /github\.com\/sganggs\/Stronghold-Protocol/);
+  assert.match(pkg.repository.url, /github\.com\/T1113047\/Stronghold-Protocol-Hunt-Simulation/, 'the fork keeps its own repository URL');
   for (const f of ['NOTICE.md', 'THIRD-PARTY-NOTICES.md', 'tools/local-extract/LICENSE-Ark-Unpacker.txt']) {
     assert.ok(existsSync(join(ROOT, f)), f);
   }

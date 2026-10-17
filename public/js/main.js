@@ -38,8 +38,8 @@ import { html, UiHosts, Button, MicroLabel, closeAllDialogs } from './ui/compone
 import { ConnectionBanner } from './ui/connBanner.js';
 import { ToastHost, toast, toastError, describeError } from './ui/toasts.js';
 import { NoticeHost, pushNotice, dismissNotice } from './ui/notice.js'; // [NOTICE] 全服通知 banner
-import { net, identity, NetError } from './net.js';
-import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating } from './store.js';
+import { net, identity, NetError, setAccountToken } from './net.js';
+import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating, setPrefSaver } from './store.js';
 import { data } from './data.js';
 import { GAME_FILES } from './ui/gameComponents.js';
 import { TitleScreen, sanitizeName } from './screens/title.js';
@@ -58,12 +58,42 @@ import { startBuildGuard } from './ui/buildGuard.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
 import { t, N_, translateWire } from '../../shared/i18n.js';
 import { recordError, installTrafficMeter } from './diag.js';
+import { applyAccountPrefs, localStatsJson, statsIdsOf, syncPrefJson } from './ui/accountSync.js'; // [ACCOUNT] [BOARDMODE]
+import { deriveKeyBytes, encryptPayload, decryptPayload } from '../../shared/accountCrypto.js'; // [ACCOUNT] 传输加密
 
 const RESTORE_GRACE_MS = 1500;
 const JOIN_DELAY_MS = 350;
 const TICKER_KEEP = 20;
 const EMOTE_KEEP = 20;
 const CHAT_KEEP = 100; // [CHAT] recent m.chat lines kept for the bottom-left history and the avatar bubbles
+let applyingAccount = false;   // [ACCOUNT] true while account.data is being applied (pauses the uploader)
+let accountAppliedFor = null;  // [ACCOUNT] qq whose cloud prefs were applied this page load (apply once per account)
+// [ACCOUNT] 传输加密：per-qq 的 AES-GCM 密钥（由 qq + 服务器公开盐派生；WebCrypto 不可用时走 shared/accountCrypto.js 的纯 JS 回退）。
+let acctKey = null;
+let acctKeyQQ = null;
+let lastAccountSalt = null;   // [ACCOUNT] 最近一次 account.data 下发的盐
+
+/** [ACCOUNT] 确保已派生该 qq 的密钥；salt 来自 account.data 帧（公开）。失败返回 null。 */
+async function ensureAccountKey(qq, salt) {
+  if (!qq || !salt) return null;
+  if (acctKey && acctKeyQQ === qq && lastAccountSalt === salt) return acctKey;
+  try {
+    acctKey = await deriveKeyBytes(String(qq), String(salt));
+    acctKeyQQ = String(qq);
+    lastAccountSalt = String(salt);
+    return acctKey;
+  } catch { acctKey = null; acctKeyQQ = null; return null; }
+}
+
+/** [ACCOUNT] 加密一条 pref 的 JSON；无密钥/失败返回 null（调用方放弃本次上传，明文不上行）。 */
+async function encPref(json) {
+  try {
+    const qq = store.get().me.account?.qq; const salt = lastAccountSalt;
+    const key = await ensureAccountKey(qq, salt);
+    if (!key) return null;
+    return await encryptPayload(String(json), key);
+  } catch { return null; }
+}
 
 const SCREENS = { title: TitleScreen, lobby: LobbyScreen, room: RoomScreen, game: GameScreen };
 
@@ -157,6 +187,7 @@ function onWelcome(msg) {
   identity.saveName(name);
   store.set({ me: { playerId: msg.playerId ?? null, name, token: typeof msg.token === 'string' ? msg.token : null } });
   welcomeAt = Date.now();
+  accountAppliedFor = null; // [ACCOUNT] each connect reconciles the cloud copy again
 
   if (prevId != null && prevId !== msg.playerId) {
     // A brand-new server session (the server restarted — crashed / killed, so no room.closed arrived — or this session
@@ -211,6 +242,85 @@ const CLOSE_REASON = {
   kicked: N_('你已被移出同盟'), ended: N_('模拟已结束'), expired: N_('同盟已过期'), shutdown: N_('服务器维护中，同盟已关闭'),
 };
 
+// [ACCOUNT] A pref batch is bounded by count (protocol: account.saveBatch ≤ 32) AND total size
+// (shared/protocol.js MSG_STR_MAX). Sending one oversized batch makes net.send() reject it locally and DROP the whole
+// batch silently, so a large loadout/ownership/diy change would never sync. Split by size instead
+// (700k budget ⇒ safely under MSG_STR_MAX).
+const SAVE_BATCH_MAX = 32;
+const SAVE_BATCH_MAX_CHARS = 700_000;
+
+/** Split { key, enc? } items into frames bounded by count and total string size. */
+function chunkSaveItems(items) {
+  const chunks = [];
+  let cur = [], chars = 0;
+  for (const it of items) {
+    const n = typeof it.enc === 'string' ? it.enc.length : 0;
+    if (cur.length && (cur.length >= SAVE_BATCH_MAX || chars + n > SAVE_BATCH_MAX_CHARS)) { chunks.push(cur); cur = []; chars = 0; }
+    cur.push(it);
+    chars += n;
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+
+/**
+ * [ACCOUNT] Mirror local pref changes (`sp.pref.*`, store.savePref → setPrefSaver) to the bound account: debounced
+ * 800 ms, each value encrypted (AES-GCM, k_user) and split into frames bounded by count and size. Nothing is
+ * uploaded without a bound account or while the cloud copy is being applied (no echo). A value we cannot encrypt
+ * stays local for this round.
+ */
+function wireAccountSync() {
+  let timer = null;
+  const dirty = new Map();
+  const push = (key, json) => {
+    if (applyingAccount || !store.get().me.account) return;
+    dirty.set(key, json);
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      const items = [...dirty];
+      dirty.clear();
+      void (async () => {
+        const batch = [];
+        let failed = false;
+        for (const [k, v0] of items) {
+          const v = syncPrefJson(k, v0); // [BOARDMODE] 棋盘样式是本机设置，不进账号
+          const enc = await encPref(v);
+          if (enc) batch.push({ key: k, enc });
+          else failed = true;
+        }
+        for (const chunk of chunkSaveItems(batch)) { try { net.saveAccountBatch(chunk); } catch { /* ignore */ } }
+        if (failed) toast(t('账号同步失败：本次改动仅保存在本机'), 'warn');
+      })();
+    }, 800);
+  };
+  setPrefSaver(push);
+}
+
+/**
+ * [ACCOUNT] A cloud copy arrived (login). Decrypt the sensitive payload (`enc`) with the per-qq key and apply the
+ * prefs to the local state with the uploader paused, so applying does not echo straight back to the server. An
+ * empty cloud value never wipes a local one (ui/accountSync.js); cloud prefs are re-applied on every connect.
+ */
+async function onAccountData(msg) {
+  const qq = String(msg.qq || store.get().me.account?.qq || '');
+  if (!qq || accountAppliedFor === qq) return; // once per account per connect
+  accountAppliedFor = qq;
+  if (typeof msg.salt === 'string') lastAccountSalt = msg.salt;
+  let prefs = msg.prefs && typeof msg.prefs === 'object' ? msg.prefs : {};
+  // [ACCOUNT] 密文载荷 → 派生密钥解密（k_user = f(qq, salt)）：解密失败就保留本地（prefs 为空 → 不覆盖）
+  if (typeof msg.enc === 'string' && msg.enc) {
+    try {
+      const key = await ensureAccountKey(qq, msg.salt || lastAccountSalt);
+      if (key) { const plain = await decryptPayload(msg.enc, key); const parsed = JSON.parse(plain); if (parsed && typeof parsed === 'object') prefs = parsed; }
+    } catch { /* 解密失败：保留本地 */ }
+  }
+  const localIds = statsIdsOf(localStatsJson() || '');
+  const statsMode = localIds.size === 0 ? 'replace' : 'skip'; // 本地为空 → 用云端那份；否则本地统计不动
+  applyingAccount = true;
+  try { applyAccountPrefs(prefs, { stats: statsMode }); } finally { applyingAccount = false; }
+}
+
 function wireNet() {
   net.on('status', (snap) => {
     const cur = store.get().connection;
@@ -229,6 +339,21 @@ function wireNet() {
   });
   net.on('replaced', () => toast(t('该身份已在其他页面登录，本页已断开'), 'warn', { ttl: 6000 }));
   net.on('unhandledError', (err) => toastError(err));
+  // [ACCOUNT] QQ-bound login (server/account.js): persist the account token + mark the store on bind/auto-login
+  net.on('account.bound', (msg) => {
+    if (typeof msg.token === 'string' && msg.token) setAccountToken(msg.token);
+    const prev = store.get().me.account;
+    const qq = String(msg.qq || '');
+    const nickname = String(msg.nickname || store.get().me.name || '');
+    store.set((s) => ({ me: { ...s.me, account: { qq, nickname } } }));
+    if (!prev || prev.qq !== qq) toast(t('已用 QQ {qq} 登录', { qq }), 'success');
+  });
+  net.on('account.data', (msg) => { void onAccountData(msg); });
+  net.on('account.logout', () => {
+    setAccountToken(null);
+    accountAppliedFor = null;
+    store.set((s) => ({ me: { ...s.me, account: null } }));
+  });
   net.on('room.state', onRoomState);
   net.on('room.closed', (msg) => {
     backToLobby();
@@ -388,6 +513,7 @@ async function boot() {
   }));
 
   wireNet();
+  wireAccountSync(); // [ACCOUNT] debounced upload of sp.pref.* changes to the bound account
   installStatsRecorder(store); // follows the match on screen, so a 放弃模拟 can be recorded (ui/stats.js)
   installLoadoutSync({ net });
   installOwnershipSync({ net });

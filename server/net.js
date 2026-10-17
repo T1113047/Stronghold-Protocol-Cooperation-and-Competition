@@ -94,6 +94,10 @@ export class Session {
     this.token = token;
     /** @type {string} sanitized nickname */
     this.name = name;
+    /** @type {string|null} [ACCOUNT] the bound QQ account of this session (null = not logged in) */
+    this.account = null;
+    /** [PLAINTEXT] the client consented to plaintext account payloads when encryption is unavailable (hello.plainOk) */
+    this.plainOk = false;
     /** @type {import('ws').WebSocket | null} currently bound socket */
     this.ws = null;
     /** @type {boolean} */
@@ -536,11 +540,12 @@ export class Network {
    *   options?: Partial<typeof NET_DEFAULTS>,
    * }} opts
    */
-  constructor({ registry, handler, log = noopLog, now = Date.now, options = {} }) {
+  constructor({ registry, handler, log = noopLog, now = Date.now, options = {}, accounts = null }) {
     this.registry = registry;
     this.handler = handler;
     this.log = log;
     this.now = now;
+    this.accounts = accounts; // [ACCOUNT] server/account.js (null in tests / when disabled)
     this.opts = { ...NET_DEFAULTS, ...options };
     /** @type {Map<import('ws').WebSocket, Connection>} */
     this.conns = new Map();
@@ -651,6 +656,8 @@ export class Network {
     }
     if (msg.t === 'hello') { this.onHelloMsg(conn, msg, now); return; }
     if (!conn.session) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'hello required')); return; }
+    // [ACCOUNT] account intents (server/account.js): requestBind / save / saveBatch / load / setName / logout
+    if (this.accounts && typeof msg.t === 'string' && msg.t.startsWith('account.')) { this.onAccountMsg(conn, msg, rid); return; }
     if (HEAVY_TYPES.has(msg.t) && !conn.heavy.take(now)) { this.reply(conn, errorMsg(ERR.RATE, rid, `${msg.t} too often`)); return; }
 
     let res;
@@ -670,6 +677,118 @@ export class Network {
       if (msg.t === 'b.progress' && !validRid(rid)) return;
       this.reply(conn, errorMsg(isErrCode(res.error) ? res.error : ERR.INTERNAL, rid, res.detail));
     } else if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
+  }
+
+  /**
+   * [ACCOUNT] Build an `account.data` frame: `enc` = AES-GCM(k_user, JSON.stringify(prefs))（敏感载荷密文），
+   * 明文只带 qq/nickname/meta/salt（非敏感）。加密不可用且客户端已同意时才退回明文 prefs，否则标记
+   * `encUnavailable` 让客户端询问（[PLAINTEXT]）。
+   */
+  _accountData(qq, plainOk = false) {
+    const prefs = this.accounts.prefsOf(qq);
+    const nickname = this.accounts.nicknameOf(qq) || '';
+    const meta = typeof this.accounts.prefsMetaOf === 'function' ? this.accounts.prefsMetaOf(qq) : {};
+    let enc = null;
+    try { enc = this.accounts.enc ? this.accounts.enc(qq, JSON.stringify(prefs)) : null; } catch { /* ignore */ }
+    const frame = { t: 'account.data', qq, nickname, meta };
+    // 公开盐随帧下发（客户端据此派生 k_user；避免客户端走被网关挡掉的 /api/*）
+    try { if (typeof this.accounts.salt === 'function') frame.salt = this.accounts.salt(); } catch { /* ignore */ }
+    // [PLAINTEXT] 服务端加密不可用时：客户端同意明文（hello.plainOk）才发明文，否则标记 encUnavailable
+    if (enc != null) frame.enc = enc;
+    else if (plainOk) frame.prefs = prefs;
+    else frame.encUnavailable = true;
+    return frame;
+  }
+
+  /**
+   * [ACCOUNT] `account.requestBind` / `account.save` / `account.saveBatch` / `account.load` / `account.setName` /
+   * `account.logout` from an established session.
+   * @param {Connection} conn @param {any} msg @param {number} rid
+   */
+  onAccountMsg(conn, msg, rid) {
+    const s = conn.session;
+    if (!s) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'hello required')); return; }
+    if (msg.t === 'account.requestBind') {
+      // already logged in on this session (e.g. an auto-login from cache): never mint a new code — just re-ack the login
+      if (s.account) {
+        const a = typeof this.accounts.accountOf === 'function' ? this.accounts.accountOf(s.account) : null;
+        const nickname = (a && a.nickname) || this.accounts.nicknameOf(s.account) || s.name;
+        const frame = { t: 'account.bound', qq: s.account, nickname };
+        // 客户端若在绑定时掉线、本地没存下凭据，再点一次「QQ 同步数据」也能补到 token
+        if (a && typeof a.token === 'string') frame.token = a.token;
+        this.reply(conn, frame);
+        this.reply(conn, this._accountData(s.account, s.plainOk));
+        return;
+      }
+      const { code, ttlMs } = this.accounts.newCode((qq, nickname, token) => {
+        s.account = qq;
+        if (nickname) s.name = nickname;
+        // 玩家可能是切到 QQ 群发码才导致这条 socket 掉线/被换。发给**当前**拥有该会话的 socket
+        sendSession(s, { t: 'account.bound', qq, nickname, token });
+        sendSession(s, this._accountData(qq, s.plainOk));
+      });
+      const frame = { t: 'account.bindCode', code, ttl: ttlMs };
+      if (validRid(rid)) frame.rid = rid;
+      this.reply(conn, frame);
+      return;
+    }
+    if (msg.t === 'account.save') {
+      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
+      // [PLAINTEXT] 明文载荷仅在客户端已同意（hello.plainOk）时接受；正常路径一律走密文 enc
+      if (typeof msg.json === 'string' && !s.plainOk) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'plaintext not allowed')); return; }
+      // 载荷可为明文 json 或密文 enc（AES-GCM，k_user）
+      let json = typeof msg.json === 'string' ? msg.json : null;
+      if (json == null && typeof msg.enc === 'string' && this.accounts.dec) json = this.accounts.dec(s.account, msg.enc);
+      if (typeof json !== 'string') { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'bad payload')); return; }
+      const r = this.accounts.setPref(s.account, msg.key, json);
+      if (r.error) this.reply(conn, errorMsg(ERR.BAD_MSG, rid, r.error));
+      else if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
+      return;
+    }
+    // [ACCOUNT-V2] 批量保存（多条 key 一次帧）
+    if (msg.t === 'account.saveBatch') {
+      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
+      const items = Array.isArray(msg.items) ? msg.items : [];
+      // [PLAINTEXT] 含明文条目时同样要求已同意
+      if (!s.plainOk && items.some((it) => it && typeof it.json === 'string')) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'plaintext not allowed')); return; }
+      let ok = 0, bad = 0;
+      for (const it of items) {
+        if (!it || typeof it.key !== 'string') { bad++; continue; }
+        let json = typeof it.json === 'string' ? it.json : null;
+        if (json == null && typeof it.enc === 'string' && this.accounts.dec) json = this.accounts.dec(s.account, it.enc);
+        if (typeof json !== 'string') { bad++; continue; }
+        const r = this.accounts.setPref(s.account, it.key, json);
+        if (r && r.error) bad++; else ok++;
+      }
+      if (validRid(rid)) this.reply(conn, { t: 'ok', rid, ok, bad });
+      return;
+    }
+    if (msg.t === 'account.load') {
+      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
+      const prefs = this.accounts.prefsOf(s.account);
+      const json = typeof prefs[msg.key] === 'string' ? prefs[msg.key] : null;
+      // 单个 account.pref 应答（手动下载用，明文；自动同步走加密的 account.data/save）
+      this.reply(conn, { t: 'account.pref', key: msg.key, json });
+      return;
+    }
+    if (msg.t === 'account.setName') {
+      if (!s.account) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'not bound')); return; }
+      const n = sanitizeName(msg.name);
+      if (!n) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'bad name')); return; }
+      const r = this.accounts.setNickname(s.account, n);
+      if (r.error) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, r.error)); return; }
+      s.name = r.nickname;
+      this.reply(conn, { t: 'account.bound', qq: s.account, nickname: r.nickname });
+      if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
+      return;
+    }
+    if (msg.t === 'account.logout') {
+      s.account = null;
+      if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
+      this.reply(conn, { t: 'account.logout' }); // echo so the client clears its stored token
+      return;
+    }
+    this.reply(conn, errorMsg(ERR.BAD_MSG, rid, `unknown type ${String(msg.t).slice(0, 32)}`));
   }
 
   /** @param {Connection} conn @param {any} msg @param {number} now */
@@ -710,11 +829,34 @@ export class Network {
     session.addr = conn.ip;
     session.limitKey = conn.key;
 
+    // [ACCOUNT] a valid account token auto-logs-in and takes the account nickname
+    let acc = null;
+    let staleAccount = false;
+    if (this.accounts && typeof msg.account === 'string' && msg.account) {
+      acc = this.accounts.byToken(msg.account);
+      // [ACCOUNT-V2] token 过期 → 视为失效（客户端会清 token 重新绑定）
+      if (acc && typeof this.accounts.tokenValid === 'function' && !this.accounts.tokenValid(acc.qq)) acc = null;
+      if (acc) { session.account = acc.qq; if (acc.nickname) session.name = acc.nickname; try { this.accounts.touchToken(acc.qq); } catch { /* ignore */ } }
+      else { session.account = null; staleAccount = true; } // revoked / expired / unknown token
+    } else {
+      session.account = null;
+    }
+
     let extra = null;
     try { extra = this.handler.welcomeInfo?.() ?? null; } catch (e) { this.log.error('[net] welcomeInfo crashed', e); }
     const welcome = { ...(extra && typeof extra === 'object' ? extra : null), t: 'welcome', playerId: session.playerId, token: session.token, name: session.name, serverNow: now, version: PROTOCOL_VERSION, resumed };
     if (validRid(rid)) welcome.rid = rid;
     this.reply(conn, welcome);
+
+    // [ACCOUNT] the account's canonical prefs go down on EVERY login/connect (resumed reload included): the client
+    // re-applies them, so the cloud copy wins where local data is missing. A stale token says so explicitly.
+    if (acc) {
+      this.reply(conn, { t: 'account.bound', qq: acc.qq, nickname: acc.nickname, token: acc.token });
+      this.reply(conn, this._accountData(acc.qq, session.plainOk));
+    } else if (staleAccount) {
+      this.reply(conn, { t: 'account.logout' }); // tell the client its stored token is no longer valid
+    }
+
     try {
       this.handler.onHello?.(session, { resumed, repeat });
     } catch (e) {

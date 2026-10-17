@@ -61,10 +61,12 @@ test('four humans must agree; rerolls the entire official setup and stock, prese
   h.sched.advance(500);
   assert.deepEqual(m.requestSetupReroll('p_0', 0), { ok: true });
   assert.deepEqual(m.setupVote.voters, ['p_0', 'p_1', 'p_2', 'p_3']);
-  assert.equal(m.deadline, 0);
+  // the vote keeps a VISIBLE countdown: the briefing clock becomes the vote's own full window (never 0, never the time
+  // left) so the confirmation is not paused and a late proposal still gets a whole window
+  assert.equal(m.deadline, h.sched.now() + m.scaled(m.gd.timer('infoCheck') * 1000));
   assert.deepEqual(approve(m, 'p_1'), { ok: true });
   assert.deepEqual(approve(m, 'p_2'), { ok: true });
-  h.sched.advance(30000);
+  h.sched.advance(10000); // inside the vote's window
   assert.equal(m.phase, PHASE.INFO_CHECK);
   assert.deepEqual(snapshot(m), before, 'nothing rerolled until everyone agrees');
   assert.equal(m.handle('viewer', { t: 'g.rerollVote', voteId: m.setupVote.id, agree: true }).error, ERR.SPECTATOR);
@@ -130,7 +132,9 @@ test('reroll cancels queued all-ready transition; stale ready and previous vote 
   assert.ok(m._infoAdvanceTimer);
   m.requestSetupReroll('p_0', 0);
   const oldVote = m.setupVote.id;
-  assert.equal(m.handle('p_1', { t: 'g.infoReady' }).error, ERR.WRONG_PHASE);
+  // a running vote never blocks confirming the briefing — only the advance waits for it (intents.js g.infoReady)
+  assert.deepEqual(m.handle('p_1', { t: 'g.infoReady' }), { ok: true });
+  assert.equal(m.phase, PHASE.INFO_CHECK, 'the vote is still open');
   approve(m, 'p_1');
   h.sched.advance(0);
   assert.equal(m.phase, PHASE.INFO_CHECK);
@@ -195,18 +199,24 @@ test('disconnect and leave cancel rather than count as consent; reconnect sees c
   assert.equal(m.setupRevision, 1);
 });
 
-test('autoplay humans still explicitly consent; dispose stops a paused vote and invalid actors are refused', (t) => {
+test('autoplay humans still explicitly consent; an unanswered vote expires without rerolling; dispose and invalid actors are refused', (t) => {
   const h = makeMatch({ humans: 2, bots: 1 }).start();
   t.after(() => h.m.dispose());
   const m = h.m;
+  const fullMs = m.scaled(m.gd.timer('infoCheck') * 1000);
   m.handle('p_1', { t: 'g.autoplay', on: true });
   assert.equal(m.requestSetupReroll('ai_0', 0).error, ERR.NOT_IN_ROOM);
   assert.equal(m.requestSetupReroll('stranger', 0).error, ERR.NOT_IN_ROOM);
-  m.requestSetupReroll('p_0', 0);
+  assert.deepEqual(m.requestSetupReroll('p_0', 0), { ok: true });
   assert.equal(m.setupVote.agreed.size, 1);
-  h.sched.advance(30000);
+  h.sched.advance(fullMs / 2);
+  assert.equal(m.setupVote.agreed.size, 1, 'an autoplay human never consents by itself');
   assert.equal(m.setupRevision, 0);
-  assert.equal(m.phase, PHASE.INFO_CHECK);
+  // nobody answers: the vote expires with its own window and the briefing moves on — it never rerolls by itself
+  h.sched.advance(fullMs);
+  assert.equal(m.setupVote, null);
+  assert.equal(m.setupRevision, 0);
+  assert.equal(m.phase, PHASE.BAND_DRAFT);
   m.dispose();
   assert.equal(m.requestSetupReroll('p_0', 0).error, ERR.WRONG_PHASE);
   h.sched.advance(30000);

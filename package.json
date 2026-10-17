@@ -1,16 +1,17 @@
 {
-  "name": "stronghold-protocol-alliance",
-  "version": "0.2.6",
+  "name": "stronghold-protocol-hunt-simulation",
+  "version": "0.0.1",
   "private": true,
-  "description": "《卫戍协议-合作与竞争版》：基于 sganggs/Stronghold-Protocol v0.2.6 的 2V2 合作与竞争衍生版（Node.js 服务器 + 浏览器客户端，GPL-3.0-or-later，非商业）",
+  "description": "《卫戍协议：狩猎模拟》：基于 sganggs/Stronghold-Protocol v0.2.6 的 2V2 狩猎模拟衍生版（Node.js 服务器 + 浏览器客户端，GPL-3.0-or-later，非商业）",
+  "upstream": "0.2.6",
   "license": "GPL-3.0-or-later",
-  "homepage": "https://github.com/sganggs/Stronghold-Protocol#readme",
+  "homepage": "https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sganggs/Stronghold-Protocol.git"
+    "url": "git+https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation.git"
   },
   "bugs": {
-    "url": "https://github.com/sganggs/Stronghold-Protocol/issues"
+    "url": "https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation/issues"
   },
   "keywords": [
     "arknights",

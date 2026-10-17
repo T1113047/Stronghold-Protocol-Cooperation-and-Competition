@@ -6,7 +6,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA } from './harness.js';
-import { PHASE, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS, VERSUS_THIRD_BOSS } from '../../shared/constants.js';
+import { PHASE, ERR, VERSUS_CONFRONT, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS, opponentRevealed } from '../../shared/constants.js';
 import { confrontPool } from '../../server/match/match/confront.js';
 import { validateC2S } from '../../shared/protocol.js';
 
@@ -155,9 +155,10 @@ describe('versus (2V2) match: team model', () => {
     assert.ok(h.ended, 'the match ended');
   });
 
-  test('versus: the boss chain reaches the 第三关 (R16) — the same boss with a ×1.5 pool', () => {
+  // R16 was deleted outright (user 2026-10-17): the boss chain ends at the 隐秘核心 (R15).
+  test('versus: the boss chain stops at R15 — clearing the 隐秘核心 settles the match', () => {
     // 4 humans with client-side combat: the pool-zero end condition is only checked for client fields, and the harness's
-    // fake boss never dies on its own (the tests below clear the pools explicitly).
+    // fake boss never dies on its own (the test below clears the pools explicitly).
     const seats = [
       { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
       { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
@@ -168,51 +169,36 @@ describe('versus (2V2) match: team model', () => {
     h.autoHumans();
     const m = h.m;
     // the official way in (the golden runs boost the same two things): every seat counts as fully bonded and starts rich,
-    // so the 隐秘核心 / 第三关 thresholds (Σ layers > 1200 / ×1.5, team LP > 1) hold
+    // so the 隐秘核心 threshold (Σ layers > 1200, team LP > 1) holds
     for (const ps of m.players.values()) { ps.activatedLayers = () => 999; ps.lp = 100000; }
     const clearBoss = () => { for (const t of m._teamIds()) { const p = m._poolOf(t); if (p) p.hp = 0; } m._checkFinalEnd(); };
+    assert.deepEqual(Object.keys(m).filter((k) => /third/i.test(k)), [], 'the match keeps no third-boss state');
+    assert.equal(m.isBossRound(16), false, 'R16 is not a boss round');
     assert.ok(h.drive(() => m.phase === PHASE.FINAL_ASSAULT, { maxSteps: 4e6 }), 'reached the Final Assault');
     assert.equal(m.round, 14, 'R14 is the Final Assault');
-    assert.equal(m.thirdBossRound, VERSUS_THIRD_BOSS.round, 'a 2V2 险境 match has the third boss');
-    assert.equal(m.isBossRound(16), true, 'R16 counts as a boss round');
-    assert.equal(m.bossIdOfRound(16), m.hiddenBossId, 'the 第三关 fights the Hidden Core boss');
     clearBoss();
     assert.ok(h.drive(() => m.phase === PHASE.HIDDEN_CORE && m.round === 15, { maxSteps: 4e6 }), 'the 隐秘核心 opens');
     assert.equal(m.hiddenReached, true, 'hiddenReached');
-    const hiddenPools = [...m.bossPools.values()].map((p) => p.maxHp);
-    assert.equal(new Set(hiddenPools).size, 1, 'both teams get the same pool');
+    const pub = h.lastTo('p_0', 'm.public');
+    assert.deepEqual(Object.keys(pub).filter((k) => /third/i.test(k)), [], 'the public view carries no third-boss field');
     clearBoss();
-    assert.ok(h.drive(() => m.round === 16 && m.phase === PHASE.HIDDEN_CORE, { maxSteps: 4e6 }), 'the 第三关 opens after the 隐秘核心 is cleared');
-    assert.equal(m.thirdBossReached, true, 'thirdBossReached');
-    assert.equal(m.phase, PHASE.HIDDEN_CORE, 'it runs as the hidden-core phase (the client titles it 终焉核心)');
-    assert.equal(m.bossPool, null, '2V2 keeps one pool per team');
-    assert.deepEqual(
-      [...m.bossPools.values()].map((p) => p.maxHp),
-      hiddenPools.map((v) => Math.round(v * VERSUS_THIRD_BOSS.poolMul)),
-      'the 第三关 pool is the 隐秘核心 pool × poolMul',
-    );
-    assert.equal(h.lastTo('p_0', 'm.public').thirdBoss, true, 'the public view marks the 第三关');
-    clearBoss();
-    assert.ok(h.drive(() => h.ended != null, { maxSteps: 4e6 }), 'the match settles at the end of the chain');
+    assert.ok(h.drive(() => h.ended != null, { maxSteps: 4e6 }), 'clearing the 隐秘核心 ends the boss chain');
     assert.ok(h.ended.versus, 'the versus outcome is decided then');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
-  test('versus: 标准 has no 第三关 (no Hidden Core at all), and co-op keeps its official two boss rounds', () => {
+  test('versus: 标准 has no Hidden Core at all, and co-op keeps its official two boss rounds', () => {
     const funny = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 21, fake: true }).start();
     funny.autoHumans();
     assert.equal(funny.m.gd.hiddenRound, null, '標準 has no hidden round');
-    assert.equal(funny.m.thirdBossRound, null, 'so no third boss either');
     assert.equal(funny.m.isBossRound(16), false);
     funny.drive(() => funny.ended != null, { maxSteps: 4e6 });
     assert.equal(funny.m.round, 14, 'the match still ends at R14');
-    assert.equal(funny.m.thirdBossReached, false);
     assert.ok(funny.ended.versus, 'the versus outcome');
     assert.deepEqual(funny.logs.error, [], 'no engine errors');
-    // co-op: the mode has a Hidden Core but the third boss is 2V2-only
+    // co-op: the mode has a Hidden Core, which stays the last round of its boss chain
     const coop = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 7, fake: true }).start();
-    assert.equal(coop.m.gd.hasThirdBoss, true, 'co-op 险境 has a Hidden Core');
-    assert.equal(coop.m.thirdBossRound, null, 'but the 第三关 is versus-only');
+    assert.ok(coop.m.gd.hiddenRound != null, 'co-op 险境 still has its Hidden Core');
     assert.equal(coop.m.isBossRound(coop.m.gd.hiddenRound), true, 'its Hidden Core stays a boss round');
   });
 
@@ -231,6 +217,16 @@ describe('versus (2V2) match: team model', () => {
     for (const p of h.ended.players) {
       const want = winner != null && p.alive && (h.m.players.get(p.playerId).team === winner);
       assert.equal(p.victory, want, `${p.playerId} victory ${p.victory}, want ${want}`);
+    }
+    // the 4:5 boss-time record reached the payload (最终攻势 only: FUNNY has no 隐秘核心)
+    assert.deepEqual(h.ended.versus.timeWeights, { r14: 4 });
+    assert.equal(typeof h.ended.versus.timeTie, 'boolean');
+    for (const t of [0, 1]) {
+      const time = h.ended.versus.teams[t].time;
+      assert.ok(time && time.r14, `team ${t}: R14's countdown was recorded`);
+      assert.equal(time.r14.reached, true, `team ${t}: the Final Assault was fought`);
+      assert.ok(time.r14.remain >= 0 && time.r14.remain <= time.r14.limit, `team ${t}: remain ${time.r14.remain} within 0..${time.r14.limit}`);
+      assert.ok(Number.isFinite(h.ended.versus.teams[t].timeScore), `team ${t}: a time score`);
     }
   });
 
@@ -465,6 +461,27 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus: a finished 对抗期 never leaks its roster into the next PREP / wave', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
+    const me = m.players.get('p_0');
+    const opp = [...m.players.values()].filter((p) => m.teamIdOf(p) === 1).map((p) => p.playerId);
+    assert.equal(m.submitConfrontTarget(me, { targetPlayerId: opp[0] }).ok, true);
+    const pick = affordablePick(m, m.confrontBudget());
+    assert.ok(pick, 'an affordable monster');
+    const picks = [{ enemyKey: pick.rec.key, gate: 'lower' }];
+    assert.equal(m.submitConfront(me, { group: pick.group, position: 'mid', picks }).ok, true);
+    const played = m.round;
+    assert.ok(h.drive(() => m.phase === PHASE.PREP && m.round > played, { maxSteps: 3e6 }), 'reached the next PREP');
+    assert.equal(m.confront, null, 'the applied set is cleared at the round start');
+    assert.equal(m.confrontSubs, null);
+    assert.equal(m.confrontTargets, null);
+    assert.equal(m.publicView().confront, undefined, 'no stale roster in m.public');
+    assert.deepEqual(m.confrontFor(me), [], 'no stale intervention reaches a wave');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
   test('versus: a player who never submits gets the auto-selection when the window ends', () => {
     // TWO humans: with a single one the step (like the prep) is untimed — soloUntimed — and only a submission ends it
     const seats = [
@@ -493,7 +510,7 @@ describe('versus (2V2) match: team model', () => {
   test('versus: with a single human the 定制 window is untimed (it matches the untimed prep)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
     const m = h.m;
-    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
     assert.equal(m.confrontStage, 'monster', 'step 2 opened');
     // one human + three bots: no countdown at all (the prep is untimed too) — the all-submitted end closes it
@@ -510,7 +527,9 @@ describe('versus (2V2) match: team model', () => {
       if (picks.length >= 1) break;
     }
     assert.equal(m.submitConfront(m.players.get('p_0'), { group: pick0.group, position: 'mid', picks }).ok, true);
-    assert.equal(m.phase, PHASE.COMBAT, 'the submission closes the step at once');
+    assert.equal(m.phase, PHASE.CONFRONT, 'the roster hold follows the last submission');
+    assert.equal(m.confrontStage, 'roster');
+    assert.ok(h.run(() => m.phase === PHASE.COMBAT, { maxSteps: 3e5 }), 'the roster hold ends → COMBAT');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
@@ -537,32 +556,142 @@ describe('versus (2V2) match: team model', () => {
     assert.equal(h.bc.filter((msg) => msg.t === 'm.ticker').length, 1, 'the team-less line is a broadcast');
   });
 
-  test('versus: a monster the opponent places pays its killer a bounty sized from the value table', () => {
+  test('versus: bounty = fixed 1/1/2/2 for the first four phases, the live formula from the 5th on, R13 = fixed 25', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 161, fake: true }).start();
     const m = h.m;
-    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 对抗期');
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
-    const budget = m.confrontBudget();
-    const pick = affordablePick(m, budget);
-    assert.ok(pick, 'at least one monster fits the contest-round budget');
-    const g = m.confrontGroups()[pick.group - 1].rows.slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const start = m.contestStartRound;
+    assert.ok([4, 5, 6].includes(start), `the contest round was drawn (R${start})`);
+    assert.equal(m.confrontHuntIndex(), 1, 'the quest round is the 1st bounty phase');
+    const row = affordablePick(m, m.confrontBudget());
+    assert.ok(row, 'at least one monster fits the contest-round budget');
+    const four = Array.from({ length: 4 }, (_, i) => ({ enemyKey: row.rec.key, gate: i % 2 ? 'upper' : 'lower' }));
+    // phases 1–4: the fixed caps, floored — full clear = cap, half = floor(cap / 2), all leaked = 0
+    assert.deepEqual([...VERSUS_CONFRONT.bountyCaps], [1, 1, 2, 2]);
+    for (let ph = 1; ph <= 4; ph++) {
+      m.round = start + ph - 1;
+      assert.equal(m.confrontHuntIndex(), ph);
+      assert.equal(m.confrontFixedBountyCap(), VERSUS_CONFRONT.bountyCaps[ph - 1], `phase ${ph} cap`);
+      const cap = VERSUS_CONFRONT.bountyCaps[ph - 1];
+      assert.equal(m.confrontBountyOf(four), cap, `phase ${ph}: a full clear pays the cap`);
+      assert.equal(m.confrontBountyAt(0, four), 0, `phase ${ph}: all leaked = 0`);
+      assert.equal(m.confrontBountyAt(2, four), Math.floor(cap / 2), `phase ${ph}: half = floor(cap/2)`);
+      const plan = m.confrontBountyPlan(four);
+      assert.ok(plan.every((c) => Number.isInteger(c) && c >= 0), `phase ${ph}: integer coins, 0 allowed`);
+      assert.equal(plan.reduce((s, c) => s + c, 0), cap, `phase ${ph}: the split sums to the cap`);
+      for (let k = 0; k <= 4; k++) assert.equal(plan.slice(0, k).reduce((s, c) => s + c, 0), m.confrontBountyAt(k, four), `phase ${ph}: running total after ${k} kills`);
+    }
+    // the 5th phase, before R13: the live formula, NO cap and no min 1
+    const live = (r, picks) => {
+      m.round = r;
+      assert.equal(m.confrontFixedBountyCap(), null, `R${r} runs the live formula`);
+      return Math.floor((m.confrontSpent(picks) / Math.max(1, m.confrontWaveValue())) * (Number(m.gd.income(r)) || 0) * VERSUS_CONFRONT.killIncomeShare);
+    };
+    const expect5 = live(start + 4, four);
+    assert.equal(m.confrontBountyOf(four), expect5, 'the 5th phase pays the live formula, exactly');
+    assert.equal(m.confrontBountyAt(0, four), 0, 'live: all leaked = 0');
+    assert.equal(m.confrontBountyAt(2, four), Math.floor((m.confrontSpent(four.slice(0, 2)) / Math.max(1, m.confrontWaveValue())) * (Number(m.gd.income(start + 4)) || 0)), 'live: half pays half the value share');
+    // R13 最终狩猎: a FIXED 25, scaled by the kill ratio (full clear 25, half 12) — never the live formula, never 64
+    m.round = 13;
+    assert.equal(m.confrontHunt(), true);
+    assert.equal(m.confrontHuntIndex(), 13 - start + 1, 'the final hunt is the 13 − start + 1 th phase (always ≥ 5)');
+    assert.equal(m.confrontFixedBountyCap(), VERSUS_CONFRONT.finalHuntBounty, 'R13 is the fixed 25');
+    assert.equal(m.confrontBountyOf(four), 25, 'R13 full clear = 25');
+    assert.equal(m.confrontBountyAt(2, four), 12, 'R13 half = floor(25 / 2) = 12');
+    assert.equal(m.confrontBountyAt(0, four), 0, 'R13 all leaked = 0');
+    const plan13 = m.confrontBountyPlan(four);
+    assert.deepEqual([...plan13], [6, 6, 6, 7], '25 split over 4 kills by the accumulator');
+    assert.ok(plan13.every((c) => Number.isInteger(c)), 'R13 pays integers only');
+    // farm: 64 of the cheapest monsters total the fixed 25 on R13 (not 64, and not the live formula) — the anti-farm holds
+    const farm = Array.from({ length: VERSUS_CONFRONT.maxPicks }, (_, i) => ({ enemyKey: row.rec.key, gate: i % 2 ? 'upper' : 'lower' }));
+    assert.equal(m.confrontBountyOf(farm), 25, '64 cheapest monsters on R13 still total 25');
+    assert.equal(m.confrontBountyAt(1, farm), 0, 'one cheap monster out of 64 pays nothing');
+    assert.ok(m.confrontBountyOf(farm) < farm.length, 'the farm can never pay per monster');
+    assert.ok(m.confrontBountyPlan(farm).every((c) => Number.isInteger(c) && c >= 0), 'every kill pays an integer (0 allowed)');
+    m.round = start;
     const picks = [];
-    let left = budget;
-    for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 3) break; }
-    assert.ok(picks.length > 0);
-    // the bounty tracks the value table and the round's income: at least 1 gold, and the whole placement stays near it
-    const income = Number(m.gd.income(m.round)) || 0;
-    const each = picks.map((p) => m.confrontBounty(p.enemyKey));
-    assert.ok(each.every((b) => b >= 1), `every placed monster pays at least 1: ${each.join(',')}`);
-    assert.ok(each.reduce((s, n) => s + n, 0) <= 2 * income + picks.length, `the bounty stays near the round's income: ${each.join('+')} vs ${income}`);
-    assert.equal(m.submitConfront(m.players.get('p_0'), { group: pick.group, position: 'mid', picks }).ok, true);
+    let left = m.confrontBudget();
+    for (const x of m.confrontGroups()[row.group - 1].rows.slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+      if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 3) break;
+    }
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: row.group, position: 'mid', picks }).ok, true);
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: the bounty counts ONLY the monsters the opponent placed at that receiver — never the wave', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 165, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
+    const ps = m.players.get('p_0');
+    assert.equal(m.submitConfrontTarget(ps, { targetPlayerId: 'ai_2' }).ok, true);
+    const row = affordablePick(m, m.confrontBudget());
+    const picks = Array.from({ length: 4 }, (_, i) => ({ enemyKey: row.rec.key, gate: i % 2 ? 'upper' : 'lower' }));
+    assert.equal(m.submitConfront(ps, { group: row.group, position: 'mid', picks }).ok, true);
+    const sub = m.confrontSubs.get('p_0');
+    const tgt = m.players.get('ai_2');
+    const plain = (n) => Array.from({ length: n }, (_, i) => ({ time: i, enemyKey: 'enemy_1005_yokai', count: 1, routeIndex: 0, interval: 0 }));
+    // the wave's OWN monsters never carry a confront bounty: killing all of them pays nothing
+    const big = m.applyConfront(plain(40), sub, tgt);
+    assert.ok(big.length > sub.picks.length, 'the wave really holds its own monsters too');
+    for (const s of big) if (s.confrontSeat == null) assert.ok(!s.bounty, 'a wave monster carries NO placed-monster bounty');
+    assert.equal(big.reduce((n, s) => n + ((s.bounty && s.bounty.coins) || 0), 0), m.confrontBountyOf(sub.picks), 'the wave contributes 0 — only the placed batch pays');
+    // the denominator is the placed batch, not the wave: a 1-monster wave and a 60-monster wave pay the same
+    const coinsOf = (arr) => arr.filter((s) => s.confrontSeat != null).map((s) => s.bounty.coins);
+    const small = m.applyConfront(plain(1), sub, tgt);
+    assert.deepEqual(coinsOf(small), coinsOf(big), 'the wave size can never move the bounty');
+    const placed = big.filter((s) => s.confrontSeat != null);
+    assert.equal(placed.every((s) => s.bounty.total === sub.picks.length), true, 'total = the monsters placed at this receiver');
+    // two receivers, different batch sizes: each denominator is its own batch, and neither leaks into the other
+    const other = m.players.get('ai_3');
+    const sA = { target: tgt.playerId, picks: [picks[0]], position: 'mid', ratio: sub.ratio, seat: 0 };
+    const sB = { target: other.playerId, picks: picks.slice(1), position: 'mid', ratio: sub.ratio, seat: 0 };
+    m.confront = new Map([['a', sA], ['b', sB]]);
+    const outA = m.applyConfront(plain(1), sA, tgt).filter((s) => s.confrontSeat != null);
+    const outB = m.applyConfront(plain(1), sB, other).filter((s) => s.confrontSeat != null);
+    assert.deepEqual(outA.map((s) => s.bounty.total), [1], "receiver A: the denominator is A's 1 monster");
+    assert.deepEqual(outB.map((s) => s.bounty.total), [3, 3, 3], "receiver B: the denominator is B's 3 monsters");
+    assert.equal(outA.reduce((n, s) => n + s.bounty.coins, 0), m.confrontBountyOf(sA.picks), 'A pays only its own batch');
+    assert.equal(outB.reduce((n, s) => n + s.bounty.coins, 0), m.confrontBountyOf(sB.picks), 'B pays only its own batch');
+    // two interventions at the SAME receiver: the batch is their union, indexed in submission order
+    const union = new Map([['a', { target: tgt.playerId, picks: [picks[0]], position: 'mid', ratio: sub.ratio, seat: 0 }],
+      ['b', { target: tgt.playerId, picks: picks.slice(1), position: 'mid', ratio: sub.ratio, seat: 0 }]]);
+    m.confront = union;
+    const uA = m.applyConfront(plain(1), union.get('a'), tgt).filter((s) => s.confrontSeat != null);
+    const uB = m.applyConfront(plain(1), union.get('b'), tgt).filter((s) => s.confrontSeat != null);
+    assert.deepEqual([...uA, ...uB].map((s) => s.bounty.total), [4, 4, 4, 4], 'one shared denominator = the union (4)');
+    assert.deepEqual([...uA, ...uB].map((s) => s.bounty.index), [0, 1, 2, 3], 'each slot of the union is distinct');
+    assert.equal([...uA, ...uB].reduce((n, s) => n + s.bounty.coins, 0), m.confrontBountyOf(picks), 'the union pays the whole batch once');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: an over-budget / oversized placement is refused with its own error code', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 163, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
+    const ps = m.players.get('p_0');
+    assert.equal(m.submitConfrontTarget(ps, { targetPlayerId: 'ai_2' }).ok, true);
+    const rows = m.confrontGroups().flatMap((g) => g.rows);
+    const key = rows[0].key;
+    // more monsters than the protocol / UI cap (64): its own code, not BAD_TARGET
+    const tooMany = Array.from({ length: VERSUS_CONFRONT.maxPicks + 1 }, (_, i) => ({ enemyKey: key, gate: i % 2 ? 'upper' : 'lower' }));
+    assert.equal(m.submitConfront(ps, { group: 1, position: 'mid', picks: tooMany }).error, ERR.CONFRONT_COUNT);
+    // over this round's value budget: its own code too
+    const budget = m.confrontBudget();
+    const dearest = rows.slice().sort((a, b) => b.value - a.value)[0];
+    const n = Math.max(1, Math.floor(budget / Math.max(1, dearest.value)) + 1);
+    assert.ok(n <= VERSUS_CONFRONT.maxPicks, `the over-budget list fits the count cap (${n})`);
+    const over = Array.from({ length: n }, (_, i) => ({ enemyKey: dearest.key, gate: i % 2 ? 'upper' : 'lower' }));
+    assert.ok(m.confrontSpent(over) > budget, 'it really is over the budget');
+    assert.equal(m.submitConfront(ps, { group: 1, position: 'mid', picks: over }).error, ERR.CONFRONT_BUDGET);
+    assert.equal(m.confrontSubs.has(ps.playerId), false, 'nothing was stored');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
   test('versus 狩猎: placed monsters leak for free, pay a bounty, and the lists are revealed after the phase', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 171, fake: true }).start();
     const m = h.m;
-    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
     const budget = m.confrontBudget();
     const pick = affordablePick(m, budget);
@@ -573,17 +702,21 @@ describe('versus (2V2) match: team model', () => {
     for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 2) break; }
     // while the phase runs the opponent's board stays hidden (checked before the last submission closes it)
     const during = m._teamPublicView(m.publicView(), 0).confront;
-    assert.ok(!during.subs['ai_2'], 'the opponent is hidden during the 悬赏期');
+    assert.ok(!during.subs['ai_2'], 'the opponent is hidden during the 狩猎期');
     assert.equal(m.submitConfront(m.players.get('p_0'), { group: pick.group, position: 'mid', picks }).ok, true);
-    assert.equal(m.phase, PHASE.COMBAT, 'everyone submitted → step 2 ends at once');
+    assert.equal(m.phase, PHASE.CONFRONT, 'everyone submitted → the roster hold');
+    assert.equal(m.confrontStage, 'roster');
+    assert.ok(h.run(() => m.phase === PHASE.COMBAT, { maxSteps: 3e5 }), 'the roster hold ends → COMBAT');
     // the applied wave: placed monsters are free (no LP, no 完美作战 break) and carry a kill bounty
     const sub = m.confrontSubs.get('p_0');
     const out = m.applyConfront([{ time: 0, enemyKey: 'enemy_1005_yokai', count: 1, routeIndex: 0, interval: 0 }], sub, m.players.get('ai_2'));
     const placed = out.filter((s) => s.confrontSeat != null);
     assert.ok(placed.length > 0, 'the placed monsters are in the wave');
     assert.ok(placed.every((s) => s.countInTotal === false), 'a leaked placed monster costs no target HP');
-    assert.ok(placed.every((s) => s.bounty && s.bounty.coins >= 1), `each carries a bounty: ${placed.map((s) => s.bounty && s.bounty.coins).join(',')}`);
-    assert.equal(m.confrontBountyOf(sub.picks), sub.picks.reduce((n, p) => n + m.confrontBounty(p.enemyKey), 0), 'the shown total is the sum of the kills');
+    assert.ok(placed.every((s) => s.bounty && Number.isInteger(s.bounty.coins) && s.bounty.coins >= 0), `each carries an integer bounty (0 allowed): ${placed.map((s) => s.bounty && s.bounty.coins).join(',')}`);
+    assert.equal(placed.every((s) => s.bounty.total === placed.length), true, 'the placement total rides along on every bounty');
+    assert.equal(placed.reduce((n, s) => n + s.bounty.coins, 0), m.confrontBountyOf(sub.picks), 'a full clear pays exactly the shown total');
+    assert.equal(m.confrontBountyOf(sub.picks), m.confrontBountyPlan(sub.picks).reduce((n, c) => n + c, 0), 'the shown total is the sum of the kills');
     // once the phase closes, BOTH teams' boards are revealed (the 悬赏名单)
     assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'the window closed');
     const after = m._teamPublicView(m.publicView(), 0).confront;
@@ -639,6 +772,115 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
+  test('versus: the reveal rule is ONE function (R13 closed, R14 / R15 open); co-op has no opponent', () => {
+    // shared/constants.js opponentRevealed — the only place the round lives
+    assert.equal(opponentRevealed(0), false);
+    assert.equal(opponentRevealed(13), false, 'the R13 最终狩猎 is still closed');
+    assert.equal(opponentRevealed(14), true, 'R14 最终攻势 opens');
+    assert.equal(opponentRevealed(15), true, 'R15 隐秘核心 stays open');
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 3, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    h.toPrep(1);
+    assert.equal(m.opponentRevealed, false, 'the match getter follows the function');
+    const keep = m.round;
+    m.round = 14;
+    assert.equal(m.opponentRevealed, true, 'R14: the getter opens');
+    m.round = keep;
+    // co-op: no opponent at all (the getter is vacuously true; the boss-group rule still comes from finalAssault.test.js)
+    const c = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 3, fake: true }).start();
+    assert.equal(c.m.isVersus, false);
+    assert.equal(c.m.opponentRevealed, true, 'co-op is never restricted by the 2V2 reveal');
+    m.dispose();
+    c.m.dispose();
+  });
+
+  test('versus: the opponent is a stub with no intel and an unwatchable board through R4–R13, both open at R14', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 111, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    const me = m.players.get('p_0');
+    const teamOf = (r) => m.teamIdOf(m.players.get(r.playerId));
+    for (let r = 4; r <= 13; r++) {
+      h.toPrep(r);
+      const pub = h.lastTo('p_0', 'm.public');
+      const opp = pub.players.filter((row) => teamOf(row) === 1);
+      assert.equal(opp.length, 2, `R${r}: both opponents listed`);
+      for (const row of opp) {
+        assert.equal(row.hidden, true, `R${r}: opponent row is a stub`);
+        assert.ok(!Object.hasOwn(row, 'shopLevel') && !Object.hasOwn(row, 'boardCount'), `R${r}: no shop level / board count`);
+        assert.ok(Number.isFinite(row.lp) && row.lp > 0, `R${r}: the stub still carries the team's shared pool`);
+      }
+      assert.ok(m.watch(me, 'n:ai_2').error, `R${r}: an opponent board is refused`);
+      assert.equal(m.watch(me, 'n:ai_1').ok, true, `R${r}: a teammate board is allowed`);
+    }
+    // R14 最终攻势: the real rows, the opponent's prep board and the whole `[OVERVIEW]` intel
+    h.toPrep(14);
+    const pub14 = h.lastTo('p_0', 'm.public');
+    const opp14 = pub14.players.filter((row) => teamOf(row) === 1);
+    assert.equal(opp14.length, 2);
+    for (const row of opp14) {
+      assert.notEqual(row.hidden, true, 'R14: a real row, not a stub');
+      assert.ok(Number.isFinite(row.shopLevel) && row.shopLevel >= 1, 'R14: shop level published');
+      assert.ok(Number.isFinite(row.boardCount), 'R14: board count published');
+    }
+    assert.equal(m.opponentRevealed, true, 'R14: revealed');
+    assert.equal(m.watch(me, 'n:ai_2').ok, true, 'R14: the opponent board opens');
+    const scout = h.lastTo('p_0', 'm.field');
+    assert.equal(scout.fieldId, 'n:ai_2', 'the opponent prep board was sent');
+    assert.equal(scout.prep, true);
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+    m.dispose();
+  });
+
+  test('versus: at R15 (隐秘核心) a fighting player may watch the other team\'s boss field', () => {
+    const h = makeMatch({
+      mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 21, fake: true,
+      script: (b) => (b.kind === 'boss' ? { bossDps: 1e9 } : {}),
+    }).start();
+    const m = h.m;
+    h.autoHumans();
+    // the official way into the 隐秘核心: fully-bonded seats (Σ layers > 1200) and a team pool > 1
+    for (const ps of m.players.values()) ps.activatedLayers = () => 999;
+    assert.ok(h.drive(() => m.phase === PHASE.HIDDEN_CORE && m.round === 15, { maxSteps: 4e6 }), 'the 隐秘核心 opens');
+    assert.equal(m.opponentRevealed, true, 'R15: revealed');
+    const me = m.players.get('p_0');
+    const own = m.fields.find((f) => f.players.includes('p_0'));
+    const other = m.fields.find((f) => f.kind === 'hidden' && !f.players.includes('p_0'));
+    assert.ok(own && other, 'both teams fight their own hidden-core field');
+    assert.equal(m.teamIdOf(m.players.get(other.players[0])), 1, 'the other field is team 1\'s');
+    assert.deepEqual(m.watch(me, other.fieldId), { ok: true }, 'the opponent boss field opens at R15');
+    const pub = h.lastTo('p_0', 'm.public');
+    assert.ok(pub.players.filter((row) => m.teamIdOf(m.players.get(row.playerId)) === 1).every((row) => row.hidden !== true), 'real rows at R15');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+    m.dispose();
+  });
+
+  test('versus: a spectator seat is outside the team restriction — full public, any board, any field', () => {
+    const S = 's_spec';
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), spectators: [S], seed: 121, fake: true }).start();
+    const m = h.m;
+    h.autoHumans();
+    h.toPrep(4);
+    const pub = h.lastTo(S, 'm.public');
+    assert.ok(pub, 'the spectator receives m.public');
+    assert.equal(pub.players.filter((row) => row.hidden === true).length, 0, 'no hidden stub in a spectator\'s public view');
+    assert.ok(pub.players.every((row) => Number.isFinite(row.shopLevel) && Number.isFinite(row.boardCount)), 'every row carries its intel');
+    const spec = m.spectators.get(S);
+    assert.equal(m.watch(spec, 'n:ai_2').ok, true, 'R4: the spectator scouts a team 1 board');
+    assert.equal(h.lastTo(S, 'm.field').fieldId, 'n:ai_2');
+    assert.equal(m.watch(spec, 'n:p_0').ok, true, 'and a team 0 board');
+    assert.equal(h.lastTo(S, 'm.field').fieldId, 'n:p_0');
+    assert.equal(m.watch(spec, 'n:ai_3').ok, true, 'any opponent');
+    // the Final Assault: both teams' boss fields are open to the spectator
+    assert.ok(h.drive(() => m.phase === PHASE.FINAL_ASSAULT, { maxSteps: 4e6 }), 'reached the Final Assault');
+    const other = m.fields.find((f) => f.players.every((pid) => m.teamIdOf(m.players.get(pid)) === 1));
+    assert.ok(other, 'team 1 has its own boss field');
+    assert.equal(m.watch(spec, other.fieldId).ok, true, 'the spectator watches the other team\'s boss field');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+    m.dispose();
+  });
+
   test('versus: the 对抗期 runs from the contest round and the opponent\'s wave is sabotaged', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 81, fake: true }).start();
     const m = h.m;
@@ -690,7 +932,9 @@ describe('versus (2V2) match: team model', () => {
     // the placed monsters carry the SENDER's seat for the client's marker (display only)
     assert.equal(m.confrontSubs.get('p_0').seat, me.seat, 'the submission remembers who sent it');
     // the three bots submitted when step 2 opened, so the last submission ends the step at once (no waiting out a window)
-    assert.equal(m.phase, PHASE.COMBAT, 'everyone submitted → combat starts at once');
+    assert.equal(m.phase, PHASE.CONFRONT, 'everyone submitted → the roster hold');
+    assert.equal(m.confrontStage, 'roster', 'the 悬赏名单 is announced before combat');
+    assert.ok(h.run(() => m.phase === PHASE.COMBAT, { maxSteps: 3e5 }), 'combat starts after the hold');
     // an intervention lands on ITS TARGET's wave only
     const hit = m.confrontFor(m.players.get(opp[0]));
     assert.ok(Array.isArray(hit) && hit.length === 1 && hit[0].picks.length === picks.length, "team 0's set lands on its own target");
@@ -700,17 +944,17 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
-  test('versus: the intervention share is 5 % at R_contest, +2 %/round, 15 % cap, 50 % on the 追猎 round (R13)', () => {
+  test('versus: the intervention share is 5 % at R_contest, +2 %/round, 15 % cap, 50 % on the 最终狩猎 (R13)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 81, fake: true }).start();
     const m = h.m;
-    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT, { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT, { maxSteps: 3e6 }), 'reached the 狩猎期');
     const start = m.contestStartRound;
     const ratioAt = (round) => { const keep = m.round; m.round = round; const v = m.confrontRatio(); m.round = keep; return v; };
     assert.equal(ratioAt(start), 0.05, 'the contest round replaces 5 %');
     assert.ok(Math.abs(ratioAt(start + 1) - 0.07) < 1e-9, '+2 % the round after');
     assert.ok(Math.abs(ratioAt(start + 2) - 0.09) < 1e-9, '+2 % again');
     assert.ok(Math.abs(ratioAt(start + 10) - 0.15) < 1e-9, 'capped at 15 %');
-    assert.equal(ratioAt(13), 0.5, 'R13 is the 追猎 round — a flat 50 %');
+    assert.equal(ratioAt(13), 0.5, 'R13 is the 最终狩猎 — a flat 50 %');
     // the share IS the budget's factor: budget = the wave value × the share × budgetMul (2), per player
     assert.equal(m.confrontBudget(), Math.round(m.confrontWaveValue() * m.confrontRatio() * 2));
     assert.equal(m.confrontHunt(), m.round === 13, 'the hunt flag follows the round');
@@ -720,7 +964,7 @@ describe('versus (2V2) match: team model', () => {
   test('versus: a submission may MIX 特训敌人 types (the budget is the only cap)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
     const m = h.m;
-    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
     assert.equal(m.confrontStage, 'monster', 'step 2 opened');
     const groups = m.confrontGroups();
@@ -740,7 +984,7 @@ describe('versus (2V2) match: team model', () => {
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
-  test('versus: the 悬赏期 payload passes the wire schema (every type tab, cross-type lists, big lists)', () => {
+  test('versus: the 狩猎期 payload passes the wire schema (every type tab, cross-type lists, big lists)', () => {
     const pick = { enemyKey: 'enemy_1000_gopro_2', gate: 'lower' };
     // every 特训敌人 tab, plus the null the client sends when no tab was opened
     for (const group of [1, 2, 3, 4, 5, 6, 7, null]) {
@@ -753,9 +997,12 @@ describe('versus (2V2) match: team model', () => {
     assert.ok(validateC2S({ t: 'g.confront', group: 17, position: 'mid', picks: [pick] }), 'group 17 is refused');
   });
 
-  test('co-op keeps the 6-card 机变 draft and no contest round', () => {    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
+  test('co-op keeps the 6-card 机变 draft and draws a 同盟狩猎 start round', () => {
+    const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 1, bots: 1, seed: 33, fake: true }).start();
     const m = h.m;
-    assert.equal(m.contestStartRound, null);
+    // 同盟狩猎: the co-op 狩猎期 start round is drawn like the 2V2 contest round (the opponent-based 对抗期 stays 2V2-only)
+    assert.ok([4, 5, 6].includes(m.contestStartRound), `co-op hunt start ${m.contestStartRound}`);
+    assert.equal(m.confrontActive(), false, 'co-op never opens the player-run 对抗期');
     let spCards = null;
     h.onBroadcast.push((msg) => {
       if (msg.t === 'm.public' && msg.phase === PHASE.SP_DRAFT && m.sp && Array.isArray(m.sp.cards) && spCards == null) spCards = m.sp.cards.length;
@@ -763,5 +1010,160 @@ describe('versus (2V2) match: team model', () => {
     h.autoHumans();
     h.drive(() => h.ended != null || spCards != null, { maxSteps: 3e6 });
     assert.ok(spCards == null || spCards > 3, `co-op 机变 cards ${spCards} should stay > 3`);
+  });
+});
+
+// ---- the settlement's 4:5 boss-time decision (user 2026-10-17) ------------------------------------------------------
+// score(team) = 4 × remain(R14)/limit(R14) + 5 × remain(R15)/limit(R15), a round a team never reached counting 0.
+// The winner: time score first, then the shared LP, then the original leader scoring (_versusDecide). The remainder is
+// recorded when a team's boss run ends (_noteBossTime), separately for R14 and R15.
+
+describe('versus settlement: the 4:5 boss-time decision', () => {
+  // a started versus match with hand-made pools / pools' teams / per-round time records (no boss fight needed)
+  const decideMatch = ({ times = {}, lp = [10, 20], pools = [{ hp: 50, maxHp: 100 }, { hp: 100, maxHp: 100 }] } = {}) => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 61, fake: true }).start();
+    const m = h.m;
+    m.teamLps = new Map([[0, lp[0]], [1, lp[1]]]);
+    m.bossPools = new Map(pools.map((p, i) => [i, { ...p }]));
+    m.bossTeamTimes = times;
+    return { h, m };
+  };
+
+  test('the formula: R14 counts 4, R15 counts 5, as SHARES; a missing / unplayed round is 0 and remain is clamped', async () => {
+    const { bossTimeScore, BOSS_TIME_WEIGHTS } = await import('../../server/match/results.js');
+    assert.deepEqual({ ...BOSS_TIME_WEIGHTS }, { boss: 4, hidden: 5 });
+    assert.equal(bossTimeScore({ r14: { remain: 120, limit: 120 }, r15: { remain: 60, limit: 120 } }).score, 6.5, '4 × 1 + 5 × 0.5');
+    assert.equal(bossTimeScore({ r14: { remain: 120, limit: 120 } }).max, 4, 'only the rounds in play carry weight');
+    assert.equal(bossTimeScore({ r14: { remain: 120, limit: 120 }, r15: { remain: 0, limit: 120 } }).pct, (100 * 4) / 9);
+    assert.equal(bossTimeScore({ r14: { remain: -5, limit: 120 }, r15: { remain: 999, limit: 120 } }).score, 5, 'clamped to [0, limit]');
+    assert.equal(bossTimeScore(null).score, 0);
+    assert.equal(bossTimeScore({ r14: { remain: 5, limit: 0 } }).max, 0, 'a round without a limit contributes nothing');
+  });
+
+  test('R14 lead but R15 behind: the 4:5 weights flip the winner (time first, LP second)', () => {
+    // team 0 leads R14 (full countdown) but lost R15's time; team 1 the reverse — and team 0 would win on the OLD rule
+    // (it holds the whole pool, more LP); the weighted time (6.5 vs 7) gives it to team 1
+    const { h, m } = decideMatch({
+      lp: [20, 10],
+      pools: [{ hp: 0, maxHp: 100 }, { hp: 50, maxHp: 100 }],
+      times: {
+        14: { 0: { remain: 120, limit: 120, elapsed: 0 }, 1: { remain: 60, limit: 120, elapsed: 60 } },
+        15: { 0: { remain: 60, limit: 120, elapsed: 60 }, 1: { remain: 120, limit: 120, elapsed: 0 } },
+      },
+    });
+    const out = m._versusDecide();
+    assert.equal(out.winnerTeam, 1, 'team 1: 4×0.5 + 5×1 = 7 beats 4×1 + 5×0.5 = 6.5');
+    assert.equal(out.timeTie, false);
+    assert.equal(out.teams[0].timeScore, 6.5);
+    assert.equal(out.teams[1].timeScore, 7);
+    assert.deepEqual(out.teams[1].time.r14, { remain: 60, limit: 120, reached: true });
+    assert.deepEqual(out.teams[1].time.r15, { remain: 120, limit: 120, reached: true });
+    assert.equal(out.teams[1].timePct, (100 * 7) / 9);
+    h.m.dispose();
+  });
+
+  test('a squad that never reached R15 counts 0 there; clearing R14 faster still wins on time', () => {
+    const { h, m } = decideMatch({
+      lp: [5, 40],
+      pools: [{ hp: 20, maxHp: 100 }, { hp: 90, maxHp: 100 }],
+      times: { 14: { 0: { remain: 120, limit: 120, elapsed: 0 }, 1: { remain: 60, limit: 120, elapsed: 60 } } },
+    });
+    const out = m._versusDecide();
+    assert.deepEqual(out.teams[1].time.r15, { remain: 0, limit: 120, reached: false }, '未打到的轮次按 0 计');
+    assert.equal(out.teams[0].timeScore, 4);
+    assert.equal(out.teams[1].timeScore, 2);
+    assert.equal(out.winnerTeam, 0, 'team 0 has less LP and a weaker pool, but the R14 time wins');
+    h.m.dispose();
+  });
+
+  test('time tie → the shared LP decides; a full tie → no winner and `timeTie` marks it', () => {
+    const equal = { 15: { 0: { remain: 60, limit: 120, elapsed: 60 }, 1: { remain: 60, limit: 120, elapsed: 60 } } };
+    const evenPools = [{ hp: 50, maxHp: 100 }, { hp: 50, maxHp: 100 }];
+    const { h, m } = decideMatch({ lp: [30, 20], pools: evenPools, times: equal });
+    const byLp = m._versusDecide();
+    assert.equal(byLp.winnerTeam, 0, 'equal time: the higher shared LP wins');
+    assert.equal(byLp.timeTie, true, 'and the settlement names 时间同分');
+    m.teamLps.set(1, 30);
+    const tied = m._versusDecide();
+    assert.equal(tied.timeTie, true);
+    assert.equal(tied.winnerTeam, null, 'time + LP + leader scoring all equal: a draw');
+    m.bossPools.set(0, { hp: 0, maxHp: 100 });
+    const onBoss = m._versusDecide();
+    assert.equal(onBoss.winnerTeam, 0, 'the last fallback is the original leader scoring');
+    assert.equal(onBoss.timeTie, true);
+    h.m.dispose();
+  });
+
+  test('_noteBossTime: the first ending wins, negative / overflowing elapsed is clamped, rounds are kept apart', () => {
+    const { h, m } = decideMatch();
+    m._noteBossTime(0, 14, 999999);
+    assert.deepEqual(m._teamTimeOf(0).time.r14, { remain: 0, limit: 120, reached: true }, 'never negative');
+    m._noteBossTime(0, 14, 0);
+    assert.equal(m._teamTimeOf(0).time.r14.remain, 0, 'a later record never overwrites the ending moment');
+    m._noteBossTime(1, 15, -5);
+    assert.equal(m._teamTimeOf(1).time.r15.remain, 120, 'a negative elapsed is an untouched countdown');
+    assert.equal(m._teamTimeOf(1).time.r14.reached, false, 'R14 and R15 are separate records');
+    h.m.dispose();
+  });
+
+  test('the result payload carries timeScore / timePct / per-round remain+limit / timeTie / the weights', async () => {
+    const { buildResult } = await import('../../server/match/results.js');
+    const { h, m } = decideMatch({
+      times: {
+        14: { 0: { remain: 120, limit: 120, elapsed: 0 }, 1: { remain: 60, limit: 120, elapsed: 60 } },
+        15: { 0: { remain: 120, limit: 120, elapsed: 0 }, 1: { remain: 60, limit: 120, elapsed: 60 } },
+      },
+    });
+    m.versusOutcome = m._versusDecide();
+    const res = buildResult(m, { victory: true, hiddenReached: true, hiddenCleared: false, reason: 'versus' });
+    assert.equal(res.versus.winnerTeam, 0, 'the time score decides');
+    assert.deepEqual(res.versus.timeWeights, { r14: 4, r15: 5 });
+    assert.equal(res.versus.timeTie, false);
+    const t0 = res.versus.teams[0];
+    assert.equal(t0.timeScore, 9);
+    assert.equal(t0.timePct, 100);
+    assert.deepEqual(t0.time.r14, { remain: 120, limit: 120, reached: true });
+    assert.deepEqual(t0.time.r15, { remain: 120, limit: 120, reached: true });
+    const t1 = res.versus.teams[1];
+    assert.equal(t1.timeScore, 4.5);
+    assert.deepEqual(t1.time.r15, { remain: 60, limit: 120, reached: true });
+    h.m.dispose();
+  });
+});
+
+// ---- the 2V2 隐秘核心 threshold (user 2026-10-17): the 2-player share of the co-op 1200 --------------------------------
+describe('versus: the 隐秘核心 threshold is the 2-player share (600 per squad)', () => {
+  const versusAt = (perPlayer) => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 73, fake: true }).start();
+    const m = h.m;
+    m.teamLps = new Map([[0, 30], [1, 30]]);
+    for (const ps of m.players.values()) ps.activatedLayers = () => perPlayer;
+    return { h, m };
+  };
+
+  test('550 layers per squad → no R15; 650 → R15 (the 4-player 1200 scaled by TEAM_SIZE / 4)', () => {
+    assert.equal(versusAt(275).m._bossChainEligible(15), false, '2 × 275 = 550 ≤ 600');
+    const high = versusAt(325);
+    assert.equal(high.m._bossChainEligible(15), true, '2 × 325 = 650 > 600');
+    high.h.m.dispose();
+  });
+
+  test('the LP bar is untouched, and co-op keeps the official 1200', () => {
+    const dry = versusAt(600); // 1200 layers per squad, but no LP
+    dry.m.teamLps.set(0, 1);
+    dry.m.teamLps.set(1, 1);
+    assert.equal(dry.m._bossChainEligible(15), false, 'team LP must stay above 1');
+    dry.h.m.dispose();
+    // co-op: hiddenEligible, not the versus branch
+    const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 73, fake: true }).start();
+    const m = h.m;
+    m.teamLp = 30;
+    m.hiddenLayerSum = 1200;
+    assert.equal(m._bossChainEligible(15), false, 'co-op: 1200 is not > 1200');
+    m.hiddenLayerSum = 1201;
+    assert.equal(m._bossChainEligible(15), true);
+    m.teamLp = 1;
+    assert.equal(m._bossChainEligible(15), false, 'co-op LP bar unchanged');
+    h.m.dispose();
   });
 });

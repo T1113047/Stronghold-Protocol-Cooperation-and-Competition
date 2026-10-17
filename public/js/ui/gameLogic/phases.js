@@ -65,9 +65,7 @@ export function phaseBanner(phase, pub, { alive = true, spectator = false } = {}
       return { title: t('联防阶段'), micro: 'JOINT DEFENSE', tone: 'orange', sub: helpers.length ? t('联防：{names}', { names: helpers }) : t('完美作战的博士迎战突破防线的敌人') };
     }
     case PHASE.FINAL_ASSAULT: return { title: t('最终攻势'), micro: 'FINAL ASSAULT', tone: 'red', sub: t('击败敌方领袖') };
-    case PHASE.HIDDEN_CORE: return pub && pub.thirdBoss
-      ? { title: t('终焉核心'), micro: 'FINAL CORE', tone: 'red', sub: t('强化归来的假想敌') }
-      : { title: t('隐秘核心'), micro: 'HIDDEN CORE', tone: 'red', sub: t('被源石侵蚀的假想敌') };
+    case PHASE.HIDDEN_CORE: return { title: t('隐秘核心'), micro: 'HIDDEN CORE', tone: 'red', sub: t('被源石侵蚀的假想敌') };
     case PHASE.SETTLE: return null;
     default: return null;
   }

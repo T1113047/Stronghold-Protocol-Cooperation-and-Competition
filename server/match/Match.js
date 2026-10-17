@@ -159,6 +159,9 @@
 //   intents.js       the g.* / b.* router, emotes, AI 托管, g.unitStats
 //   pause.js         the solo pause
 //   phases.js        INFO_CHECK, BAND_DRAFT (the strategy draft), BATTLE_CHECK, ROUND_START
+//   event.js         2V2 事件期 (EVENT): the three ordered periods (contestStartRound / +4 / R13), the four targets,
+//                    the per-sequence ally / monster odds and elite shares, the seeded draws, the no-repeat rule,
+//                    the AI / timeout picks and the per-player entry bookkeeping
 //   spDraft.js       SP_DRAFT (机变) and the rolls the meta effects ask for (bounties, item ids, pools)
 //   prep.js          PREP: its start, the AI seats' sliced preps, Ready, the deadline, its end
 //   combat.js        battle construction, COMBAT (both modes), the per-field results, then 联防 or SETTLE
@@ -172,7 +175,7 @@
 //   common.js        what the modules share (FLOW_TICKER_PRIORITY, DELAYS, BAND_TURN_SECONDS — re-exported here, OK,
 //                    fail, BOSS_CLOCK_MS)
 
-import { PHASE, modeIdFor } from '../../shared/constants.js';
+import { PHASE, COOP_HUNT, modeIdFor, eventRoundsFor } from '../../shared/constants.js';
 import { Battle } from '../sim/Battle.js';
 import { DataSource } from '../sim/simdata.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
@@ -191,6 +194,7 @@ import { MatchWatch } from './match/watch.js';
 import { MatchIntents } from './match/intents.js';
 import { MatchPause } from './match/pause.js';
 import { MatchPhases } from './match/phases.js';
+import { MatchEvent } from './match/event.js';
 import { MatchSetupVote } from './match/setupVote.js';
 import { MatchConfront } from './match/confront.js';
 import { MatchSpDraft } from './match/spDraft.js';
@@ -246,7 +250,7 @@ export class Match {
     this.onEndFn = opts.onEnd;
     this.data = opts.data && typeof opts.data === 'object' ? opts.data : {};
     /**
-     * [CHAT]/[CHATLOG] 局内聊天（移植自服务服）：`chatFilter` = 违禁词过滤器（server/chatFilter.js 的 filterChat，
+     * [CHAT]/[CHATLOG] 局内聊天：`chatFilter` = 违禁词过滤器（server/chatFilter.js 的 filterChat，
      * lobby 注入），`chatLog` = 本局对话记录（server/chatlog.js 的 createChatLog，lobby 建档、结束时封存）。
      * 两者缺席时聊天仍可用，只是不过滤 / 不落盘（单测与 solo 也走这条）。
      */
@@ -257,6 +261,12 @@ export class Match {
     this.gd = new GameData(this.data, this.modeId);
     if (!this.difficulty) this.difficulty = this.gd.difficulty;
     this.isSolo = this.mode === 'solo' || this.gd.isSolo;
+    /**
+     * 同盟狩猎 (COOP_HUNT, user 2026-10-17): a co-op room's 狩猎期 are run by the SYSTEM. Off for solo (no hunt) and
+     * versus (that mode runs its own 对抗期) and when COOP_HUNT.enabled is false. Engine-only `opts.coopHunt === false`
+     * keeps a test / tool on the old co-op flow.
+     */
+    this.coopHuntOn = this.mode === 'coop' && COOP_HUNT.enabled !== false && opts.coopHunt !== false;
     /** 「AI 队友最后选择」 (opts.aiPicksLast, GitHub #338): humans draft before AI seats (MatchPhases.humansFirst) */
     this.aiPicksLast = !this.isSolo && opts.aiPicksLast === true;
     this.ownsScheduler = !opts.scheduler;
@@ -309,14 +319,25 @@ export class Match {
     this.rngMeta = rng('meta');
     // 2V2 对抗期: the random drop of the opponent's originals (its own stream, so no other draw shifts)
     this.rngConfront = rng('confront');
+    // 同盟狩猎: the system's prey picks (one stream of its own; a co-op match is the only consumer)
+    this.rngCoopHunt = rng('coop-hunt');
+    // 2V2 事件期: the type / entry draws (its own stream too — golden scenarios never enter the event phase)
+    this.rngEvent = rng('event');
+    // the monster entry's own stream: independent of the players' target choices (EVENT_FOE_CARDS)
+    this.rngFoeEvent = rng('event-foe');
+    // the 强力属性 subset's stream: share / attribute / which units (EVENT_FOE_ELITES)
+    this.rngFoeElite = rng('event-elite');
 
     /**
-     * 2V2 ('versus'): the round the Competition starts — drawn once per match from R4/R5/R6 with the seeded rng
-     * (docs: 开发日志 §5.1). null in solo/coop. Exposed as m.public.contestStartRound.
+     * 狩猎期 start round: 2V2 draws R4/R5/R6 for its 对抗期; a co-op hunt draws the same way for its system-run 狩猎期
+     * (COOP_HUNT.startRounds). null in solo (no hunt at all). Exposed as m.public.contestStartRound.
      */
-    this.contestStartRound = this.isVersus
-      ? [4, 5, 6][Math.floor(rng('contest-start')() * 3)]
+    const huntStarts = this.coopHuntOn ? COOP_HUNT.startRounds : [4, 5, 6];
+    this.contestStartRound = this.isVersus || this.coopHuntOn
+      ? huntStarts[Math.floor(rng('contest-start')() * huntStarts.length)]
       : null;
+    /** 事件期 rounds: E1 = the hunt start, E2 = +4, E3 = R13 (eventRoundsFor; [] when the mode has no hunt). */
+    this.eventRounds = this.contestStartRound ? eventRoundsFor(this.contestStartRound) : [];
 
     /** @type {Map<string, PlayerState>} */
     this.players = new Map();
@@ -400,6 +421,22 @@ export class Match {
     /** 2V2: the 对抗期 submissions of the current round (Map<attacker playerId, sub>); `confrontSubs` collects, `confront` is applied. */
     this.confrontSubs = null;
     this.confront = null;
+    /** 'target' | 'monster' | 'roster' while a 狩猎期 is open (2V2 对抗期 or the coop 投放公示); null otherwise. */
+    this.confrontStage = null;
+    /** 同盟狩猎: true while a co-op 狩猎期's 5 s 投放公示 holds the round between PREP and COMBAT (m.public.confront). */
+    this.coopRoster = false;
+    /** 2V2 事件期 (server/match/match/event.js): the current ally period { round, index, picks: Map, done } and the archive. */
+    this.event = null;
+    this.eventHistory = [];
+    this.eventIndex = 0;
+    /** the match's used ally / monster entries (no card repeats while its kind has an unused one) */
+    this.eventUsedAlly = new Set();
+    this.eventUsedFoe = new Set();
+    /** this event period's monster entry { round, index, card } and the match's monster archive */
+    this.foeEvent = null;
+    this.eventFoeHistory = [];
+    /** the round whose event period already resolved (eventDue) */
+    this._eventDoneRound = 0;
     /** 2V2: one pending setup-reroll vote per team (Map<teamId, vote>); null in solo/coop (the scalar setupVote). */
     this.setupVotes = this.isVersus ? new Map() : null;
     /** 2V2: per-team reroll counter for the seeded draw (Map<teamId, n>); null in solo/coop. */
@@ -455,15 +492,13 @@ export class Match {
     this._finalEndings = null;
     this.hiddenLayerSum = 0;
     this.hiddenReached = false;
-    /** 2V2: the 第三关 (round 16, VERSUS_THIRD_BOSS) was entered. */
-    this.thirdBossReached = false;
     this.outcome = null;
     this._turnToken = 0;
   }
 }
 
 // the method modules, in this order (a name defined twice is an error, never a silent override)
-for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSetupVote, MatchConfront, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
+for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchEvent, MatchSetupVote, MatchConfront, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
   for (const key of Reflect.ownKeys(part.prototype)) {
     if (key === 'constructor') continue;
     if (Object.prototype.hasOwnProperty.call(Match.prototype, key)) throw new Error(`Match.${String(key)} is defined twice`);

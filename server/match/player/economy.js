@@ -168,13 +168,32 @@ export class PlayerEconomy {
     return OK;
   }
 
+  /**
+   * 2V2 事件期 集市换货: the refresh price reduction still available this round. `refreshUses` discounted refreshes a
+   * round (2, ×2 when given to self), then the normal price. 0 when the entry was never received.
+   */
+  eventRefreshDiscount() {
+    const e = this.eventMods || {};
+    const uses = Math.max(0, Math.trunc(Number(e.refreshUses) || 0));
+    const left = Math.max(0, uses - (Number(this.round && this.round.eventRefreshes) || 0));
+    return left > 0 ? Math.max(0, Math.trunc(Number(e.refreshDiscount) || 0)) : 0;
+  }
+
+  /** 集市换货's sell-price reduction applied to a chess's base sell price (never below 0). */
+  eventSellGain(base) {
+    const cut = Math.max(0, Math.trunc(Number(this.eventMods && this.eventMods.sellDiscount) || 0));
+    return Math.max(0, Math.trunc(Number(base) || 0) - cut);
+  }
+
   refresh() {
     const g = this._gate(); if (g) return g;
     const free = this.shop.freeRefreshes > 0;
-    const price = free ? 0 : this.gd.refreshPrice;
+    const discount = free ? 0 : this.eventRefreshDiscount();
+    const price = free ? 0 : Math.max(0, this.gd.refreshPrice - discount);
     if (!free && this.funds < price) return fail(ERR.NO_FUNDS);
     if (free) this.shop.freeRefreshes--;
     else this.spend(price);
+    if (!free && discount > 0) this.round.eventRefreshes = (Number(this.round.eventRefreshes) || 0) + 1;
     this.rollShop({ keepFrozen: false });
     this.stats.refreshes++;
     this.round.refreshes++;
@@ -226,7 +245,7 @@ export class PlayerEconomy {
     }
     piece.items = [];
     this.returnCopies(piece);
-    const ev = { piece, gain: this.gd.sellPrice(piece.id) };
+    const ev = { piece, gain: this.eventSellGain(this.gd.sellPrice(piece.id)) };
     this.m.dispatch(this, 'onSold', ev);
     const gain = Number.isFinite(ev.gain) ? Math.max(0, Math.trunc(ev.gain)) : 1;
     this.addFunds(gain, { reason: 'sell' });

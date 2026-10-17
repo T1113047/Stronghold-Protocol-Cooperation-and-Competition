@@ -4,7 +4,7 @@
 //   SP_REAL_E2E=1 node --test test/ui/real.e2e.test.js            # co-op (2 humans + AI) to round 4+, then a solo run
 //   SP_REAL_E2E=1 SP_REAL_ROUNDS=6 node --test test/ui/real.e2e.test.js
 //
-// Co-op: host creates a 同盟模拟 room (险境), adds an AI teammate; the guest joins through the ?room= invite link;
+// Co-op: host creates a 同盟狩猎 room (险境), adds an AI teammate; the guest joins through the ?room= invite link;
 // both ready, the host starts. Briefing ready → band draft (guest skips once, then picks a strategy nobody took —
 // 队友已选) → every prep round: take a merge reward if offered (two taps), buy from the shop (two taps: 确认购买), drag
 // hand pieces onto legal board tiles and choose a direction on the deploy wheel (g.move carries `dir`), sell a unit by
@@ -12,7 +12,7 @@
 // onto a unit, ready (mouse / keyboard) → 机变 picks → combat rendered by the Pixi engine with real Spine units (client-
 // side combat: no view switcher); once a human's own battle is over, a teammate row → 前往查看 shows that teammate's
 // running battle and 返回战场 goes back (research 09 §3.1) → … until combat of round SP_REAL_ROUNDS (default 4).
-// Solo: 独立模拟 (标准), free band pick, two rounds with shopping and deployment, then 放弃模拟 back to the lobby.
+// Solo: 独立狩猎 (标准), free band pick, two rounds with shopping and deployment, then 放弃模拟 back to the lobby.
 // Every page must finish with zero console errors, page errors, failed requests or HTTP errors.
 // Screenshots: test/e2e/out/real-*.png.
 
@@ -478,7 +478,7 @@ describe('real server + real browsers', { skip: !ENABLED && 'set SP_REAL_E2E=1 (
       // ---- lobby & room --------------------------------------------------------------------------------------------
       await host.open();
       await host.enter('凯尔希');
-      await host.click('.mode-card', '同盟模拟');
+      await host.click('.mode-card', '同盟狩猎');
       await host.click('.diff-card', '险境模拟');
       await host.click('.create-box button', '创建同盟');
       const room = (await host.waitFor((s) => !!s.room?.code, 'room created')).room;
@@ -665,14 +665,14 @@ describe('real server + real browsers', { skip: !ENABLED && 'set SP_REAL_E2E=1 (
     }
   });
 
-  test('solo: 独立模拟 through two rounds, then 放弃模拟 back to the lobby', { timeout: 10 * 60 * 1000 }, async () => {
+  test('solo: 独立狩猎 through two rounds, then 放弃模拟 back to the lobby', { timeout: 10 * 60 * 1000 }, async () => {
     const solo = new Client(puppeteer, base, 'solo');
     try {
       await solo.open();
       await solo.enter('杜宾');
-      await solo.click('.mode-card', '独立模拟');
+      await solo.click('.mode-card', '独立狩猎');
       await solo.click('.diff-card', '标准模拟');
-      await solo.click('.create-box button', '开始独立模拟');
+      await solo.click('.create-box button', '开始独立狩猎');
       await solo.waitFor((s) => !!s.room, 'solo room');
       if (!(await solo.st()).phase) await solo.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await solo.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);

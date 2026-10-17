@@ -20,7 +20,7 @@ import {
 } from '../../../shared/i18n.js';
 import { canonicalLang, computeChain, scriptOf } from '../../../shared/i18nPacks.js';
 import { PACKS_URL, PACK_INDEX_FILE, readPackIndex, langMetaOf } from '../../../shared/packs.js';
-import { DEV_BUILD } from '../../../shared/constants.js';
+import { DEV_BUILD, FORK_NAME } from '../../../shared/constants.js';
 import { loadPref, savePref } from '../store.js';
 import { data } from '../data.js';
 import { updateRotateHintPwaI18n } from './device.js';
@@ -151,8 +151,16 @@ function stripLangParam() {
 export const htmlLang = (code) => (code === DEFAULT_LANG ? 'zh-CN' : code);
 
 /**
+ * The tab title's English line. Every pack used to carry it after the name it translates (卫戍协议：盟约 · STRONGHOLD
+ * PROTOCOL), so a CJK title names the fork in its own language and then in Latin letters; a pack whose own name already
+ * reads in Latin letters shows that name alone.
+ */
+const TITLE_EN = 'STRONGHOLD PROTOCOL: HUNT SIMULATION';
+
+/**
  * <html lang>, data-lang, data-script (the title screen's layout: CJK or alphabetic, from the pack's title) and the tab
- * title follow the language.
+ * title follow the language. The title names THIS fork (shared/constants.js FORK_NAME, 「卫戍协议：狩猎模拟」) — the
+ * upstream 「卫戍协议：盟约」 belongs to the remake it is built on, not to the tab.
  */
 function applyDocument(lang) {
   const doc = globalThis.document;
@@ -160,7 +168,8 @@ function applyDocument(lang) {
   doc.documentElement.lang = htmlLang(lang);
   doc.documentElement.dataset.lang = lang;
   doc.documentElement.dataset.script = scriptOf(t('卫戍协议'));
-  doc.title = t('卫戍协议：盟约 · STRONGHOLD PROTOCOL');
+  const name = t(FORK_NAME);
+  doc.title = scriptOf(name) === 'cjk' ? `${name} · ${TITLE_EN}` : name;
   updateRotateHintPwaI18n(doc);
 }
 

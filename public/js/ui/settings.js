@@ -30,7 +30,7 @@ import { copyText } from './clipboard.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
-/** Settings store: { bgm, sfx, voice, voiceLang, voiceOverrides, muted, damageNumbers, officialDamageNumbers, ammoCount, quality, textSize, keys }. */
+/** Settings store: { bgm, sfx, voice, voiceLang, voiceOverrides, muted, damageNumbers, officialDamageNumbers, ammoCount, quality, textSize, pictureAuto, boardForce, unitsForce, keys }. */
 /** 按 GPU 自动降档: a software / integrated renderer starts at 画面质量「中」 instead of the 高 default (an iGPU cannot
  *  hold 高画质 + the 3D board); a player who ever chose a quality themselves always keeps that choice. */
 const savedSettings = loadPref('settings', null);
@@ -99,6 +99,11 @@ function Toggle({ label, micro, value, onChange }) {
 
 const QUALITY = [['high', N_('高')], ['medium', N_('中')], ['low', N_('低')]];
 /**
+ * [BOARDMODE] 棋盘样式：画面自动调节关掉后出现的「3D 棋盘 / 2D 棋盘（简化平面）」二选一（值见
+ * ui/gameLogic/settings.js BOARD_FORCES，默认 2D 简化平面）。2D 会整场切到 DOM 简化视图（ui/fallbackField.js）。
+ */
+const BOARD_MODES = [['3d', N_('3D 棋盘')], ['flat', N_('2D 棋盘（简化平面）')]];
+/**
  * [UNITMODELS] 角色模型：画面自动调节关掉后出现的「加载 / 不加载」二选一（值见 ui/gameLogic/settings.js UNIT_FORCES，
  * 默认不加载；不加载退回头像 + 稀有度菱形，不请求 Spine）。
  */
@@ -115,7 +120,7 @@ const TEXT_SCALES = [['sm', N_('小')], ['md', N_('中')], ['lg', N_('大')], ['
 const VOICE_LANG_NAMES = { cn: '中文', jp: '日本語' }; // i18n-ignore
 /** The rebindable shortcuts' names (msgids), by action. */
 const HOTKEY_NAMES = { refresh: N_('刷新商店'), freeze: N_('冻结 / 解冻商店'), levelUp: N_('升级调度中心'), retreat: N_('撤退选中干员'),
-  sell: N_('出售选中干员'), ready: N_('准备就绪 / 暂停（独立模拟）') };
+  sell: N_('出售选中干员'), ready: N_('准备就绪 / 暂停（独立狩猎）') };
 
 /**
  * 快捷键: each shortcut with its key. Click its key (or Enter / Space on it) and press the new one: Esc cancels (the
@@ -197,8 +202,8 @@ function HotkeySection({ keys, touchUi }) {
   </section>`;
 }
 
-/** Where a report goes: the upstream issue tracker (shown as text the player can select; a link may open nothing). */
-export const ISSUES_URL = 'https://github.com/sganggs/Stronghold-Protocol/issues';
+/** Where a report goes: this fork's issue tracker (shown as text the player can select; a link may open nothing). */
+export const ISSUES_URL = 'https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation/issues';
 
 /**
  * 问题反馈: copy the diagnostics of this page (diag.js) for a GitHub issue — the errors recorded since the page opened,
@@ -295,11 +300,18 @@ export function SettingsModal({ open, onClose }) {
             class=${s.quality === id ? 'is-on' : ''} onClick=${() => updateSettings({ quality: id })}>${t(label)}</button>`)}
         </div>
       </div>
-      <!-- [UNITMODELS] 画面自动调节开关；关掉后强制「角色模型 加载/不加载」（改完立即生效）。弱 GPU 默认不加载（同上「按 GPU 自动降档」）。 -->
+      <!-- [BOARDMODE]/[UNITMODELS] 画面自动调节开关；关掉后强制「棋盘样式 3D/2D」与「角色模型 加载/不加载」两组（改完立即生效） -->
       <${Toggle} label=${t('画面自动调节')} micro="AUTO PICTURE" value=${s.pictureAuto !== false}
         onChange=${(v) => updateSettings({ pictureAuto: v })} />
-      <p class="set-hint">${t('开启时按设备自动选择角色模型；关闭后可强制。')}</p>
+      <p class="set-hint">${t('开启时按设备自动选择棋盘与角色模型；关闭后可分别强制。')}</p>
       ${s.pictureAuto === false ? html`<div class="set-row">
+        <span class="set-row__label">${t('棋盘样式')}<${MicroLabel}>BOARD<//></span>
+        <div class="set-seg" role="radiogroup" aria-label=${t('棋盘样式')} data-testid="board-force">
+          ${BOARD_MODES.map(([id, label]) => html`<button key=${id} type="button" role="radio" aria-checked=${(s.boardForce || 'flat') === id ? 'true' : 'false'}
+            class=${(s.boardForce || 'flat') === id ? 'is-on' : ''} onClick=${() => updateSettings({ boardForce: id })}>${t(label)}</button>`)}
+        </div>
+      </div>
+      <div class="set-row">
         <span class="set-row__label">${t('角色模型')}<${MicroLabel}>MODELS<//></span>
         <div class="set-seg" role="radiogroup" aria-label=${t('角色模型')} data-testid="units-force">
           ${UNIT_MODELS.map(([id, label]) => html`<button key=${id} type="button" role="radio" aria-checked=${(s.unitsForce || 'off') === id ? 'true' : 'false'}

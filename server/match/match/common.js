@@ -14,7 +14,7 @@ export const fail = (error, detail) => (detail ? { error, detail } : { error });
 
 /**
  * Fixed presentation delays (real ms, × timerScale).
- * 本地补丁 [LATENCY]（从服务服移植 2026-10-17）：可用环境变量覆盖，降低过场停顿。
+ * [LATENCY]：可用环境变量覆盖，降低过场停顿。
  */
 const delay = (env, dflt) => { const v = Number(process.env[env]); return Number.isFinite(v) && v >= 0 ? v : dflt; };
 export const DELAYS = Object.freeze({

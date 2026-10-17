@@ -215,7 +215,7 @@ async function main() {
   const row = (state, label, detail = '') => { rows.push([state, label, detail]); if (state === 'err') bad = true; };
   const section = (title) => rows.push([null, title]);
 
-  console.log(c.bold('\n卫戍协议：盟约 · doctor') + c.dim(`  ${os.type()} ${os.release()} ${process.arch} · ${ROOT}`));
+  console.log(c.bold('\n卫戍协议：狩猎模拟 · doctor') + c.dim(`  ${os.type()} ${os.release()} ${process.arch} · ${ROOT}`));
 
   section('运行环境');
   const node = checkNode();

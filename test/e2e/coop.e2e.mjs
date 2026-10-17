@@ -6,7 +6,7 @@
 //   SP_E2E=1 node --test test/e2e/coop.e2e.mjs         # same through the test runner (skipped in `npm test` otherwise)
 //   SP_E2E_ONLY=facing|coop|solo|result  SP_E2E_ROUNDS=5  CHROME_PATH=…
 //
-// Co-op (host 1920×1080, guest 1280×720): title → 玩法说明 → lobby → create a 同盟模拟 room (险境) → add an AI → the
+// Co-op (host 1920×1080, guest 1280×720): title → 玩法说明 → lobby → create a 同盟狩猎 room (险境) → add an AI → the
 // guest joins through the ?room= invite link → ready → start → briefing (both ready) → band draft (the guest skips
 // once) → rounds 1..N: merge reward if offered, enemy drawer, emote (bubble seen by the teammate), level up (two taps),
 // buy an item, refresh (R), buy operators (two taps: 确认购买), drag hand → board (legal tiles lit) + choose a direction on
@@ -21,12 +21,12 @@
 // reconnects): the server takes the field over and the guest keeps watching it as a display replica; LP changes are
 // settled from the reported results.
 // Every step checks the DOM against the store (funds, round, LP, deploy counter, shop cards, team rows).
-// Facing (research 09 §1.2 / §5 / §6.5): a solo 独立模拟 on the real server exercising the official prep interactions
+// Facing (research 09 §1.2 / §5 / §6.5): a solo 独立狩猎 on the real server exercising the official prep interactions
 // one by one with screenshots test/e2e/out/facing-*.png — two-tap buy (确认购买) and upgrade (确认升级), place + choose a
 // direction on the wheel (swipe UP, live striped range, "拖回中心区域取消"), cancel by ✕ and by releasing in the centre
 // (the piece returns), re-orient in place, tap → underframe (撤退 / 出售 +N) + range, 撤退, tap-sell, item → 销毁 only,
 // long-press-free right-click detail, no drag-to-sell zone, touch (pointerType touch) placement through the wheel.
-// Solo: 独立模拟 (绝境) through round 3 (incl. the solo 机变 of round 3). Result: a solo run on a fast-timer server
+// Solo: 独立狩猎 (绝境) through round 3 (incl. the solo 机变 of round 3). Result: a solo run on a fast-timer server
 // (same engine, scaled timers) to RESULT, then 返回同盟.
 // Every page must finish with zero console errors, page errors, failed requests or HTTP errors.
 // Screenshots: test/e2e/out/{coop,solo,result}-*.png (…-720.png = the 1280×720 client).
@@ -967,9 +967,9 @@ describe('browser E2E against the real server', { skip: !ENABLED && 'needs Chrom
     try {
       await c.open();
       await c.enter('推进之王');
-      await c.click('.mode-card', '独立模拟');
+      await c.click('.mode-card', '独立狩猎');
       await c.click('.diff-card', '标准模拟');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor((s) => !!s.room, 'solo room');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await c.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);
@@ -1029,7 +1029,7 @@ describe('browser E2E against the real server', { skip: !ENABLED && 'needs Chrom
       await sleep(400);
       await host.shot('lobby');
       await openGuide(host, '.lobby-guide', 'guide-lobby');
-      await host.click('.mode-card', '同盟模拟');
+      await host.click('.mode-card', '同盟狩猎');
       await host.click('.diff-card', '险境模拟');
       await host.click('.create-box button', '创建同盟');
       const room = (await host.waitFor((s) => !!s.room?.code, 'room created')).room;
@@ -1263,16 +1263,16 @@ describe('browser E2E against the real server', { skip: !ENABLED && 'needs Chrom
     }
   });
 
-  test('solo: 独立模拟 (绝境) through round 3 incl. the solo 机变', { skip: !!ONLY && ONLY !== 'solo', timeout: 20 * 60 * 1000 }, async () => {
+  test('solo: 独立狩猎 (绝境) through round 3 incl. the solo 机变', { skip: !!ONLY && ONLY !== 'solo', timeout: 20 * 60 * 1000 }, async () => {
     const srv = await startRealServer();
     const solo = new Client(await pptr(), srv.base, 'solo', { prefix: 'solo' });
     const did = { dragShot: true, rewardShot: false };
     try {
       await solo.open();
       await solo.enter('杜宾');
-      await solo.click('.mode-card', '独立模拟');
+      await solo.click('.mode-card', '独立狩猎');
       await solo.click('.diff-card', '绝境模拟');
-      await solo.click('.create-box button', '开始独立模拟');
+      await solo.click('.create-box button', '开始独立狩猎');
       await solo.waitFor((s) => !!s.room, 'solo room');
       if (!(await solo.st()).phase) await solo.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await solo.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);
@@ -1332,9 +1332,9 @@ describe('browser E2E against the real server', { skip: !ENABLED && 'needs Chrom
     try {
       await c.open();
       await c.enter('煌');
-      await c.click('.mode-card', '独立模拟');
+      await c.click('.mode-card', '独立狩猎');
       await c.click('.diff-card', '标准模拟');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor((s) => !!s.room, 'solo room');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await c.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);

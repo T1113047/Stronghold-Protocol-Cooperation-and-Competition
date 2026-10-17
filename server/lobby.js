@@ -204,7 +204,7 @@ export class Room {
     /** @type {string | null} per-network limit key of whoever started the running match */
     this.matchKey = null;
     this.createdAt = now;
-    /** [MATCHMAKE] 本地补丁 server_patches/matchmake：房主是否把本房对外开放匹配（默认开启，房主可手动关闭） */
+    /** [MATCHMAKE] 房主是否把本房对外开放匹配（默认开启，房主可手动关闭） */
     this.matchmake = true;
     this.disposed = false;
   }
@@ -472,7 +472,7 @@ export class Lobby {
     return OK;
   }
 
-  // [MATCHMAKE] 快速匹配（移植自服务服 server_patches/matchmake）--------------------------------------
+  // [MATCHMAKE] 快速匹配 ----------------------------------------------------------------------------
   /**
    * room.matchmake { on } — the host opens/closes their own room to quick-match. Host only, lobby only (a running
    * match cannot change it), 非 solo 房（本 fork 的 2V2 versus 房同样可开放）。The flag is a room property: it survives
@@ -887,7 +887,7 @@ export class Lobby {
         send: (playerId, msg) => (ctx.live ? this.matchSend(room, ctx, playerId, msg) : false),
         broadcast: (msg) => { if (ctx.live) this.matchBroadcast(room, ctx, msg); },
         onEnd: (summary) => this.onMatchEnd(room, ctx, summary),
-        // [CHAT]/[CHATLOG]（移植自服务服）：违禁词过滤（服务端权威）+ 本局对话记录（结束时封存）
+        // [CHAT]/[CHATLOG]：违禁词过滤（服务端权威）+ 本局对话记录（结束时封存）
         chatFilter: filterChat,
         chatLog: ctx.chatLog,
       });

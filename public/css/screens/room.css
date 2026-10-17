@@ -286,6 +286,7 @@
   font-size: calc(.18 * var(--t));
   font-weight: 700;
   letter-spacing: .08em;
+  white-space: nowrap; /* the host's picker shows the FULL difficulty name (标准模拟 …), never a wrapped chip */
   transition: color var(--t-fast), background-color var(--t-med), box-shadow var(--t-med);
 }
 .dpick__opt:last-child { border-right: 0; }

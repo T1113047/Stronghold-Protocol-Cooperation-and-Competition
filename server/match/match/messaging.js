@@ -60,13 +60,11 @@ export class MatchMessaging {
 
   markPublic() { this._pubDirty = true; }
 
-  /** 2V2: the opponent is revealed from the Final Assault (R14+) on and at the settlement; hidden before. */
-  _publicRevealed() { return !this.isVersus || this.phase === 'RESULT' || this.round >= this.gd.bossRound; }
-
   /**
    * A team's public view (2V2, before the reveal): the OPPONENT is hidden — their player rows become stubs
    * (`hidden: true`), and their fields, per-team setup and 联防 entries are dropped. The full `base` view in solo/coop
-   * or after the reveal.
+   * or once the opponent is revealed (`Match#opponentRevealed` — R14 on, or the settlement). Spectator seats are never
+   * built a team view at all: `_maybeSendPublic` hands them the full `base`.
    */
   _teamPublicView(base, team) {
     // 2V2: the top-level disabled bonds / banned chess are the VIEWER'S team's (each team has its own 3 available
@@ -78,7 +76,7 @@ export class MatchMessaging {
       bannedChess: bans.banned.slice(),
     };
     const sp = this.isVersus && this.phase === 'SP_DRAFT' && this.sp ? { sp: this.spViewFor(team) } : null;
-    if (this._publicRevealed()) return { ...base, ...own, ...(sp || {}) };
+    if (this.opponentRevealed) return { ...base, ...own, ...(sp || {}) };
     const same = (pid) => this.teamIdOf(this.players.get(pid)) === team;
     const out = {
       ...base, ...own, ...(sp || {}),
@@ -106,9 +104,10 @@ export class MatchMessaging {
         picks: Object.fromEntries(Object.entries(out.draft.picks).filter(([pid]) => same(pid))),
         skipsLeft: Object.fromEntries(Object.entries(out.draft.skipsLeft || {}).filter(([pid]) => same(pid))) };
     }
-    if (out.confront && this.phase === 'CONFRONT') {
-      // 2V2 悬赏期: only the OWN team's targeting and submissions WHILE the phase runs — who the opponents aim at stays
-      // hidden. Once it closes (the battles are about to start) both teams are exposed: that is the 悬赏名单 popup.
+    if (out.confront && this.phase === 'CONFRONT' && this.confrontStage !== 'roster') {
+      // 2V2 狩猎期: only the OWN team's targeting and submissions WHILE the phase runs — who the opponents aim at stays
+      // hidden. The roster hold (confrontStage 'roster') is the reveal: both teams' lists are public there, exactly as
+      // the 悬赏名单 popup promises, so it must NOT be filtered.
       const keep = (pid) => this.teamIdOf(this.players.get(pid)) === team;
       const targets = {};
       for (const [pid, t] of Object.entries(out.confront.targets || {})) if (keep(pid)) targets[pid] = t;

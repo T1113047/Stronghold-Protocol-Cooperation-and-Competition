@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { APP_VERSION, DEV_BUILD, FORK_LABEL, FORK_NAME } from '../../shared/constants.js';
+import { APP_VERSION, DEV_BUILD, FORK_NAME, FORK_VERSION } from '../../shared/constants.js';
 import { limitKeyOf } from '../net.js';
 import { applyPendingUpdate } from '../update.js';
 import { ROOT } from './config.js';
@@ -63,10 +63,17 @@ export function isProcessEntry(metaUrl) {
   }
 }
 
+/**
+ * The version a player or a host reads: this fork's build label with the upstream release it is built on —
+ * `V0.0.1（0.2.6）` (shared/constants.js FORK_VERSION + APP_VERSION; the fork number first, the upstream baseline in
+ * parentheses). FORK_LABEL ('V0.0.1（0.2.6）') is the same pair in one token, used by the client screens.
+ */
+const VERSION_LABEL = `${FORK_VERSION}（${APP_VERSION}）`;
+
 /** Print the boot banner of a started server. @param {{ url: string, host: string, port: number }} srv */
 export function printBanner(srv) {
-  console.log(`\n  卫戍协议：盟约 · Stronghold Protocol: Alliance v${APP_VERSION}`);
-  console.log(`  ${FORK_LABEL} ${FORK_NAME} · Hunt Simulation (fork)`);
+  console.log(`\n  ${FORK_NAME} · Hunt Simulation ${VERSION_LABEL}`);
+  console.log(`  a fork of 卫戍协议：盟约 · Stronghold Protocol: Alliance v${APP_VERSION} (upstream baseline)`);
   if (DEV_BUILD) console.log('  ! 开发版（dev 分支）：不稳定，请勿用于公开服务器 · development build — unstable, not for public servers');
   console.log(`  Local:   ${srv.url}`);
   if (srv.host === '0.0.0.0' || srv.host === '::') {

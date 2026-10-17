@@ -8,7 +8,7 @@ import {
   setBattleSource, currentBattle, LOG_MAX, STACK_LINES, recordResourceEntry, trafficSummary, trafficLine, clearTraffic, installTrafficMeter,
   perfSnapshot, perfLine, isWeakGpu, gpuTier,
 } from '../public/js/diag.js';
-import { APP_VERSION } from '../shared/constants.js';
+import { APP_VERSION, FORK_VERSION } from '../shared/constants.js';
 
 const v8Error = (msg = 'boom') => {
   const e = new TypeError(msg);
@@ -91,8 +91,8 @@ describe('the report', () => {
       now: Date.UTC(2026, 9, 8, 12, 1, 0), pageStart: Date.UTC(2026, 9, 8, 11, 48, 30) });
     const lines = text.split('\n');
     assert.equal(lines[0], '```text');
-    assert.equal(lines[1], 'Stronghold-Protocol diagnostics');
-    assert.equal(lines[2], `version: ${APP_VERSION}`);
+    assert.equal(lines[1], 'Stronghold-Protocol-Hunt-Simulation diagnostics');
+    assert.equal(lines[2], `version: ${FORK_VERSION}（${APP_VERSION}）`);
     assert.equal(lines[3], 'time: 2026-10-08T12:01:00.000Z | page open 12m 30s');
     assert.ok(lines.includes('browser: Mozilla/5.0 Test'));
     assert.ok(lines.includes('gpu: ANGLE (Test GPU)'));

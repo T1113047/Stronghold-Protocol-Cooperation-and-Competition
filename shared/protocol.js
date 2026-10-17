@@ -1,7 +1,7 @@
 // Normative message catalogue (DESIGN §8). Used by server (validation) and client (building requests).
 // Every client→server message is `{ t, rid?, ...fields }`. Unknown `t` or invalid fields ⇒ ERR.BAD_MSG.
 
-import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, ROOM_MODES, EMOTES, GEO, CHAT_MAX_LEN } from './constants.js';
+import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, ROOM_MODES, EMOTES, GEO, CHAT_MAX_LEN, EVENT_TARGETS } from './constants.js';
 import { isDroppableChess } from './standIn.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
 import { cultivatedStats, isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT } from './potential.js';
@@ -26,6 +26,17 @@ const isMap = (v, max, key, val) => {
 };
 const isList = (v, max, item) => Array.isArray(v) && v.length <= max && v.every(item);
 
+// [ACCOUNT] Largest string a single client→server frame may carry (an opaque `enc` payload or a `json` blob). Kept
+// safely below the WebSocket frame limit (server/http/websocket.js WS_MAX_PAYLOAD = 1 MiB): a frame past the WS cap
+// is closed with 1009, which a client reads as a drop and reconnects into (an upload that can never finish — a login
+// loop). Every account frame is bounded by this single value so the two limits stay in step.
+export const MSG_STR_MAX = 900_000;
+/** Sum of the string fields of a list of { json?, enc? } items (used to bound one batched frame in total). */
+const itemsChars = (items) => (Array.isArray(items) ? items : []).reduce((n, it) => {
+  if (!it || typeof it !== 'object') return n;
+  return n + (typeof it.enc === 'string' ? it.enc.length : 0) + (typeof it.json === 'string' ? it.json.length : 0);
+}, 0);
+
 // ---- client-side combat (DESIGN §14): b.progress / b.result payloads -------------------------------------------
 
 /** Size limits of a b.result payload (the whole frame also obeys the 64 KB inbound limit). */
@@ -49,7 +60,7 @@ const isPerPlayer = (p) => isPlain(p) && isInt(p.killed, 0, 1e5) && isInt(p.tota
   && optional((x) => isInt(x, 0, 1e5))(p.resolved)
   && isList(p.leaked, RESULT_LIMITS.leaked, isLeak) && isBool(p.perfect)
   && isMap(p.layerGains, RESULT_LIMITS.layerGains, isId, (v) => isNum(v, 0, 1e4))
-  && isStat(p.coins) && isStat(p.damageDealt) && isStat(p.bossDamage) && isStat(p.healingDone) && isStat(p.deaths)
+  && isStat(p.coins) && isStat(p.bank) && isStat(p.damageDealt) && isStat(p.bossDamage) && isStat(p.healingDone) && isStat(p.deaths)
   && isList(p.unitsEnd, RESULT_LIMITS.unitsEnd, isUnitEnd)
   && (p.unitStats === undefined || isList(p.unitStats, RESULT_LIMITS.unitStats, isUnitStat));
 const isUnspawned = (u) => isPlain(u) && isId(u.enemyKey) && nullable(isId)(u.sourcePlayerId) && nullable((v) => isStr(v, 16))(u.tag)
@@ -379,8 +390,21 @@ const target = (v) => {
 export const C2S = {
   // session & lobby
   hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6),
-    noReplace: isBool, claimAt: (v) => isNum(v, 0, Number.MAX_SAFE_INTEGER), $optional: ['token', 'version', 'noReplace', 'claimAt'] },
+    // [ACCOUNT] long-lived account token (local patch): a valid one auto-logs-in and takes the account nickname
+    account: (v) => v == null || isStr(v, 64),
+    noReplace: isBool, claimAt: (v) => isNum(v, 0, Number.MAX_SAFE_INTEGER), $optional: ['token', 'version', 'account', 'noReplace', 'claimAt'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
+  // [ACCOUNT] QQ-bound account (server/account.js): ask for a bind code the player sends to the QQ group, save one
+  // local pref (its sp.pref.* JSON string) — encrypted (`enc`, AES-GCM) or plaintext (`json`, only with consent) — or
+  // log out. `account.load` fetches one stored pref; the reply is the S2C `account.pref`.
+  'account.requestBind': {},
+  'account.save': { key: (v) => isStr(v, 32), json: (v) => typeof v === 'string' && v.length <= MSG_STR_MAX, enc: (v) => typeof v === 'string' && v.length <= MSG_STR_MAX, plainOk: (v) => v == null || v === true, $optional: ['json', 'enc', 'plainOk'] },
+  // [ACCOUNT-V2] batched save: items = [{ key, json?, enc? }]; the whole frame (sum of the items' json/enc) is bound
+  // by MSG_STR_MAX like a single save.
+  'account.saveBatch': { items: (v) => Array.isArray(v) && v.length > 0 && v.length <= 32 && itemsChars(v) <= MSG_STR_MAX, plainOk: (v) => v == null || v === true, $optional: ['plainOk'] },
+  'account.load': { key: (v) => isStr(v, 32) },
+  'account.setName': { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0 },
+  'account.logout': {},
   'room.create': { mode: (v) => ROOM_MODES.includes(v), difficulty: (v) => DIFFICULTIES.includes(v) },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.leave': {},
@@ -413,7 +437,7 @@ export const C2S = {
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
   'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.removeSpectator': { playerId: isId },
-  // [MATCHMAKE] 快速匹配（移植自服务服 server_patches/matchmake）：
+  // [MATCHMAKE] 快速匹配：
   //   room.matchmake  { on }          房主开关本房是否对外开放匹配（非 solo 房、大厅内；room.state.matchmake 回显）
   //   room.quickmatch { difficulty }  加入一间同难度、已开放匹配、未开局且有座的房；没有则回 ROOM_NOT_FOUND
   'room.matchmake': { on: isBool },
@@ -442,13 +466,20 @@ export const C2S = {
   'g.reward': { idx: (v) => isInt(v, 0, 5) },
   'g.choice': { idx: (v) => isInt(v, 0, 5), choiceId: isId, $optional: ['choiceId'] },
   'g.ready': { ready: isBool },
-  // 2V2 悬赏期 (confront.js): the team's intervention — ONE 特训敌人 type tab (`group`, 1-based; the official types are
+  // 2V2 事件期 (EVENT_ROUNDS): this player gives one random entry to one target — self / mate / oppA / oppB. The server
+  // owns the target mapping, the no-repeat rule, the type odds and the seeded card draw (server/match/match/event.js);
+  // an illegal target is ERR.BAD_TARGET, a target already used this match ERR.ALREADY.
+  'g.event.pick': { target: (v) => EVENT_TARGETS.includes(v) },
+  // 2V2 狩猎期 (confront.js): the team's intervention — ONE 特训敌人 type tab (`group`, 1-based; the official types are
   // data-driven, 7 of them today, so the schema only bounds it loosely and the server clamps) and the placed monsters in
   // spawn order ({ enemyKey, gate }). The cap is the round's VALUE budget, not a count: the player may MIX TYPES, so the
   // list can hold monsters from several tabs (the pool is 120) — hence the generous list cap.
   'g.confront': { group: nullable((v) => isInt(v, 1, 16)), position: (v) => typeof v === 'string' && ['front', 'mid', 'back'].includes(v), picks: (v) => isList(v, 64, (p) => isPlain(p) && isId(p.enemyKey) && (p.gate === undefined || p.gate === 'upper' || p.gate === 'lower')) },
   // 2V2 对抗期 step 1: the opposing player this seat attacks this round (first come, first served inside the team)
   'g.confrontTarget': { targetPlayerId: isId },
+  // 商人「坎诺特」取款 (confront.js withdrawBounty): the gold the player wants out of their 赏金 account during prep.
+  // The server owns the rate / cost / per-round cap and refuses anything else (ERR.MERCHANT_CAP / ERR.MERCHANT_BANK).
+  'g.confront.withdraw': { gold: (v) => isInt(v, 1, 100000) },
   'g.emote': { id: (v) => EMOTES.includes(v) },
   // [CHAT] 局内文字聊天：清洗/截断/冷却/违禁词都在服务端（见 server/match/match/intents.js chat()）
   'g.chat': { text: (v) => isStr(v, CHAT_MAX_LEN) && v.trim().length > 0 },
@@ -487,8 +518,11 @@ export const C2S = {
 export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'room.state', 'room.closed',
+  // [ACCOUNT] account.bindCode { code, ttl } · account.bound { qq, nickname, token? } · account.data { qq, nickname,
+  // meta, salt, enc | prefs?, encUnavailable? } · account.pref { key, json } · account.logout { }
+  'account.bindCode', 'account.bound', 'account.data', 'account.logout', 'account.pref',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
-  // m.chat { playerId, name, text, seq, at } — 局内文字聊天广播（移植自服务服 server_patches/chat）
+  // m.chat { playerId, name, text, seq, at } — 局内文字聊天广播
   'm.chat',
   // [NOTICE] m.notice { text } — 服务器公告：广播给所有在线连接（大厅 / 房间 / 对局中）；POST /api/notify（仅回环）
   'm.notice',
@@ -496,6 +530,10 @@ export const S2C = [
   'm.layer',
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)
   'm.unitStats',
+  // 2V2 事件期: m.event — one resolved ally pick `{ round, index, playerId, target, targetId, card, key, kind, mag, auto }`
+  // or the period's monster draw `{ round, index, foe: { card, key, kind } }` (public: who gave whom / which entry;
+  // the full ally + foe history rides in m.public.event.ally / .foe)
+  'm.event',
   // client-side combat (DESIGN §14): b.start { battleId, fieldId, kind, spec, authoritative, startAt, serverNow, elapsed,
   // speed, watch? } · b.pool { hp, max, teamLp, acked: { [fieldId]: cumulative boss damage counted } } ·
   // b.end { battleId, fieldId, reason }

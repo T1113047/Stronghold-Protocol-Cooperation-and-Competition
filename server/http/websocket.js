@@ -12,8 +12,10 @@ import { Lobby } from '../lobby.js';
 import { splitUrl } from './common.js';
 import { netOptionsFrom, lobbyOptionsFrom } from './config.js';
 
-/** Inbound WebSocket frame limit (DESIGN §8). */
-export const WS_MAX_PAYLOAD = 64 * 1024;
+/** Inbound WebSocket frame limit (DESIGN §8). Must exceed every frame the C2S schema allows
+ *  (shared/protocol.js MSG_STR_MAX): an oversized frame is answered by closing the socket with 1009, which a client
+ *  reads as a drop and reconnects into — so a too-small cap turns one big account upload into a login loop. */
+export const WS_MAX_PAYLOAD = 1 << 20; // 1 MiB
 
 /**
  * permessage-deflate (RFC 7692) for the JSON text frames. A message from 1 KB up (m.public, m.private, b.start, welcome
@@ -50,15 +52,16 @@ export function narrowDeflateOffer(header) {
 /**
  * The session stack of one server.
  * @param {{ MatchClass?: Function, seedFn?: () => number, [option: string]: any }} opts startServer() options
- * @param {{ data: object, log: object }} deps the game data the lobby's matches use, the logger
+ * @param {{ data: object, log: object, accounts?: object|null }} deps the game data the lobby's matches use, the
+ *   logger, the account store (server/account.js; null in tests / when disabled)
  * @returns {{ registry: SessionRegistry, lobby: Lobby, network: Network }}
  */
-export function createSessionStack(opts, { data, log }) {
+export function createSessionStack(opts, { data, log, accounts = null }) {
   const netOptions = netOptionsFrom(opts);
   const registry = new SessionRegistry({ reconnectWindowMs: netOptions.reconnectWindowMs ?? NET_DEFAULTS.reconnectWindowMs });
   const lobbyOptions = lobbyOptionsFrom(opts);
   const lobby = new Lobby({ registry, log, MatchClass: opts.MatchClass, getData: () => data, seedFn: opts.seedFn, options: lobbyOptions });
-  const network = new Network({ registry, handler: lobby, log, options: netOptions });
+  const network = new Network({ registry, handler: lobby, log, options: netOptions, accounts }); // [ACCOUNT]
   return { registry, lobby, network };
 }
 

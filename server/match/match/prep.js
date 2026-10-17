@@ -34,7 +34,7 @@ export class MatchPrep {
   }
 
   /**
-   * 2V2 ('versus') development compensation (design 2026-10-16; 开发日志 §5.2a): from the drawn contest round, every
+   * 2V2 ('versus') development compensation (design 2026-10-16): from the drawn contest round, every
    * OTHER round every alive player gains a 小电话 (简易通讯机); a team whose SHARED HP pool (m.teamLps) drops below
    * VERSUS_LOW_LP gains a 寻呼模块 — ONCE per team in the whole match, the teams triggering independently (both may
    * take it, each only once). Non-versus untouched.
@@ -153,6 +153,9 @@ export class MatchPrep {
 
   endPrep() {
     if (this.phase !== PHASE.PREP) return;
+    // 同盟狩猎: the 投放公示 keeps the round in PREP after its end; a second endPrep (un-ready → ready again, or the
+    // deadline) must never re-run the prep or arm another hold.
+    if (this.confrontStage === 'roster') return;
     this.setDeadline(0);
     const alive = this.alivePlayers();
     for (const ps of alive) this.dispatch(ps, 'onPrepEnd', { round: this.round });
@@ -166,6 +169,8 @@ export class MatchPrep {
     } else if (this.confrontActive()) {
       // 2V2 对抗期: each team intervenes against the opponent's next battle before it starts
       this.enterConfront();
+    } else if (this.coopHuntActive() && this.enterCoopHuntRoster()) {
+      // 同盟狩猎: 5 s 投放公示 (CONFRONT_ROSTER_MS) before the battles start; finishCoopHuntRoster calls startCombat
     } else {
       this.startCombat();
     }

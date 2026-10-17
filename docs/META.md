@@ -89,7 +89,7 @@ legal from R14 into R15. The client mirrors it
 | ROUND_START / after combat / SETTLE | 2 / 1.5 / 3 (presentation delays, `Match.DELAYS`) |
 | bot action delay | 0.9 s (+0.35 s per seat) |
 
-A match with a single human seat at the start (独立模拟, or a 同盟 room started alone / with AI teammates only:
+A match with a single human seat at the start (独立狩猎, or a 同盟 room started alone / with AI teammates only:
 `Match.loneHuman` → `Match.soloUntimed`, user playtest #4 item 3) times nothing outside its battles: no INFO_CHECK /
 band draft / 机变 / PREP deadline, and BATTLE_CHECK / ROUND_START / SETTLE run silently (deadline 0); the co-op rules
 (draft order and skip, 6 机变 cards, 联防) stay.
@@ -231,7 +231,9 @@ The rest of this section is the legacy server-run mode
 `'n:<pid>'` keeps the viewer scouting that board and pushes `prepFieldMeta` again when it changes (GitHub #87) — during a battle phase an `'n:<pid>'` id must name a live field
 (`BAD_TARGET 'no such field'` otherwise, and the viewer keeps its stream). In the
 最终攻势 / 隐秘核心 a player fighting in a boss field may only watch its own field ("两名参与者会处于同一个战场，但无法查看
-另一组队友的战场情况" → `BAD_TARGET 'other group hidden'`); eliminated / departed players spectate any field.
+另一组队友的战场情况" → `BAD_TARGET 'other group hidden'`) — except a 2V2 match from the reveal on (R14+:
+`opponentRevealed(round)`, `Match#opponentRevealed`), and a spectator seat, which has no team and may watch any player /
+field from the start (`Match#isSpectator`); eliminated / departed players spectate any field.
 
 ### 1.5 AI player (bot.js)
 **Strategy** (`botPickBand`): weighted by starting LP among the offered bands (alone, 老鲤's withheld first-round funds

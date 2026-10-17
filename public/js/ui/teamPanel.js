@@ -9,6 +9,9 @@
 // In PHASE.PREP a double-click on a teammate's avatar opens their field (GitHub #131, the 「前往查看」 shortcut).
 // It does not open a field the teammate does not have, and it does not open one the click already opened.
 // Boss-prep phases (最终攻势 / 隐秘核心) are not PHASE.PREP, so they still use 「前往查看」.
+// 2V2 ('versus'): an opponent's row stays a `hidden: true` stub with a `?` avatar and a hint line (「R13 之后可以看到
+// 对面视角」) until the server publishes its real row from R14 on; then it is a normal, observable row — the client
+// carries no copy of the round rule (shared/constants.js opponentRevealed).
 // Live LP (user playtest #3 item 2): during a normal round's battle each row's tower shows lp − the loss that player's
 // leaks so far will cost (red, −N): the own row the top bar's live value (`self`, ui/hud.js liveLp), a teammate's row
 // m.public players[].pendingLp (server/match/match/views.js, ~1 Hz). 联防 (user playtest #6 item 7): a leaker's row adds the
@@ -127,6 +130,11 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
   useEffect(() => { setOpenPid(null); }, [phaseKey, watching, observe?.observing]);
   const players = sortedPlayers(pub);
   if (!players.length) return null;
+  // 2V2 ('versus'): only a versus row carries `team`; the opponent stays a stub (`hidden: true`) until the reveal.
+  // The hint line is drawn once, under the first hidden opponent row (both rows are stubs before R14).
+  const me = players.find((x) => x.playerId === myId) || null;
+  const versus = !!me && me.team != null;
+  const firstFoe = versus ? players.find((x) => x.hidden === true)?.playerId ?? null : null;
   // a boss round: the viewer's pair framed in green from the round's start (item 51 — the official bg_team_border,
   // tinted like the official green; a plain green ring without the local art)
   const team = teamFrameIds(pub, myId);
@@ -173,7 +181,8 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
       const lp = rowLp(p, pub, self ? selfLive : null, { uniteLocal, cap });
       const inTeam = team.has(p.playerId);
       // 2V2: the row carries its team (blue/red frame + the P badge in the same colour); a HIDDEN opponent row keeps
-      // its number and colour but shows '?' instead of an avatar (the client never learns who it is)
+      // its number and colour but shows '?' instead of an avatar (the client never learns who it is). From the R14
+      // reveal on the server sends the real row, so `foe` is false and the row is observable like a teammate's.
       const teamCls = p.team === 0 ? 'is-t0' : p.team === 1 ? 'is-t1' : null;
       const foe = p.hidden === true;
       return html`<div key=${p.playerId} class=${cx('team__row', self && 'is-self', inTeam && 'is-team', watched && 'is-watched', p.alive === false && 'is-dead', open && 'is-open', teamCls, foe && 'is-foe')}>
@@ -199,6 +208,7 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
             <//>
             ${watched && !self ? html`<span class="team__eye" title=${t('正在查看')}><${GIcon} name="eye" /></span>` : null}
           </div>
+          ${foe && p.playerId === firstFoe ? html`<span class="team__hint">${t('R13 之后可以看到对面视角')}</span>` : null}
           ${open ? html`<button type="button" class="btn btn--primary btn--sm team__ob"
             onClick=${() => { setOpenPid(null); onWatch(p); }}><span class="btn__label">${t('前往查看')}</span></button>` : null}
           ${back ? html`<button type="button" class="btn btn--secondary btn--sm team__back"

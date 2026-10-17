@@ -156,7 +156,13 @@ export class BattleDeploy {
           if (pp) pp.killedInTotal++;
         }
         if (killer) killer.stats.kills++;
-        if (unit.bounty && unit.bounty.coins > 0) this.addCoins(this._bountyPayee(unit, killer), unit.bounty.coins);
+        if (unit.bounty && unit.bounty.coins > 0) {
+          const payee = this._bountyPayee(unit, killer);
+          // 2V2 悬赏 (user 2026-10-17): a monster the OPPONENT PLACED pays its killer's 坎诺特 account, never gold; the
+          // official 悬赏 card bounties (no `bank` flag) keep paying gold.
+          if (unit.bounty.bank) this.addBank(payee, unit.bounty.coins);
+          else this.addCoins(payee, unit.bounty.coins);
+        }
       }
     }
     // the reason ('killed' | 'retreat' | 'expired' | …) lets the client keep the knock-down sound for real knock-outs

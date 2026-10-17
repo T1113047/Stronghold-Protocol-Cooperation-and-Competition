@@ -52,7 +52,7 @@ export class MatchSettle {
     } : null;
     const alive = this.alivePlayers();
     for (const ps of alive) {
-      const r = this.lastResults.get(ps.playerId) || { leaked: [], perfect: true, coins: 0, layerGains: {}, killed: 0, damageDealt: 0 };
+      const r = this.lastResults.get(ps.playerId) || { leaked: [], perfect: true, coins: 0, bank: 0, layerGains: {}, killed: 0, damageDealt: 0 };
       const counted = (r.leaked || []).filter((l) => l && l.counted !== false).length;
       const isLeaker = list.some((pl) => pl.leakers.includes(ps));
       const loss = uniteRan && isLeaker ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
@@ -69,25 +69,31 @@ export class MatchSettle {
       if (r.perfect !== false && counted === 0) ps.stats.perfectRounds++;
       // bounty coins (own battle + unite kills) are credited to the next prep
       let coins = Math.max(0, Math.trunc(Number(r.coins) || 0));
+      // 2V2 赏金: the bounties of the monsters the opponent PLACED never become gold — they go to 坎诺特's account and are
+      // only turned into funds by a withdrawal in prep (withdrawBounty). Carried across rounds with PlayerState.
+      let bank = Math.max(0, Math.trunc(Number(r.bank) || 0));
       // 2V2: merge the per-player entries of every 联防 battle this player ran (coop: the single one)
-      const up = { coins: 0, damageDealt: 0, killed: 0 };
+      const up = { coins: 0, bank: 0, damageDealt: 0, killed: 0 };
       let hasUp = false;
       for (const res of results) {
         const e = res && res.perPlayer && res.perPlayer[ps.playerId];
         if (!e) continue;
         hasUp = true;
         up.coins += Math.max(0, Math.trunc(Number(e.coins) || 0));
+        up.bank += Math.max(0, Math.trunc(Number(e.bank) || 0));
         up.damageDealt += Number(e.damageDealt) || 0;
         up.killed += Number(e.killed) || 0;
       }
       if (hasUp) {
         coins += up.coins;
+        bank += up.bank;
         ps.stats.dmgDealt += up.damageDealt;
         ps.stats.kills += up.killed;
       }
       // perfect-payout bounties (战术特训): own phase perfect
       for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
+      if (bank > 0) { ps.bountyBank += bank; ps.bountyEarned += bank; }
       for (const b of ps.bounties) b.roundsLeft--;
       ps.bounties = ps.bounties.filter((b) => b.roundsLeft > 0);
       // IN_BATTLE layer gains (normal battles only), at most the room left under BOND_LAYER_CAP (999, as the battle's

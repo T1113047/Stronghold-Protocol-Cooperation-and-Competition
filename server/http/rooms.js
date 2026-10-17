@@ -1,12 +1,12 @@
-// server/http/rooms.js — 运维查询接口（移植自服务服 server/http/rooms.js，本地补丁，不属上游包）。
-// [ROOMS-API] The room API the QQ bot plugin 「卫戍协议房间」 reads:
+// server/http/rooms.js — 运维查询接口（本 fork 自有功能，不属上游包）。
+// [ROOMS-API] The room API the local QQ bot reads:
 //
 //   GET  /api/rooms        a read-only snapshot, one entry per room. **Loopback only**: a request that arrived
 //                          through a tunnel or a reverse proxy (any forwarding header) is answered 404, exactly
 //                          like an unknown path — a room code is an admission key, so it must stay off the
 //                          internet.
 //   POST /api/rooms/reap   dispose dead rooms; every judgement (idle time, in-match, played-before) lives here,
-//                          not in the plugin.
+//                          not in the bot.
 //
 // The wiring lives in routes.js (before the static handler); the broadcast of POST /api/notify lands in
 // net.js (Network.broadcastNotice) and the frame in shared/protocol.js (`m.notice`).

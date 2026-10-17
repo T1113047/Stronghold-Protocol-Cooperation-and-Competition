@@ -121,6 +121,19 @@ test('validation: leaks marked counted:false are only accepted for enemies that 
   assert.deepEqual(forged, { ok: false, reason: 'uncounted leak' }, 'hiding leaks from the LP count');
   const tagged = buildBattleSpec({ ...spec, spawns: [{ enemyKey: plainKey, count: 1, time: 1, countInTotal: false }] });
   assert.ok(validateClientResult(tagged, raw([{ enemyKey: plainKey, counted: false }], true), { gd }).ok, 'a schedule entry that does not count');
+  // 同盟狩猎: the same key can be both a normal wave unit and a display-only prey. The exemption is per scheduled
+  // unit, so the normal unit cannot be hidden behind the prey's `counted:false`.
+  const mixed = buildBattleSpec({ ...spec, spawns: [
+    { enemyKey: plainKey, count: 1, time: 1 },
+    { enemyKey: plainKey, count: 1, time: 2, countInTotal: false },
+  ] });
+  const mixedRaw = (leaked) => ({ reason: 'timeout', time: 30, killed: 0, total: 2, perPlayer: { p: perPlayer({ total: 2, leaked, perfect: true }) }, errors: 0 });
+  assert.ok(validateClientResult(mixed, mixedRaw([{ enemyKey: plainKey, counted: false }]), { gd }).ok, 'the prey may leak uncounted');
+  assert.deepEqual(
+    validateClientResult(mixed, mixedRaw([{ enemyKey: plainKey, counted: false }, { enemyKey: plainKey, counted: false }]), { gd }),
+    { ok: false, reason: 'uncounted leak' },
+    'the normal wave unit cannot hide behind the prey key',
+  );
 });
 
 test('validation: IN_BATTLE layer gains only on bonds the lineup / band / effects / items name', () => {

@@ -406,7 +406,7 @@ LICENSE / NOTICE.md / THIRD-PARTY-NOTICES.md
 
 （没有 node\\ 这一层：本包不带便携版 Node，请自行安装 Node 22/24 LTS）`;
 
-  return `# 卫戍协议：盟约 · Windows 开箱即用包
+  return `# 卫戍协议：狩猎模拟 · Windows 开箱即用包
 
 解压后**双击 \`启动游戏.bat\`** 即可，素材与依赖都在包里，不需要再下载任何东西。
 ${nodeNeed}

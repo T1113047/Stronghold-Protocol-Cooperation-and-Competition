@@ -41,7 +41,7 @@
 //                 silent (deadline 0)
 // Checks never throw into the match: an exception inside a check is itself recorded as a violation.
 
-import { PHASE, VERSUS_THIRD_BOSS } from '../../shared/constants.js';
+import { PHASE } from '../../shared/constants.js';
 import { collectViolations } from './invariants.js';
 import { mergeTile, pieceDir, canPlace, placeClass } from './board.js';
 import { bossPoolHp } from './finalAssault.js';
@@ -149,8 +149,12 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
       check('round start', () => {
         const id = ps.playerId;
         const inc = incomeEv.get(ps);
-        const want = gd.income(r);
-        if (want !== Math.min(3 + r, 12) && !gd.economy.income) fail(`income(${r}) ${want}`);
+        const base = gd.income(r);
+        // 2V2 / 同盟狩猎 事件期: an economy entry (猎人佣金 +3 / 空手而归 −3 per round, self ×2) moves the income
+        // before the onIncome handlers see it (PlayerState.startRound), so the auditor reads the same field.
+        const eventGold = Math.trunc(Number(ps.eventMods && ps.eventMods.goldPerRound) || 0);
+        const want = Math.max(0, base + eventGold);
+        if (base !== Math.min(3 + r, 12) && !gd.economy.income) fail(`income(${r}) ${base}`);
         if (!inc) fail(`${id}: no onIncome dispatch`);
         else {
           if (inc.initial.income !== want || inc.initial.pending !== p0) fail(`${id}: onIncome started with ${inc.initial.income}+${inc.initial.pending}, expected ${want}+${p0}`);
@@ -493,10 +497,7 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
       m.fields.forEach((f, i) => { if (f.fieldId !== `b${i + 1}`) fail(`boss field id ${f.fieldId}`); });
       if (!hidden && m.teamLp !== lpSum) fail(`team LP ${m.teamLp} != Σ alive LP ${lpSum}`);
       if (hidden && m.teamLp !== teamLp0) fail(`hidden core changed team LP ${teamLp0} → ${m.teamLp}`);
-      const third = m.thirdBossRound != null && m.round === m.thirdBossRound;
-      const want = m.isVersus
-        ? bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length, third ? VERSUS_THIRD_BOSS.poolMul : 1)
-        : bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length);
+      const want = bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length);
       if (!m.bossPool || m.bossPool.maxHp !== want) fail(`boss pool ${m.bossPool && m.bossPool.maxHp} != ${want}`);
       if (hidden && !m._bossChainEligible(m.round)) fail('hidden core entered while not eligible');
       if (hidden && gd.difficulty === 'FUNNY') fail('hidden core on FUNNY');

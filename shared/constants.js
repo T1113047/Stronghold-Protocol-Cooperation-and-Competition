@@ -8,12 +8,12 @@ export const PROTOCOL_VERSION = 1;
 export const APP_VERSION = '0.2.6';
 /**
  * This fork's own build label: the 2V2 mode's version on top of the upstream release it is built from. The FIRST public
- * test build is `V0.0.1-0.2.6` (2V2 mode V0.0.1 on upstream 0.2.6). `APP_VERSION` itself stays the upstream release
+ * test build is `V0.0.1（0.2.6）` (2V2 mode V0.0.1 on upstream 0.2.6). `APP_VERSION` itself stays the upstream release
  * (test/version.test.js ties it to package.json / package-lock / CHANGELOG), so the fork carries its number beside it
  * (title screen, lobby, server banner). The name is an i18n msgid (public/i18n/*.json).
  */
 export const FORK_VERSION = 'V0.0.1';
-export const FORK_LABEL = `${FORK_VERSION}-${APP_VERSION}`;
+export const FORK_LABEL = `${FORK_VERSION}（${APP_VERSION}）`;
 export const FORK_NAME = N_('卫戍协议：狩猎模拟');
 /** A development build (the public `dev` branch): the title screen, the boot banner and the README say so, and
  * tools/package.mjs refuses to build a release zip from it without --allow-dev. */
@@ -47,7 +47,7 @@ export const TEAM_SIZE = 2;
 /** How many teams a 'versus' room has. */
 export const TEAMS = 2;
 /**
- * 2V2 development compensation (design 2026-10-16; 开发日志 §5.2a): from the drawn contest round, every OTHER round
+ * 2V2 development compensation (design 2026-10-16): from the drawn contest round, every OTHER round
  * each alive player gains a 小电话 (简易通讯机, a 2-coin item); a team whose total remaining LP drops below
  * VERSUS_LOW_LP additionally gains a 寻呼模块 that round (not bound to the every-other rule). Non-versus modes are
  * untouched.
@@ -65,66 +65,138 @@ export const VERSUS_LOW_LP = 21;
  */
 export const VERSUS_INFO_SECONDS = 45;
 /**
- * 悬赏期 tunables (2V2): the target-selection window (s; ends early once every alive player holds a target), the
- * insertion positions (share of the round's monster count: 25 / 50 / 75 %) and the budget multiplier — a player may place
- * monsters whose combined VALUE is at most `round's wave value × ratio × budgetMul` (confront.js confrontBudget), PER
- * PLAYER. There is no count cap: the budget (and the group's own size) bounds the placement. The groups are the OFFICIAL
- * 特训敌人 types (data/factions.json), NOT a constant here. Step 2 (定制) has no fixed length of its own: its window is
- * THIS round's prep time (`gd.prepTime`, untimed when the prep is) and ends as soon as every alive player has submitted.
+ * 狩猎期 悬赏名单 (roster) presentation hold, ms (user 2026-10-17, addendum): once every player has submitted (or the
+ * window ran out and the AI seats were filled in), the confrontation's roster — who placed what at whom, and the bounty
+ * each placement announces — stays on screen this long before the battles begin. The server owns the clock (the phase
+ * deadline / scheduler, never a bare setTimeout), so virtual time (goldens, tests) and real time agree. One line to tune.
  */
-export const VERSUS_CONFRONT = Object.freeze({
-  targetSeconds: 10,
+export const CONFRONT_ROSTER_MS = 5000;
+
+/**
+ * The 狩猎期 rhythm shared by BOTH hunt modes — 2V2 ('versus') and 同盟狩猎 (co-op, COOP_HUNT below): the ratio ramp
+ * (5 % +2 %/round, cap 15 %), the R13 最终狩猎 (50 %), the insertion positions / budget multiplier / pick cap, the kill
+ * bounty table and 坎诺特's withdrawal table. One table, so the two modes can never drift apart; a mode overrides a value
+ * by declaring it after the spread (as VERSUS_CONFRONT does for the 特性 pricing).
+ */
+const HUNT_RHYTHM = Object.freeze({
   /**
-   * The intervention's size — the share of the opponent's original wave a team may replace, and the same share of the
-   * wave value it may spend (budget = wave value × ratio × budgetMul, PER PLAYER). 5 % at the contest round, +2 %/round,
-   * capped at 15 %; the R13 追猎 round is the exception — a flat 50 %, the one round an intervention can gut a wave.
+   * The intervention's size — for 2V2, the share of the opponent's original wave a team may replace and the same share
+   * of the wave value it may spend (budget = wave value × ratio × budgetMul, PER PLAYER); for 同盟狩猎 it sizes the
+   * system's deployment budget only (the prey is INSERTED, so its budget is wave value × ratio with NO multiplier — the
+   * net addition equals the share, exactly like 2V2's replacement). 5 % at the contest round, +2 %/round, capped at
+   * 15 %; the R13 最终狩猎 round is the exception — a flat 50 %.
    */
   ratioBase: 0.05,
   ratioStep: 0.02,
   ratioMax: 0.15,
   huntRound: 13,
   huntRatio: 0.5,
+  positions: Object.freeze(['front', 'mid', 'back']),
+  /** 2V2 ONLY: its placement replaces originals, so the spendable value is ratio × 2. 同盟狩猎 inserts and uses ratio. */
+  budgetMul: 2,
+  /** 狩猎期 roster hold (ms) — CONFRONT_ROSTER_MS, one line to tune (2V2 名单 / coop 本回合投放公示). */
+  rosterMs: CONFRONT_ROSTER_MS,
   /**
    * The 特性 (trait) pricing of the value table: `traitStepScores[grade − 1]` is how many steps a monster's 特性 score
-   * is worth (grade 1 = ≈ a stat stick → 0, grade 3 = a game-changing mechanic → 2), and `traitShare` is the share of the
-   * WHOLE value table those steps must take up — confront.js confrontTraitStep turns it into the absolute per-step value
+   * is worth (grade 1 = ≈ a stat stick → 0, grade 3 = a game-changing mechanic → 2), and `traitShare` is the share of
+   * the WHOLE value table those steps must take up — confront.js confrontTraitStep turns it into the absolute per-step value
    * (`step = share/(1−share) × Σ stat value ÷ Σ steps` over the confront pool). The grades live in confrontTraits.js.
    */
   traitShare: 0.3,
   traitStepScores: Object.freeze([0, 1, 2]),
-  positions: Object.freeze(['front', 'mid', 'back']),
-  budgetMul: 2,
   /**
-   * 2V2 kill bounty: every monster the opponent PLACES pays its killer, sized from the value table in real time —
-   * `coins = round(value(enemy) / value(whole wave) × the round's income × killIncomeShare)`, min 1. With 1.0, clearing
-   * every monster a team sent in a round pays back at most ONE round of income (the share of the wave their budget can
-   * cover: ~20 % at the 10 % contest round, ~100 % at the 50 % cap) — i.e. the compensation tracks the extra threat.
-   * Raise it (1.5–2) for a softer game.
+   * Hunt kill bounty (final rule, user 2026-10-17). `huntIdx` = which bounty phase this is in the match (1-based,
+   * counted from the drawn contest round — NOT the absolute round):
+   *
+   *   huntIdx 1–4:  fixed economy — cap = bountyCaps[huntIdx − 1], payout = floor(cap × killed / total)
+   *   huntIdx 5+:   the live formula — payout = floor(Σ value(killed) / wave value × the round's income × killIncomeShare)
+   *   the R13 最终狩猎 (huntRound) is the ONE exception: a FIXED finalHuntBounty, scaled by the kill ratio —
+   *                 floor(25 × killed / total): full clear 25, half 12; the farm cannot beat 25 either.
+   *
+   * There is no per-monster minimum anywhere. `total` is the number of monsters PLACED AT THAT RECEIVER (never the
+   * wave's own monster count); a full clear pays the cap / formula, all leaked pays 0. The payout is credited per kill
+   * through the fractional accumulator (`confrontBountyPlan`), so the running total is exactly the floor above, nothing
+   * is lost to per-kill rounding, and sending 64 of the cheapest monsters cannot beat the formula.
    */
+  bountyCaps: Object.freeze([1, 1, 2, 2]),
+  /** The R13 最终狩猎's fixed bounty, scaled by the kill ratio: floor(finalHuntBounty × killed / total). */
+  finalHuntBounty: 25,
+  /** Share of a round's income the live formula (5th phase on) pays for the value a team actually threw. */
   killIncomeShare: 1,
+  /**
+   * Mirror of the protocol's `g.confront.picks` cap (shared/protocol.js, `isList(…, 64, …)`): a placement may hold at
+   * most this many monsters. The 狩猎期 UI counts down to it and the server refuses more (ERR.CONFRONT_COUNT).
+   */
+  maxPicks: 64,
+  /**
+   * 商人「坎诺特」(merchant, user 2026-10-17): the share of a withdrawal that becomes gold, by ABSOLUTE round —
+   * `[1, …, 8]` 20 %, R9 30 %, R10 35 %, R11 40 %, R12 45 %, R13 50 %, R14 55 %, R15 100 % (隐秘核心, 1:1). Every round
+   * after R15 keeps 100 %. The cost in bank is `gold / rate`, the FIRST withdrawal of a round rounded UP (ceil) and the
+   * later ones DOWN (floor); the counter resets every round.
+   */
+  merchantRates: Object.freeze([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 1]),
+  /** The gold a player may withdraw per round: 4 on every normal round, unlimited in the R15 隐秘核心 round. */
+  merchantRoundCap: 4,
+  merchantUncappedRound: 15,
 });
+
 /**
- * 2V2 第三关 boss — round 16 (design 2026-10-17, user): after the 隐秘核心 the SAME Hidden Core boss comes back in an
- * ENHANCED form, so the boss chain of a 2V2 NORMAL/HARD/ABYSS match is 最终攻势 (R14) → 隐秘核心 (R15) → 终焉核心 (R16).
- *
- * 2V2 only (solo / co-op keep the official two boss rounds) and only where a Hidden Core exists at all
- * (config hiddenCore.difficulties = NORMAL / HARD / ABYSS — 标准 FUNNY has no R15 and therefore no R16).
- *
- * The sizes are [ASSUMED] (no official source — the official mode ends at the Hidden Core):
- *   * `round`   — the round number itself (16);
- *   * `poolMul` — the leader's shared HP pool = its Hidden Core bloodPoint × this;
- *   * `atkMul` / `speedMul` / `hpMul` — extra multipliers on the round's scale for the boss field (the leader normally
- *     takes only ATK / speed from enemyScale and its HP from the pool — hpMul only reaches its parts / escorts);
- *   * `layerMul` — the R15 threshold (config hiddenCore.multi) × this, i.e. the price of admission to R16.
+ * 2V2 tunables: the target-selection window (s; ends early once every alive player holds a target), the shared rhythm
+ * above, the 特性 pricing and the roster hold. There is no count cap beyond `maxPicks`: the budget (and the group's own
+ * size) bounds the placement. The groups are the OFFICIAL 特训敌人 types (data/factions.json), NOT a constant here.
+ * Step 2 (定制) has no fixed length of its own: its window is THIS round's prep time (`gd.prepTime`, untimed when the
+ * prep is) and ends as soon as every alive player has submitted.
  */
-export const VERSUS_THIRD_BOSS = Object.freeze({
-  round: 16,
-  poolMul: 1.5,
-  atkMul: 1.25,
-  speedMul: 1.1,
-  hpMul: 1.3,
-  layerMul: 1.5,
+export const VERSUS_CONFRONT = Object.freeze({
+  targetSeconds: 10,
+  ...HUNT_RHYTHM,
 });
+
+/**
+ * 同盟狩猎 (co-op hunt, user 2026-10-17): a `mode_multi_*` (4-player co-op) room keeps the exact same co-op gameplay,
+ * but every 狩猎期 is filled by the SYSTEM instead of the players. The rhythm is the 2V2 one (HUNT_RHYTHM: the drawn
+ * start round R4/R5/R6, 5 % +2 %/round, cap 15 %, R13 最终狩猎 50 %), the monsters come from the official 特训敌人 types
+ * within the round's budget (= wave value × ratio; the prey is INSERTED, not replacing, so the net addition is the ratio
+ * itself), and they are INSERTED into the shared wave (every player meets the same prey). Killing one banks its bounty
+ * at 坎诺特 (never gold), like a 2V2 placement. The 事件期 keeps its three periods with only `self` / `mate` targets (no
+ * opponent in co-op). `enabled` is the one switch: false leaves co-op exactly as it was before.
+ */
+export const COOP_HUNT = Object.freeze({
+  enabled: true,
+  /** The 狩猎期 start round is drawn from these (the 2V2 contest draw). */
+  startRounds: Object.freeze([4, 5, 6]),
+  ...HUNT_RHYTHM,
+  /** The 事件期 targets of a co-op hunt (no `oppA` / `oppB` — there is no opposing team). */
+  targets: Object.freeze(['self', 'mate']),
+});
+
+/**
+ * 商人「坎诺特」: the share of a withdrawal that becomes gold in an absolute round (the hunt table's merchantRates —
+ * R8 and before 20 %, R9 30 %, then +5 %/round, R15 隐秘核心 100 %). `round` below 1 clamps to the first step, past the
+ * end to the last one. `table` selects the mode's table (default VERSUS_CONFRONT; COOP_HUNT carries the same numbers).
+ */
+export const merchantRateFor = (round, table = VERSUS_CONFRONT) => {
+  const rates = table.merchantRates;
+  const r = Math.max(1, Math.min(rates.length, Math.floor(Number(round) || 0)));
+  return rates[r - 1];
+};
+
+/** The gold a player may withdraw from the merchant in an absolute round: the table's merchantRoundCap per round,
+ *  unlimited (Infinity) in its merchantUncappedRound (R15 隐秘核心). */
+export const merchantCapFor = (round, table = VERSUS_CONFRONT) =>
+  (Math.floor(Number(round) || 0) === table.merchantUncappedRound ? Infinity : table.merchantRoundCap);
+
+/**
+ * 2V2: whether the OPPONENT's side is open to a viewer in the given absolute round — from the round AFTER the R13
+ * 最终狩猎 (`VERSUS_CONFRONT.huntRound`): the R14 最终攻势 and the R15 隐秘核心, the endgame where the two teams fight
+ * their own boss in the open. This is the ONE place the reveal round lives (user 2026-10-17: "R13 之后可以看到对面视角"):
+ * the match getter `Match#opponentRevealed` (server/match/match/infra.js) and the client's view helpers
+ * (public/js/battle/observe.js, public/js/ui/gameLogic/watch.js) all read this function. Spectator seats are never
+ * subject to it (they see everyone from the start: Match#isSpectator); solo/co-op have no opponent at all.
+ * @param {number} round absolute round (m.public.round)
+ * @returns {boolean}
+ */
+export const opponentRevealed = (round) => Math.floor(Number(round) || 0) > VERSUS_CONFRONT.huntRound;
 /**
  * The team a seat plays for in a 'versus' room: seats 0,1 → team 0; seats 2,3 → team 1 (TEAMS teams of TEAM_SIZE).
  * Non-versus rooms keep the flat, team-less seat model (null).
@@ -133,12 +205,191 @@ export const VERSUS_THIRD_BOSS = Object.freeze({
  */
 export const teamOfSeat = (seat) => Math.floor(seat / TEAM_SIZE) % TEAMS;
 
+/**
+ * 2V2 事件期 (类肉鸽词条, design 2026-10-17): three event periods per match, aligned with the 狩猎期 rhythm:
+ *   E1 = the drawn contest round (contestStartRound: R4 / R5 / R6),
+ *   E2 = E1 + EVENT_SECOND_OFFSET (4 rounds; R8 / R9 / R10),
+ *   E3 = EVENT_FINAL_ROUND (R13, the 最终狩猎);
+ * none of them collides with the R14/R15 boss rounds. Each period runs after ROUND_START and before that round's
+ * 机变 / 休整期, so its entries are in force when the players deploy. Each event draws TWO entries:
+ *   1. the ALLY entry: each player gives ONE to ONE target (对面 A / 对面 B / 队友 / 自己); a target cannot be chosen
+ *      twice by the same player in one match (3 events cover 3 of the 4 targets). The TYPE odds move with the sequence
+ *      (EVENT_SEQUENCE: E1 friendly, E2 neutral, E3 debuff-heavy) and the entry is then drawn from EVENT_CARDS;
+ *   2. the MONSTER entry: drawn once per event, independent of the target choices (its own seeded stream), with its own
+ *      per-sequence odds and 强力属性 share range (EVENT_SEQUENCE), applied to that round's wave — enemy mods only,
+ *      never a player's mods, never a bounty amount.
+ * The entries are pure data (no display text: the UI slice adds the i18n names); `ev` is the AI's heuristic value only
+ * (server/match/match/event.js eventEvFor — it is not a rule).
+ */
+/** The last event period: R13, the 最终狩猎 (a normal hunt round, never a boss round). */
+export const EVENT_FINAL_ROUND = 13;
+/** E1 → E2 distance in rounds. */
+export const EVENT_SECOND_OFFSET = 4;
+/**
+ * The three event rounds of a match, from the drawn contest round: [contestStartRound, +4, 13]. A versus match always
+ * has a contestStartRound (R4/R5/R6); a non-versus match has no event period at all (the caller passes null → []).
+ * @param {number|null} contestStartRound
+ * @returns {number[]}
+ */
+export const eventRoundsFor = (contestStartRound) => {
+  const first = Math.max(1, Math.min(EVENT_FINAL_ROUND, Math.trunc(Number(contestStartRound) || 0)));
+  if (!contestStartRound || !first) return [];
+  const second = Math.max(first + 1, Math.min(EVENT_FINAL_ROUND - 1, first + EVENT_SECOND_OFFSET));
+  return [...new Set([first, second, EVENT_FINAL_ROUND])].sort((a, b) => a - b);
+};
+/** The four target keys of `g.event.pick { target }`. */
+export const EVENT_TARGETS = Object.freeze(['self', 'mate', 'oppA', 'oppB']);
+/** A self-targeted entry's magnitude multiplier (all numeric values in the entry, refresh uses included). */
+export const EVENT_SELF_MUL = 2;
+/** The event phase's selection window in seconds (a timed-out seat is auto-picked by EV: botEventTarget). */
+export const EVENT_PICK_SECONDS = 20;
+/**
+ * The three sequence rows — the single source of the per-order odds and elite share ranges. The ally odds apply to the
+ * ally channel as a whole (the target decides WHO receives it; "增" is good for the target), moving from friendly E1 to
+ * debuff-heavy E3. The monster odds are from OUR side (favor = weakens the enemies). `eliteShares` are the two values
+ * the 强力属性 share is drawn from in that period.
+ */
+export const EVENT_SEQUENCE = Object.freeze([
+  Object.freeze({
+    index: 1,
+    allyOdds: Object.freeze({ down: 15, mid: 45, up: 40 }),
+    foeOdds: Object.freeze({ favor: 35, mid: 40, unfavor: 25 }),
+    eliteShares: Object.freeze([0.10, 0.15]),
+  }),
+  Object.freeze({
+    index: 2,
+    allyOdds: Object.freeze({ down: 30, mid: 40, up: 30 }),
+    foeOdds: Object.freeze({ favor: 25, mid: 40, unfavor: 35 }),
+    eliteShares: Object.freeze([0.15, 0.20]),
+  }),
+  Object.freeze({
+    index: 3,
+    allyOdds: Object.freeze({ down: 45, mid: 30, up: 25 }),
+    foeOdds: Object.freeze({ favor: 20, mid: 35, unfavor: 45 }),
+    eliteShares: Object.freeze([0.20, 0.25]),
+  }),
+]);
+/** E2's neutral ally row (the match always reads EVENT_SEQUENCE; kept as the documented baseline for tools/tests). */
+export const EVENT_ODDS = EVENT_SEQUENCE[1].allyOdds;
+/** E2's neutral monster row (same note). */
+export const EVENT_FOE_ODDS = EVENT_SEQUENCE[1].foeOdds;
+/** E2's elite share range (same note). */
+export const EVENT_FOE_ELITE_SHARES = EVENT_SEQUENCE[1].eliteShares;
+/**
+ * The 24 ally entries, in four classes (output / survival / sp / economy). The SP class replaced the removed range
+ * class (射程 removal, user 2026-10-17): no entry carries `range` / `rangeExtend` / attack-distance data any more — the
+ * battle side only uses existing engine mods.
+ *
+ * Class / entry (name is the comment; the UI slice maps the `key` to its i18n msgid). Magnitudes were scaled ×1.5
+ * (user 2026-10-17, "方案 A 只 ×1.5"): percentages keep two decimals (half-percents round to the integer percent the
+ * owner listed), flat points scale, fixed coins +2 → +3; the discrete values (SP cost ±1, deploy +1, the market's
+ * refresh/sell integers) stay as they are. "给自己" still multiplies the FINAL magnitudes by 2.
+ *   output    磨刃 atkPct +20% · 追风 aspd +18 · 破甲 defIgnorePct 22% · 钝口 atkPct −9% · 重弩 atkPct +20% / aspd −18 ·
+ *             连击 aspd +27 / atkPct −15%
+ *   survival  猎人披挂 hpPct +38% · 营地篝火 regenPct 9%/s · 铁衣 defPct +22% · 血痕 dmgTaken +12% · 轻装远行 hpPct +38% /
+ *             atkPct −11% · 负甲 defPct +30% / moveMul 0.85 · 陷足 enemySpeed +22%
+ *   sp        蓄势 spRecoveryMul 1.15 · 静息 spRecoveryFlat 0.15 · 轻省 spCostFlat −1 · 滞涩 spRecoveryMul 0.85 ·
+ *             换息 spRecoveryMul 1.22 / spCostFlat +1 · 回环 spRecoveryFlat 0.15 / spCostFlat +1
+ *   economy   猎人佣金 +3 金/回合 · 赏金嗅觉 投放怪赏金 +3/次 · 轻捷 上场人数 +1 · 空手而归 −3 金/回合 ·
+ *             集市换货 刷新费 −1（每回合 2 次）/ 出售价 −1
+ * Ratios are stored as plain percentages in this DATA table (a compact summary, not the battle rule). The battle
+ * applies the event entries through the **环境buff乘区 / environment buff bucket**:
+ *   ① every source multiplies once: `stat = base × Π(1 + p_i)` — two +20 % entries are 1.20 × 1.20 = 1.44;
+ *   ② flat values (ASPD / SP recovery / SP cost) are highest priority: they are added to the panel first and are
+ *      never scaled by the bucket;
+ *   ③ the bucket is event-only: it never mixes with the additive pool of bonds / equipment / skills / 机变.
+ * Flat points for aspd / spRecoveryFlat / spCostFlat, economy in fixed coins. `ev` = the AI heuristic (up > 0,
+ * down < 0, mid ≈ 0), scaled with the continuous magnitudes (the unchanged discrete entries keep their ev).
+ */
+export const EVENT_CARDS = Object.freeze([
+  // ---- output ---------------------------------------------------------------------------------------------------
+  Object.freeze({ id: 1, key: 'whetstone', class: 'output', kind: 'up', atkPct: 0.20, ev: 15 }),        // 磨刃
+  Object.freeze({ id: 2, key: 'tailwind', class: 'output', kind: 'up', aspd: 18, ev: 12 }),              // 追风
+  Object.freeze({ id: 3, key: 'armor_break', class: 'output', kind: 'up', defIgnorePct: 0.22, ev: 12 }),  // 破甲
+  Object.freeze({ id: 4, key: 'blunted', class: 'output', kind: 'down', atkPct: -0.09, ev: -12 }),       // 钝口
+  Object.freeze({ id: 5, key: 'heavy_crossbow', class: 'output', kind: 'mid', atkPct: 0.20, aspd: -18, ev: 0 }), // 重弩
+  Object.freeze({ id: 6, key: 'rapid_volley', class: 'output', kind: 'mid', aspd: 27, atkPct: -0.15, ev: 1.5 }),   // 连击
+  // ---- survival -------------------------------------------------------------------------------------------------
+  Object.freeze({ id: 7, key: 'hunter_cloak', class: 'survival', kind: 'up', hpPct: 0.38, ev: 18 }),    // 猎人披挂
+  Object.freeze({ id: 8, key: 'campfire', class: 'survival', kind: 'up', regenPct: 0.09, ev: 21 }),      // 营地篝火
+  Object.freeze({ id: 9, key: 'iron_hide', class: 'survival', kind: 'up', defPct: 0.22, ev: 12 }),       // 铁衣
+  Object.freeze({ id: 10, key: 'bloodstain', class: 'survival', kind: 'down', dmgTaken: 0.12, ev: -15 }), // 血痕
+  Object.freeze({ id: 11, key: 'light_travel', class: 'survival', kind: 'mid', hpPct: 0.38, atkPct: -0.11, ev: 3 }), // 轻装远行
+  Object.freeze({ id: 12, key: 'burden_armor', class: 'survival', kind: 'mid', defPct: 0.30, moveMul: 0.85, ev: 1.5 }), // 负甲
+  Object.freeze({ id: 13, key: 'mired', class: 'survival', kind: 'down', enemySpeed: 0.22, ev: -10.5 }),   // 陷足
+  // ---- sp (技力; all engine-native mods) -------------------------------------------------------------------------
+  Object.freeze({ id: 14, key: 'build_up', class: 'sp', kind: 'up', spRecoveryMul: 1.15, ev: 12 }),        // 蓄势
+  Object.freeze({ id: 15, key: 'stillness', class: 'sp', kind: 'up', spRecoveryFlat: 0.15, ev: 10.5 }),      // 静息
+  Object.freeze({ id: 16, key: 'frugal', class: 'sp', kind: 'up', spCostFlat: -1, ev: 9 }),              // 轻省
+  Object.freeze({ id: 17, key: 'stagnant', class: 'sp', kind: 'down', spRecoveryMul: 0.85, ev: -12 }),     // 滞涩
+  Object.freeze({ id: 18, key: 'breath_swap', class: 'sp', kind: 'mid', spRecoveryMul: 1.22, spCostFlat: 1, ev: 1.5 }), // 换息
+  Object.freeze({ id: 19, key: 'cycle', class: 'sp', kind: 'mid', spRecoveryFlat: 0.15, spCostFlat: 1, ev: 0 }),      // 回环
+  // ---- economy / mechanism --------------------------------------------------------------------------------------
+  Object.freeze({ id: 20, key: 'hunter_commission', class: 'economy', kind: 'up', goldPerRound: 3, ev: 15 }), // 猎人佣金
+  Object.freeze({ id: 21, key: 'bounty_scent', class: 'economy', kind: 'up', bountyGold: 3, ev: 9 }),    // 赏金嗅觉
+  Object.freeze({ id: 22, key: 'nimble', class: 'economy', kind: 'up', deploy: 1, ev: 9 }),              // 轻捷
+  Object.freeze({ id: 23, key: 'empty_handed', class: 'economy', kind: 'down', goldPerRound: -3, ev: -13.5 }), // 空手而归
+  Object.freeze({ id: 24, key: 'market_swap', class: 'economy', kind: 'mid', refreshDiscount: 1, refreshUses: 2, sellDiscount: 1, ev: 1 }), // 集市换货
+]);
+
+/**
+ * The 12 monster entries, four classes × three (one favourable to us = weakens the enemies, one neutral exchange, one
+ * unfavourable = strengthens them). One is drawn per event on its own seeded stream, independent of the target choices,
+ * and merged into THAT round's normal wave (`Match.foeWaveSpawns`): hpMul / atkMul / defMul / speedMul are the engine's
+ * spawn mods, `countAdd` adds to every spawn run's count (clamped to ≥ 1). A monster entry never enters a player's mods
+ * and never changes a bounty (the 赏金 stays the placement's own coins). Magnitudes are ×1.5 (user 2026-10-17):
+ *   攻击  锈刃 atkMul 0.85 · 换骨 atkMul 1.15 / hpMul 0.85 · 獠牙 atkMul 1.15
+ *   生存  创口 hpMul 0.82 · 坚壳 defMul 1.22 / speedMul 0.78 · 厚皮 hpMul 1.18
+ *   速度  迟缓 speedMul 0.78 · 盘踞 speedMul 0.7 / hpMul 1.18 · 疾行 speedMul 1.22
+ *   数量  稀疏 countAdd −1 · 替换 countAdd −1 / hpMul 1.3 · 增援 countAdd +1
+ * `ev` is from OUR side (+ favourable, − unfavourable). The per-sequence odds live in EVENT_SEQUENCE (E2 = 25 / 40 / 35,
+ * expectation −0.10; E1 +0.10; E3 −0.25): the monster channel is a gentle sequence-driven difficulty ramp.
+ */
+export const EVENT_FOE_CARDS = Object.freeze([
+  // ---- attack ---------------------------------------------------------------------------------------------------
+  Object.freeze({ id: 1, key: 'rusted_blade', class: 'attack', kind: 'favor', atkMul: 0.85, ev: 1 }),      // 锈刃
+  Object.freeze({ id: 2, key: 'bone_swap', class: 'attack', kind: 'mid', atkMul: 1.15, hpMul: 0.85, ev: 0 }), // 换骨
+  Object.freeze({ id: 3, key: 'fangs', class: 'attack', kind: 'unfavor', atkMul: 1.15, ev: -1 }),          // 獠牙
+  // ---- survival -------------------------------------------------------------------------------------------------
+  Object.freeze({ id: 4, key: 'wound', class: 'survival', kind: 'favor', hpMul: 0.82, ev: 1 }),           // 创口
+  Object.freeze({ id: 5, key: 'hard_shell', class: 'survival', kind: 'mid', defMul: 1.22, speedMul: 0.78, ev: 0 }), // 坚壳
+  Object.freeze({ id: 6, key: 'thick_hide', class: 'survival', kind: 'unfavor', hpMul: 1.18, ev: -1 }),   // 厚皮
+  // ---- speed ----------------------------------------------------------------------------------------------------
+  Object.freeze({ id: 7, key: 'sluggish', class: 'speed', kind: 'favor', speedMul: 0.78, ev: 1 }),        // 迟缓
+  Object.freeze({ id: 8, key: 'coiled', class: 'speed', kind: 'mid', speedMul: 0.7, hpMul: 1.18, ev: 0 }), // 盘踞
+  Object.freeze({ id: 9, key: 'swift', class: 'speed', kind: 'unfavor', speedMul: 1.22, ev: -1 }),        // 疾行
+  // ---- count / wave ---------------------------------------------------------------------------------------------
+  Object.freeze({ id: 10, key: 'sparse', class: 'count', kind: 'favor', countAdd: -1, ev: 1 }),           // 稀疏
+  Object.freeze({ id: 11, key: 'replace', class: 'count', kind: 'mid', countAdd: -1, hpMul: 1.3, ev: 0 }), // 替换
+  Object.freeze({ id: 12, key: 'reinforce', class: 'count', kind: 'unfavor', countAdd: 1, ev: -1 }),       // 增援
+]);
+
+/**
+ * 强力属性子集 (user 2026-10-17, tier 2): every event ALSO marks a share of that round's enemies as 强力 — the normal
+ * wave AND the 赏金怪 (tag 'bounty'); the share range moves with the sequence (EVENT_SEQUENCE.eliteShares:
+ * E1 10–15 %, E2 15–20 %, E3 20–25 %). One attribute is drawn per event (1 of these 4), and the marked units get its
+ * multiplier ON TOP of the monster card's own mods. The bounty amount (`bounty.coins`) is never recalculated.
+ *   獠牙 fangs      attack +25 %  (atkMul 1.25)
+ *   厚皮 thick_hide health +30 %  (hpMul 1.30)
+ *   坚壳 hard_shell armor  +25 %  (defMul 1.25)
+ *   疾行 swift      move   +20 %  (speedMul 1.20)
+ * The count is max(1, round(share × the wave's monster count, 赏金怪 included)).
+ */
+export const EVENT_FOE_ELITES = Object.freeze([
+  Object.freeze({ key: 'fangs', atkMul: 1.25 }),
+  Object.freeze({ key: 'thick_hide', hpMul: 1.30 }),
+  Object.freeze({ key: 'hard_shell', defMul: 1.25 }),
+  Object.freeze({ key: 'swift', speedMul: 1.20 }),
+]);
+
 export const PHASE = Object.freeze({
   LOBBY: 'LOBBY',
   INFO_CHECK: 'INFO_CHECK',
   BAND_DRAFT: 'BAND_DRAFT',
   BATTLE_CHECK: 'BATTLE_CHECK',
   ROUND_START: 'ROUND_START',
+  // 2V2 事件期 (see eventRoundsFor): resolves after ROUND_START, before SP_DRAFT / PREP
+  EVENT: 'EVENT',
   SP_DRAFT: 'SP_DRAFT',
   PREP: 'PREP',
   // 2V2 ('versus'): the 对抗期 — from the drawn contest round, after each side's prep, each team submits one intervention
@@ -154,7 +405,8 @@ export const PHASE = Object.freeze({
 
 export const PHASE_NAMES = {
   LOBBY: N_('等待中'), INFO_CHECK: N_('确认本局信息'), BAND_DRAFT: N_('选择策略'), BATTLE_CHECK: N_('协议启动'),
-  ROUND_START: N_('回合开始'), SP_DRAFT: N_('机变阶段'), PREP: N_('休整期'), CONFRONT: N_('悬赏期'), COMBAT: N_('作战中'), UNITE: N_('联防阶段'),
+  // 事件期's display name lands with the UI slice; ASCII here so no i18n msgid is added by the server-only slice
+  ROUND_START: N_('回合开始'), EVENT: 'EVENT', SP_DRAFT: N_('机变阶段'), PREP: N_('休整期'), CONFRONT: N_('狩猎期'), COMBAT: N_('作战中'), UNITE: N_('联防阶段'),
   SETTLE: N_('结算'), FINAL_ASSAULT: N_('最终攻势'), HIDDEN_CORE: N_('隐秘核心'), RESULT: N_('模拟结束'),
 };
 
@@ -255,6 +507,10 @@ export const ERR = Object.freeze({
   TEMP_NOT_EMPTY: 'TEMP_NOT_EMPTY',
   ELIMINATED: 'ELIMINATED',
   SPECTATOR: 'SPECTATOR',         // a spectator seat only watches (MAX_SPECTATORS)
+  CONFRONT_BUDGET: 'CONFRONT_BUDGET', // 狩猎期: the placement's total VALUE is over this round's budget
+  CONFRONT_COUNT: 'CONFRONT_COUNT',   // 狩猎期: the placement holds more monsters than VERSUS_CONFRONT.maxPicks
+  MERCHANT_CAP: 'MERCHANT_CAP',       // 商人: this round's withdrawal cap is reached
+  MERCHANT_BANK: 'MERCHANT_BANK',     // 商人: not enough 赏金 in the bank for that withdrawal
   INTERNAL: 'INTERNAL',
 });
 
@@ -266,6 +522,8 @@ export const ERR_TEXT = {
   BAD_TILE: N_('无法部署在该位置'), BAD_TARGET: N_('无效的目标'), SOLD_OUT: N_('已售出'), MAX_LEVEL: N_('调度中心已达最高等级'),
   NOT_YOUR_TURN: N_('尚未轮到你'), ALREADY: N_('已完成该操作'), TEMP_NOT_EMPTY: N_('临时整备区不为空'), ELIMINATED: N_('你已被淘汰'),
   SPECTATOR: N_('观战中无法进行该操作'), INTERNAL: N_('服务器内部错误'),
+  CONFRONT_BUDGET: N_('投放的怪物总价值超出本回合预算'), CONFRONT_COUNT: N_('投放数量超出本回合上限'),
+  MERCHANT_CAP: N_('本回合的取款已达上限'), MERCHANT_BANK: N_('赏金不足'),
 };
 
 // ---- Emotes (交流, research 09 §4) -----------------------------------------------------------------------------
@@ -349,7 +607,7 @@ export const emoteArtGroup = (id) => { const e = emoteInfo(id); return e ? `emot
 export const emoteArtPath = (id) => { const e = emoteInfo(id); return e ? `/assets/local/emoticon/${e.dir}/${e.picId}.png` : null; };
 export const EMOTE_COOLDOWN_MS = 1000; // activity_table autoChessData.constData.chatCD (s)
 export const EMOTE_BUBBLE_MS = 3000;   // constData.chatTime (s): how long a bubble stays up
-// 局内文字聊天（移植自服务服 server_patches/chat + chatlog）：
+// 局内文字聊天：
 //   CHAT_MAX_LEN 单条上限（官方聊天 80 字）· CHAT_COOLDOWN_MS 发送冷却 · 服务器还要 trim + 去控制字符。
 export const CHAT_MAX_LEN = 80;
 export const CHAT_COOLDOWN_MS = 2000;

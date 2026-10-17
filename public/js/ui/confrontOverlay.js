@@ -13,7 +13,9 @@ import { html, Button, Icon, MicroLabel, Countdown } from '../ui/components.js';
 import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl, factionIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
+import { toast } from '../ui/toasts.js';
 import { t, N_ } from '../../../shared/i18n.js';
+import { VERSUS_CONFRONT } from '../../../shared/constants.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 // module-level, so the labels are msgids (N_) and translated where they are shown (t(label))
@@ -24,6 +26,16 @@ const POSITIONS = [['front', N_('靠前')], ['mid', N_('靠中')], ['back', N_('
  */
 const typeLabel = (name) => String(name || '').replace(t('特训敌人·'), '');
 /**
+ * The localized name / description of a 特训敌人 type group. The server sends the raw game data text (`g.name` /
+ * `g.desc`, always Chinese), so the client maps the group's `id` through the localized game data (data/i18n — the same
+ * source the enemy drawer and the 机变 overlay read) and keeps the sent text as the fallback (the Chinese source locale,
+ * or before the overlays have loaded).
+ */
+const groupName = (gd, g) => (g && gd.factions?.types?.[g.id]?.name) || (g && g.name) || '';
+const groupDesc = (gd, g) => (g && gd.factions?.types?.[g.id]?.desc) || (g && g.desc) || '';
+/** The localized name of one monster row (`gd.enemy`), the server's Chinese name as the fallback. */
+const enemyName = (gd, key, sent) => (gd.enemy(key)?.name) || sent || key;
+/**
  * The squad this browser last submitted (module-level: the overlay unmounts between rounds, the page does not). The
  * 沿用上轮 button refits these kinds to the CURRENT round's budget — values and the groups' membership move per round.
  */
@@ -32,12 +44,20 @@ let lastSquad = null;
 /** P1 / P2 … of a player row (the seat number) — how the panel tells hidden opponents apart. */
 const pNo = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '');
 
-/** A small enemy chip: icon + name + value (used in the group cards and the placement panel). */
-function EnemyChip({ m, rec, count, onAdd, disabled }) {
-  return html`<button type="button" class=${cx('cchip', disabled && 'is-disabled')} disabled=${disabled} onClick=${() => onAdd && onAdd(rec)}
-      title=${`${rec.name}（${rec.value}）`}>
+/** A small enemy chip: icon + name + value (used in the group cards and the placement panel).
+ *  `blocked` = the monster does not fit the remaining budget: greyed and marked `aria-disabled`, and a tap only shows
+ *  the hint — never a request the server would refuse (user's "防止无效请求" rule). `disabled` is the hard state (the
+ *  step is over): the button is natively disabled. */
+function EnemyChip({ m, rec, count, onAdd, disabled, blocked, hint }) {
+  const gd = useGameData();
+  const name = enemyName(gd, rec.key, rec.name);
+  const off = !!disabled || !!blocked;
+  return html`<button type="button" class=${cx('cchip', off && 'is-disabled')} disabled=${disabled}
+      aria-disabled=${off ? 'true' : 'false'} data-testid="confront-chip"
+      onClick=${() => { if (blocked && !disabled) hint && hint(rec); else onAdd && onAdd(rec); }}
+      title=${`${name}（${rec.value}）`}>
     <span class="cchip__icon"><${Img} src=${enemyIconUrl(m, rec.key)} fallback=${html`<${GIcon} name="target" />`} /></span>
-    <span class="cchip__name">${rec.name}</span>
+    <span class="cchip__name">${name}</span>
     <span class="cchip__val num">${rec.value}</span>
     ${count ? html`<span class="cchip__count num">×${count}</span>` : null}
   </button>`;
@@ -73,7 +93,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const sel = group != null && groups[group - 1] ? groups[group - 1].rows || [] : [];
   // step 2: the placement cap is this seat's VALUE budget — no count limit, only Σ value ≤ budget
   const budget = Math.max(0, Number(conf.budget) || 0);
-  // the share of the opponent's wave this round's intervention replaces (and spends) — 5→15 %, 50 % on the 追猎 round
+  // the share of the opponent's wave this round's intervention replaces (and spends) — 5→15 %, 50 % on the 最终狩猎 round
   const pct = Math.round((Number(conf.ratio) || 0) * 100);
   const valOf = (key) => (rowByKey.get(key) || {}).value || 0;
   /** The greedy fill (most expensive that fits) of `rows` up to the budget — the same walk the AI uses. */
@@ -95,7 +115,22 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const spent = picks.reduce((s, p) => s + valOf(p.enemyKey), 0);
   const remaining = Math.max(0, budget - spent);
   const fits = (rec) => !busy && rec.value <= remaining;
-  const add = (rec) => { if (fits(rec)) setPicks((p) => [...p, { enemyKey: rec.key, gate: 'lower' }]); };
+  const overBudget = (rec) => rec.value > remaining;
+  // 本回合还能放 n 只 (user 2026-10-17): the remaining value ÷ the CURRENT type's cheapest monster, recomputed on every
+  // render — switching the type tab or placing/removing a monster updates it at once. Bounded by the protocol's picks
+  // cap too, so the panel never invites a request the server would refuse (ERR.CONFRONT_COUNT).
+  const poolRows = sel.length ? sel : allRows;
+  const cheapest = poolRows.reduce((lo, r) => Math.min(lo, Number(r.value) || 0), Infinity);
+  const byValue = Number.isFinite(cheapest) && cheapest > 0 ? Math.floor(remaining / cheapest) : 0;
+  const maxPicks = Math.max(1, Number(conf.maxPicks) || VERSUS_CONFRONT.maxPicks);
+  const canPlace = Math.max(0, Math.min(byValue, maxPicks - picks.length));
+  /** A tap on a greyed (unaffordable) monster: a light hint, never a submit/place. */
+  const notEnough = () => toast(t('剩余价值不足，放不下这只怪物'), 'warn');
+  const add = (rec) => {
+    if (overBudget(rec)) return notEnough();
+    if (!fits(rec)) return;
+    setPicks((p) => [...p, { enemyKey: rec.key, gate: 'lower' }]);
+  };
   const remove = (i) => setPicks((p) => p.filter((_, k) => k !== i));
   // 队列交互: a placed monster defaults to 下路 — TAP it to switch the gate, PRESS AND HOLD it to drag it in the order.
   // (The up/down buttons and the per-row gate buttons are gone: both actions live on the row itself.)
@@ -193,12 +228,12 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     onConfirm(group, position, picks);
   };
 
-  return html`<div class="spov confov" role="dialog" aria-label=${t('悬赏期')}>
+  return html`<div class="spov confov" role="dialog" aria-label=${t('狩猎期')}>
     <div class="spov__veil" aria-hidden="true"></div>
     <div class="spov__inner">
       <header class="spov__head">
         <div class="spov__titles">
-          <${MicroLabel} tone="mint">BOUNTY PHASE // ${t('悬赏期')}</${MicroLabel}>
+          <${MicroLabel} tone="mint">HUNTING PHASE // ${t('狩猎期')}</${MicroLabel}>
           ${stage === 'target'
             ? html`<h2 class="spov__title">${t('选择你要针对的对手')}
                 <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 对手以 ? 显示，只看编号', { r: conf.round })}</span></h2>`
@@ -209,7 +244,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
             : (submitted ? t('你已提交，等待其他玩家') : t('点怪加入；可切换类型继续添加（不限数量，只限总价值）'))}</p>
         </div>
         <div class="spov__turn">
-          ${conf.hunt ? html`<span class="spov__turntxt">${t('追猎模式')}</span>` : null}
+          ${conf.hunt ? html`<span class="spov__turntxt is-final">${t('最终狩猎')}</span>` : null}
           <span class="spov__turntxt t-dim">${t('本轮替换 {pct}%', { pct })}</span>
           ${Number(pub?.deadline) > 0 ? html`<${Countdown} deadline=${pub.deadline} size="sm" />` : null}
           ${stage === 'monster'
@@ -224,16 +259,21 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
         </div>
       </header>
 
+      ${stage === 'monster' ? html`<p class="confov__remain" data-testid="confront-remain">
+        <b class="num">${t('本回合还能放 {n} 只', { n: canPlace })}</b>
+        <span class="num t-dim">${t('（剩余价值 {left} / {budget}）', { left: remaining, budget })}</span>
+      </p>` : null}
+
       ${stage === 'target' ? html`<div class="confov__targets">
         <div class="confov__foes">
           ${foes.map((f) => html`<button key=${f.playerId} type="button" class=${cx('conffoe', `conffoe--${f.team === 0 ? 'blue' : 'red'}`, myTarget === f.playerId && 'is-sel')}
             disabled=${!!myTarget || busy} onClick=${() => onTarget(f.playerId)}>
             <span class="conffoe__q">?</span>
-            <span class="conffoe__p num">${pNo(f)}</span>
+            <span class="conffoe__p confseat num">${pNo(f)}</span>
           </button>`)}
         </div>
         <div class="confov__pairs">
-          ${mates.map((p) => html`<span key=${p.playerId} class=${cx('confpair', p.playerId === myId && 'is-self')}>
+          ${mates.map((p) => html`<span key=${p.playerId} data-testid="confront-seat" class=${cx('confpair', 'confseat', p.playerId === myId && 'is-self')}>
             <b class="num">${pNo(p)}</b>
             <span class="confpair__state">${targets[p.playerId] ? t('已选择') : t('未选择')}</span>
           </span>`)}
@@ -245,13 +285,13 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
           const total = (g.rows || []).reduce((s, r) => s + r.value, 0);
           const isSel = group === i + 1;
           return html`<button key=${g.id || i} type="button" class=${cx('confgroup', isSel && 'is-sel')} disabled=${submitted}
-            title=${g.desc || typeLabel(g.name)} onClick=${() => setGroup(i + 1)}>
+            title=${groupDesc(gd, g) || typeLabel(groupName(gd, g))} onClick=${() => setGroup(i + 1)}>
             <span class="confgroup__head">
-              <b class="confgroup__name">${g.icon ? html`<${Img} src=${factionIconUrl(m, g.icon)} class="confgroup__ficon" />` : null}${typeLabel(g.name) || `G${i + 1}`}</b>
+              <b class="confgroup__name">${g.icon ? html`<${Img} src=${factionIconUrl(m, g.icon)} class="confgroup__ficon" />` : null}${typeLabel(groupName(gd, g)) || `G${i + 1}`}</b>
               <span class="confgroup__meta num">${(g.rows || []).length} ${t('种')} · ${t('总价值 {v}', { v: total })}</span>
             </span>
             <span class="confgroup__icons">
-              ${(g.rows || []).map((r) => html`<span key=${r.key} class="confgroup__ic" title=${`${r.name}（${r.value}）`}><${Img} src=${enemyIconUrl(m, r.key)} fallback=${html`<${GIcon} name="target" />`} /></span>`)}
+              ${(g.rows || []).map((r) => html`<span key=${r.key} class="confgroup__ic" title=${`${enemyName(gd, r.key, r.name)}（${r.value}）`}><${Img} src=${enemyIconUrl(m, r.key)} fallback=${html`<${GIcon} name="target" />`} /></span>`)}
             </span>
           </button>`;
         })}
@@ -259,9 +299,9 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
 
       ${group != null ? html`<div class="confov__body">
         <section class="confov__pool">
-          <h3 class="confov__h">${t('{g} 的怪物（点击加入）', { g: typeLabel((groups[group - 1] || {}).name) || t('G{n}', { n: group }) })} <span class="num t-dim">${t('剩余价值 {v}', { v: remaining })}</span></h3>
+          <h3 class="confov__h">${t('{g} 的怪物（点击加入）', { g: typeLabel(groupName(gd, groups[group - 1])) || t('G{n}', { n: group }) })} <span class="num t-dim">${t('剩余价值 {v}', { v: remaining })}</span></h3>
           <div class="confov__chips">
-            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} count=${picks.filter((p) => p.enemyKey === r.key).length} disabled=${submitted || !fits(r)} onAdd=${add} />`)}
+            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} count=${picks.filter((p) => p.enemyKey === r.key).length} disabled=${submitted} blocked=${overBudget(r)} hint=${notEnough} onAdd=${add} />`)}
           </div>
         </section>
         <section class="confov__placed">
@@ -275,7 +315,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
                   title=${t('点击换门 · 长按拖动排序')} onPointerDown=${(e) => rowDown(e, i)}>
                 <span class="confrow__idx num">${i + 1}</span>
                 <span class="confrow__icon"><${Img} src=${enemyIconUrl(m, rec.key)} fallback=${html`<${GIcon} name="target" />`} /></span>
-                <span class="confrow__name">${rec.name}</span>
+                <span class="confrow__name">${enemyName(gd, rec.key, rec.name)}</span>
                 <span class="confrow__gate2">${t(p.gate === 'upper' ? '上路' : '下路')}</span>
                 <span class="confrow__order">
                   <button type="button" disabled=${submitted} onPointerDown=${(e) => e.stopPropagation()} onClick=${() => remove(i)} aria-label=${t('移除')}><${Icon} name="close" /></button>
@@ -283,6 +323,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
               </li>`;
             })}
           </ol>` : html`<p class="confov__empty t-dim">${t('还没有放置怪物')}</p>`}
+          <p class="confov__hint t-dim">${t('猎物漏过不扣目标生命')}</p>
           <h3 class="confov__h">${t('出怪位置')}</h3>
           <div class="confpos">
             ${POSITIONS.map(([id, label]) => html`<button key=${id} type="button" class=${cx('confpos__opt', position === id && 'is-on')}
@@ -329,10 +370,10 @@ export function ConfrontClash({ pub }) {
         <span class="confclash__teamtag">${gi === 0 ? t('我方') : t('对面')}</span>
         ${list.map((r) => {
           const foe = players.find((p) => p.playerId === r.sub.target) || null;
-          return html`<div key=${r.atk.playerId} class="confclash__row">
+          return html`<div key=${r.atk.playerId} class="confclash__row" data-testid="confront-clash-row">
             <span class=${cx('confclash__side', `confclash__side--${side(r.atk)}`)}>
               <${PlayerAvatar} player=${r.atk} size="sm" />
-              <span class="confclash__p num">${pNoOf(r.atk)}</span>
+              <span class="confclash__p confseat num">${pNoOf(r.atk)}</span>
             </span>
             <span class="confclash__mid">
               ${(r.sub.picks || []).slice(0, 8).map((pk, i) => html`<${Img} key=${`${pk.enemyKey}:${i}`} src=${enemyIconUrl(gd.m, pk.enemyKey)} fallback=${html`<${GIcon} name="target" />`} />`)}
@@ -340,7 +381,7 @@ export function ConfrontClash({ pub }) {
             </span>
             <span class=${cx('confclash__side', `confclash__side--${side(foe)}`)}>
               <span class="confclash__q">?</span>
-              <span class="confclash__p num">${pNoOf(foe)}</span>
+              <span class="confclash__p confseat num">${pNoOf(foe)}</span>
             </span>
             <span class="confclash__coin num">${t('赏金 +{n}', { n: r.sub.coins || 0 })}</span>
           </div>`;

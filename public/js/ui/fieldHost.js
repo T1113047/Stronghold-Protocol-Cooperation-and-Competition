@@ -6,6 +6,10 @@
 //
 // `?render=fallback` (or globalThis.__SP_RENDER__ = 'fallback') skips the engine (dev / mock harness);
 // `?render=engine` never falls back silently (errors are logged and the fallback still mounts).
+//
+// [BOARDMODE] 设置 →「画面质量」的棋盘样式（画面自动调节 off + boardForce，见 render/app/view.js boardSetting）：
+// 'flat' = 这一个 DOM 简化视图（flatFieldPreferred），不挂引擎；'3d' 则引擎里的 3D 棋盘，起不来时引擎自己回落
+// 2D 贴图地块并回调 onBoardNotice（这里转成 toast）。设置一改，跨「简化平面 ↔ 引擎」的边界就重挂载（useFieldView）。
 
 // relative, like every other client module (the import map only resolves to this same URL; no bare specifier here)
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
@@ -13,6 +17,8 @@ import { createFallbackView } from './fallbackField.js';
 import { data } from '../data.js';
 import { audio } from '../audio.js';
 import { settingsStore } from './settings.js';
+import { toast } from './toasts.js';
+import { boardSetting } from '../render/app/view.js';
 import { gpuTier } from '../diag.js';
 import { installOpPrefetch } from './prefetchOps.js';
 
@@ -141,6 +147,25 @@ function renderPref() {
   return globalThis.__SP_RENDER__ === 'fallback' ? 'fallback' : 'auto';
 }
 
+/**
+ * [BOARDMODE] Should the DOM simplified view (ui/fallbackField.js) be mounted instead of the render engine? 设置 →
+ *「画面质量」's 画面自动调节 off + 棋盘样式「2D 棋盘（简化平面）」asks for it (boardSetting 'flat'); `?render=fallback`
+ * forces it and `?render=engine` forbids it; `?board=2d|3d` (URL wins, dev) forces it on / off. The simplified view is a
+ * flat tile board with avatar units, no Spine models and no effects — the whole field degrades.
+ * @param {{ pictureAuto?: boolean, boardForce?: string }} [settings] defaults to the settings store
+ * @returns {boolean}
+ */
+export function flatFieldPreferred(settings) {
+  const pref = renderPref();
+  if (pref === 'engine') return false;
+  if (pref === 'fallback') return true;
+  let q = null;
+  try { q = new URLSearchParams(globalThis.location?.search || '').get('board'); } catch { /* ignore */ }
+  if (q === '3d') return false;
+  if (q === '2d') return true;
+  return boardSetting(settings || settingsStore.get()) === 'flat';
+}
+
 function abortError(signal) {
   return signal?.reason ?? new DOMException('Field view initialization cancelled', 'AbortError');
 }
@@ -224,19 +249,26 @@ export function seedAssets(store) {
  */
 export async function mountFieldView(host, { signal } = {}) {
   checkActive(signal);
-  const pref = renderPref();
-  const opts = { data, assets: data.get('assets'), audio, settings: settingsStore.get(), padding: hudPadding, hud: hudBands };
+  // [BOARDMODE] onBoardNotice: the render layer stays free of ui imports; the forced-3D failure is toasted here.
+  const opts = { data, assets: data.get('assets'), audio, settings: settingsStore.get(),
+    onBoardNotice: (text, kind) => { try { toast(text, kind || 'warn'); } catch { /* never break the view */ } },
+    padding: hudPadding, hud: hudBands };
   // 按 GPU 自动降档: without a real GPU the official 3D board is the heaviest layer on screen, so a weak renderer
   // starts on the 2D atlas board. boardPreference reads `?board=` from the URL first, so 3D can still be forced.
   // [UNITMODELS] the same probe also tells the renderer to start without the Spine models (render/app/view.js
   // unitSetting): a weak GPU's default is the avatar-in-rarity-diamond fallback, and a player's own 角色模型 choice
   // (画面自动调节 off) always wins.
-  if (gpuTier() === 'weak') {
+  // [BOARDMODE] a player who explicitly asked for the 3D board (画面自动调节 off + 棋盘样式「3D 棋盘」) outranks the
+  // probe; the simplified plane (flatFieldPreferred below) is the DOM view and never reaches the engine at all.
+  const flat = flatFieldPreferred(opts.settings);
+  if (gpuTier() === 'weak' && boardSetting(opts.settings) !== '3d') {
     opts.board = '2d';
     opts.weakGpu = true;
-    if (pref !== 'fallback') console.info('[field] weak GPU — starting on the 2D board without operator models (?board=3d / 设置·角色模型 force them)');
+    if (!flat) console.info('[field] weak GPU — starting on the 2D board without operator models (?board=3d / 设置·棋盘样式·角色模型 force them)');
   }
-  if (pref !== 'fallback') {
+  // [BOARDMODE] flatFieldPreferred(): 设置强制「2D 棋盘（简化平面）」时直接用 DOM 简化视图，不挂引擎（`?render=fallback`
+  // 同理，它也在 flatFieldPreferred 里）。
+  if (!flat) {
     const controller = new AbortController();
     const onAbort = () => controller.abort(abortError(signal));
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -303,12 +335,19 @@ export function useFieldView(hostRef) {
       globalThis.__SP_VIEW__ = view; // dev / E2E introspection (view.raw.stats?.())
       setState({ view, kind: view.kind });
     }, (err) => { if (!dead && !controller.signal.aborted) console.error('[field] mount failed', err); });
-    const unsub = settingsStore.subscribe((s) => viewRef.current?.setSettings?.(s));
+    // [BOARDMODE] 设置变化：转发给视图；若「简化平面 ↔ 引擎」的边界被跨过（棋盘样式 / 画面自动调节改了），重挂载到
+    // 另一种视图（立即生效）。mountFieldView 会重新读 settingsStore。
+    let flat = flatFieldPreferred();
+    const unsub = settingsStore.subscribe((s) => {
+      viewRef.current?.setSettings?.(s);
+      const next = flatFieldPreferred(s);
+      if (next !== flat) { flat = next; setAttempt((n) => n + 1); }
+    });
     const onResize = () => viewRef.current?.resize();
     // A temporary network/vendor failure must not pin this mounted match to fallback forever. Retry on a useful
     // user event, at most twice in succession; the effect cleanup disposes the old view before creating its successor.
     const onRetry = () => {
-      if (dead || retrying || viewRef.current?.kind !== 'fallback' || renderPref() === 'fallback'
+      if (dead || retrying || viewRef.current?.kind !== 'fallback' || renderPref() === 'fallback' || flat
         || document.visibilityState !== 'visible' || globalThis.navigator?.onLine === false || retries.current >= 2) return;
       retrying = true; retries.current++; setAttempt((n) => n + 1);
     };

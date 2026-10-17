@@ -4,7 +4,7 @@
 // coming enemies; in a boss round's prep on the player's half of the boss field).
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
-import { PHASE, GEO } from '../../../shared/constants.js';
+import { PHASE, GEO, VERSUS_CONFRONT } from '../../../shared/constants.js';
 import { boardOrder, pieceDir } from '../board.js';
 import { bondList, offBondCounts } from '../bondsMeta.js';
 import { cardView } from '../choices.js';
@@ -44,6 +44,9 @@ export class MatchViews {
       case PHASE.SP_DRAFT:
         if (this.sp && this.sp.picks[ps.playerId] != null) return 'ready';
         return this.sp && this.spTurn() === ps.playerId ? 'deciding' : 'acting';
+      case PHASE.EVENT:
+        if (this.event && this.event.picks.has(ps.playerId)) return 'ready';
+        return 'deciding';
       case PHASE.PREP: return ps.ready ? 'ready' : 'acting';
       case PHASE.COMBAT: case PHASE.FINAL_ASSAULT: case PHASE.HIDDEN_CORE: {
         const f = this.fields.find((x) => x.players.includes(ps.playerId));
@@ -90,20 +93,28 @@ export class MatchViews {
       // 2V2 对抗期: the 6 equal-value monster groups, the round's per-player budget, who targets whom and each player's
       // submission. The budget and every card value carry this round's scaling. The view carries the OWN TEAM's entries
       // only — the opponent's are masked by messaging.js _teamPublicView (the panel shows them as '?').
-      ...(this.isVersus && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? (() => {
+      ...(this.isVersus && this.confrontActive() && (this.phase === PHASE.CONFRONT || (this.confront && this.confront.size)) ? (() => {
         // while the 对抗期 runs, only what THIS round has collected counts — a previous round's applied submission must
         // not lock the new one (that made the second 对抗期 unselectable); afterwards the applied set feeds the clash.
         const src = this.phase === PHASE.CONFRONT ? (this.confrontSubs || new Map()) : (this.confront || new Map());
+        // `total` = the placement's monster count (the 狩猎期 UI shows how many fit and how many of the sent monsters
+        // are down); `coins` is what the placement pays on a full clear (confrontBountyOf).
         const subs = {};
-        for (const [pid, s] of src) subs[pid] = s ? { group: s.group, position: s.position || null, picks: s.picks || [], target: s.target || null, coins: this.confrontBountyOf(s.picks) } : null;
+        for (const [pid, s] of src) subs[pid] = s ? { group: s.group, position: s.position || null, picks: s.picks || [], total: (s.picks || []).length, target: s.target || null, coins: this.confrontBountyOf(s.picks) } : null;
         return {
           confront: {
             active: this.phase === PHASE.CONFRONT,
             stage: this.phase === PHASE.CONFRONT ? (this.confrontStage || 'target') : null,
+            // 悬赏名单公示 (CONFRONT_ROSTER_MS, user 2026-10-17 addendum): the submissions are final, the battles have not
+            // started — the client plays its announcement until `until` (server clock, ms epoch).
+            roster: this.phase === PHASE.CONFRONT && this.confrontStage === 'roster'
+              ? { until: this.deadline, ms: VERSUS_CONFRONT.rosterMs }
+              : null,
             round: this.round,
             ratio: this.confrontRatio(),
             hunt: this.confrontHunt(),
             budget: this.confrontBudget(),
+            maxPicks: VERSUS_CONFRONT.maxPicks,
             targets: this.confrontTargets ? Object.fromEntries(this.confrontTargets) : {},
             // the official 特训敌人 types: one group per type, its rows priced in this round's currency
             groups: this.confrontGroups().map((g) => ({
@@ -114,7 +125,26 @@ export class MatchViews {
           },
         };
       })() : {}),
+      // 同盟狩猎 本回合投放公示 (CONFRONT_ROSTER_MS): the PREP is over, the battles have not started; every alive player
+      // sees what the system deployed at them (public information only — no budget / gates / coins).
+      ...(this.coopRoster && this.phase === PHASE.PREP && this.confrontStage === 'roster' ? {
+        confront: {
+          active: true,
+          stage: 'roster',
+          roster: {
+            until: this.deadline,
+            ms: Math.max(0, Number(this.huntCfg().rosterMs) || 0),
+            coop: true,
+            plans: this.coopHuntRosterPlans(),
+          },
+        },
+      } : {}),
       factions: this.factions.slice(),
+      // 商人「坎诺特」: the round's withdrawal rate and cap (the player's own bank/options ride in m.private.merchant)
+      ...(this.huntMode ? (() => {
+        const cap = this.merchantCap();
+        return { merchant: { rate: this.merchantRate(), cap: Number.isFinite(cap) ? cap : null } };
+      })() : {}),
       disabledBonds: [...new Set([...this.disabledBonds, ...this.staticInactiveBonds])].sort(),
       drawnDisabledBonds: this.disabledBonds.slice(),
       bannedChess: this.bannedChess.slice(),
@@ -122,9 +152,6 @@ export class MatchViews {
       hiddenBossId: this.hiddenBossId,
       bossRound: this.gd.bossRound,
       hiddenRound: this.gd.hiddenRound,
-      // 2V2 第三关 (R16): the round itself (null when this match has none) and whether THIS round is it
-      thirdBossRound: this.thirdBossRound,
-      thirdBoss: this.thirdBossRound != null && this.round === this.thirdBossRound,
       bossPairs: this.bossWaves ? this.bossWaves.map(w => w.players.slice()) : this.bossPairs ? this.bossPairs.map(ids => ids.slice()) : null,
       spRound: this.gd.spRounds().includes(this.round),
       // DESIGN §14: 'client' = battles are simulated by the browsers (b.start specs), 'server' = legacy streaming
@@ -144,6 +171,9 @@ export class MatchViews {
         // 2V2: the row carries the TEAM's shared HP pool (both teammates show the same number; the internal ps.lp is
         // only a split of it); solo/coop keep their own LP.
         lp: this.teamLps ? Math.max(0, this._teamLpOf(ps.team)) : Math.max(0, ps.lp),
+        // 商人「坎诺特」: the player's banked 赏金 (never gold — only a prep withdrawal turns it into funds) and the
+        // round's withdrawal rate; a hidden opponent row is a stub (messaging.js _teamPublicView), so no leak.
+        ...(this.huntMode ? { bank: Math.max(0, Math.trunc(Number(ps.bountyBank) || 0)), rate: this.merchantRate() } : {}),
         bandId: ps.bandId,
         shopLevel: ps.shop.level,
         boardCount: ps.deployCount,
@@ -188,6 +218,11 @@ export class MatchViews {
     }
     // 2V2: the drawn round where the Competition starts (R4/R5/R6; m.public.contestStartRound)
     if (this.contestStartRound != null) v.contestStartRound = this.contestStartRound;
+    // 2V2 事件期: who gave whom and which entry number — public by design (the cost entries affect the economy)
+    {
+      const ev = this.eventView();
+      if (ev) v.event = ev;
+    }
     if (this.phase === PHASE.BAND_DRAFT && this.draft) {
       const d = this.draft;
       // turnSeconds: the length of a turn (the countdown gauge's total; 0 when untimed) — deadline = turnDeadline
@@ -339,7 +374,11 @@ export class MatchViews {
     }
     if (!this.wave) return [];
     const bounty = bountySpawns(this.gd, this.round, this.wave, ps.bounties, ps.playerId, { solo: this.isSolo });
-    return previewOf([...this.wave.spawns, ...bounty]);
+    // 2V2 事件期: the round's monster card + 强力属性 subset (the preview's counts/flags must match the battle)
+    // 同盟狩猎: the system's prey is appended last, exactly as _normalOpts inserts it
+    let list = this.foeWaveSpawns([...this.wave.spawns, ...bounty]);
+    if (this.coopHuntActive()) list = this.applyCoopHunt(list, ps);
+    return previewOf(list);
   }
 
   /** A 自选 piece's pick (like the sim's UnitInfo.diy): a scout's card composes the operator from it (shared/diy.js). */

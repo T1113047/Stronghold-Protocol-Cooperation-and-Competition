@@ -304,10 +304,10 @@ test('preview: one entry per action with gate / time / class flags, bounty and b
     { enemyKey: 'd', count: 1, tag: 'part' },
   ]);
   assert.deepEqual(p, [
-    { enemyKey: 'c', count: 1, gate: 'lower', t: 0, fly: false, elite: true, boss: true, source: 'wave', tag: 'boss' },
-    { enemyKey: 'a', count: 1, gate: 'lower', t: 3, fly: false, elite: false, boss: false, source: 'wave', tag: null },
-    { enemyKey: 'b', count: 1, gate: 'lower', t: 4, fly: true, elite: true, boss: false, source: 'bounty', tag: 'bounty' },
-    { enemyKey: 'a', count: 2, gate: 'upper', t: 5, fly: false, elite: false, boss: false, source: 'wave', tag: null },
+    { enemyKey: 'c', count: 1, gate: 'lower', t: 0, fly: false, elite: true, boss: true, source: 'wave', tag: 'boss', countInTotal: true },
+    { enemyKey: 'a', count: 1, gate: 'lower', t: 3, fly: false, elite: false, boss: false, source: 'wave', tag: null, countInTotal: true },
+    { enemyKey: 'b', count: 1, gate: 'lower', t: 4, fly: true, elite: true, boss: false, source: 'bounty', tag: 'bounty', countInTotal: true },
+    { enemyKey: 'a', count: 2, gate: 'upper', t: 5, fly: false, elite: false, boss: false, source: 'wave', tag: null, countInTotal: true },
   ]);
   // a real round: the preview Σ equals the spawned enemies, gates follow the action routes
   const gd = new GameData(DATA, 'mode_multi_normal');

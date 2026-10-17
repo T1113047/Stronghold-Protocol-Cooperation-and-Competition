@@ -1,4 +1,4 @@
-// Lobby screen: pick 独立模拟 / 同盟模拟 and a difficulty (标准/险境/绝境/终极), create a room,
+// Lobby screen: pick 独立狩猎 / 同盟狩猎 and a difficulty (标准/险境/绝境/终极), create a room,
 // or join one with a 同盟密钥 (recent codes remembered) — as a player (加入同盟) or in one of its MAX_SPECTATORS
 // spectator seats (观战: room.spectate, also while its match runs; community report #26, a remake feature — the
 // official room has none). Shows connection status + ping.
@@ -77,19 +77,19 @@ export function stageNote(stages) {
 
 const MODE_CARDS = [
   {
-    id: 'solo', name: N_('独立模拟'), en: 'SOLO SIMULATION', icon: 'user',
+    id: 'solo', name: N_('独立狩猎'), en: 'SOLO HUNT', icon: 'user',
     desc: N_('独自调配资金与干员，以自己的节奏完成整场模拟。'),
     points: [N_('1 名博士'), N_('休整期与机变阶段不限时')],
   },
   {
-    id: 'coop', name: N_('同盟模拟'), en: 'ALLIANCE SIMULATION', icon: 'users',
+    id: 'coop', name: N_('同盟狩猎'), en: 'ALLIANCE HUNT', icon: 'users',
     desc: N_('与至多 {n} 名博士组成同盟，共享干员池，联防协作抵御敌潮。'), params: { n: MAX_SEATS - 1 },
     points: [N_('1–{n} 名博士 · 可由 AI 队友补位'), N_('联防阶段 · 最终攻势合并生命值')], pointParams: { n: MAX_SEATS },
   },
   {
     id: 'versus', name: N_('狩猎模拟 2V2'), en: 'HUNT SIMULATION 2V2', icon: 'sword',
-    desc: N_('两支双人小队同时模拟；休整期后进入悬赏期，给对面派去猎物，击杀猎物为己方赢得赏金。'),
-    points: [N_('固定 2V2（共 {n} 席，可由 AI 补位）'), N_('每队 3 个核心盟约 · 悬赏期给对面加猎物')], pointParams: { n: MAX_SEATS },
+    desc: N_('两支双人小队同时模拟；休整期后进入狩猎期，给对面派去猎物，击杀猎物为己方赢得赏金。'),
+    points: [N_('固定 2V2（共 {n} 席，可由 AI 补位）'), N_('每队 3 个核心盟约 · 狩猎期给对面加猎物')], pointParams: { n: MAX_SEATS },
   },
 ];
 
@@ -385,7 +385,7 @@ export function LobbyScreen() {
         <div class="create-box">
           <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
             <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
-              ${roomMode === 'solo' ? t('开始独立模拟') : roomMode === 'versus' ? t('创建 2V2 房间') : t('创建同盟')}
+              ${roomMode === 'solo' ? t('开始独立狩猎') : roomMode === 'versus' ? t('创建 2V2 房间') : t('创建同盟')}
             <//>
           <//>
           ${roomMode !== 'solo' ? html`<${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'match'} disabled=${!online} onClick=${quickmatch}>${t('快速匹配')}<//>` : null}

@@ -1,4 +1,4 @@
-// test/match/confront-traits.test.js — the 悬赏期 特性 pricing (2V2): every enemy of the confront pool carries a grade,
+// test/match/confront-traits.test.js — the 狩猎期 特性 pricing (2V2): every enemy of the confront pool carries a grade,
 // a stat stick keeps its stat value exactly, and the graded part takes VERSUS_CONFRONT.traitShare (30 %) of the value
 // table. The grades themselves live in server/match/match/confrontTraits.js (hand-reviewed, 2026-10-17).
 import { describe, test } from 'node:test';
@@ -16,7 +16,7 @@ const vsSeats = () => ([
   { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
 ]);
 
-describe('悬赏期 特性分档 (2V2)', () => {
+describe('狩猎期 特性分档 (2V2)', () => {
   test('every enemy of the confront pool carries a grade 1 / 2 / 3 in the table', () => {
     const m = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 11, fake: true }).start().m;
     const pool = confrontPool(m.data.factions);
@@ -53,7 +53,7 @@ describe('悬赏期 特性分档 (2V2)', () => {
   test('the priced value is what the groups, a submission and the bounty use', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
     const m = h.m;
-    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 狩猎期');
     const row = m.confrontGroups()[0].rows[0];
     assert.equal(row.value, m.confrontValueOf(row.key, m.confrontScale()), 'a group row carries the priced value');
     assert.equal(m.confrontSpent([{ enemyKey: row.key, gate: 'lower' }]), row.value, 'a submission costs the priced value');

@@ -30,17 +30,43 @@ LOBBY(room) → INFO_CHECK (co-op 25 s; solo and any single-human match untimed 
    R14 FINAL_ASSAULT (merged team LP; random pairs fixed for this match; shared boss pool; 120 real s countdown, no hard stop; overtime −1 team LP per
                     real s after 120 real s, or 150 with an AI teammate at fight start (§29.1, m.public.overtimeAt); no layer gains; team LP 0 ⇒ defeat at once (PRTS 直接失败),
                     pool 0 ⇒ victory — the first end the server registers decides, §20.5)
-   R15 HIDDEN_CORE  (if difficulty ≥ NORMAL and Σ activated layers > 350 solo / 1200 co-op and team LP > 1)
+   R15 HIDDEN_CORE  (if difficulty ≥ NORMAL and Σ activated layers > 350 solo / 1200 co-op and team LP > 1;
+                     2V2: per squad, the 2-player share `hiddenCore.multi × TEAM_SIZE / 4` = 600, same LP bar)
 → RESULT (per-player stats, titles, rounds passed, victory/defeat)
 ```
 Solo FUNNY has 9 rounds (boss at R9); everything is read from `data/config.json → modes[modeId]`.
+
+**2V2 ('versus', DESIGN §32).** `ROOM_MODES` adds `versus`: two teams of `TEAM_SIZE` 2 (`teamOfSeat`: seats 0,1 → team 0;
+2,3 → team 1), empty seats AI-filled at the start. Each team holds ONE shared HP pool = Σ its members' band HP
+(`MatchInfra.initTeamHp`, `m.teamLps`; the members' `ps.lp` are a split of it) plus its own 5 banned core bonds, chess pool
+and 3 机变 cards; the stage, boss and factions stay shared. From the drawn contest round (`Match.contestStartRound`, one of
+R4/R5/R6; `m.public.contestStartRound`) to the round before `bossRound`, a non-boss round's PREP is followed by CONFRONT
+(狩猎期, `server/match/match/confront.js`): both sides pair one-to-one and each player fills a per-player value budget from
+the official 特训敌人 types against ONE opponent's next wave; a placed monster leaks for free (`countInTotal: false`) and
+pays its killer, at most 1/1/2/2 gold on the first four 狩猎期 rounds, the live formula afterwards and a fixed 25 on the
+R13 最终狩猎, all by kill ratio. The bounties of the monsters the OPPONENT PLACED are **赏金**, never gold: the sim banks
+them (`unit.bounty.bank` → `perPlayer.bank`, `PlayerState.bountyBank`) and the ONLY way to gold is a prep withdrawal at
+商人「坎诺特」 (`g.confront.withdraw`, `Match.withdrawBounty`: rate by absolute round, `cost = gold / rate` with the round's
+first withdrawal Ceil and the later ones Floor, ≤ `merchantRoundCap` 4 gold a round, uncapped in the R15 隐秘核心 round);
+the official 悬赏 card bounties keep paying gold. Prep scouting, ticker lines and the strategy draft are team-scoped; the
+opponent is hidden until R14, when both sides are revealed and each may watch the other (`opponentRevealed(round)` in
+`shared/constants.js`, `Match#opponentRevealed`; client `battle/observe.js` / `ui/gameLogic/watch.js` / `ui/teamPanel.js`).
+A spectator seat is outside every team restriction: its `m.public` carries no stub and it may watch any player / field
+from the start (`Match#isSpectator`). A mid-match leave hands the seat to AI 托管 instead of eliminating it. Boss rounds fight one leader per team (pairs
+form within a team, one pool per team); the boss chain ends at the 隐秘核心, entered per squad at the 2-player share of the
+co-op threshold (600 layers, `_bossChainEligible`). The 2V2 settlement (`Match#_versusDecide`) decides winners by the 4:5
+boss-time shares first — `4 × remain(R14 最终攻势) / limit(R14) + 5 × remain(R15 隐秘核心) / limit(R15)`, each team's
+remainder recorded at the moment ITS boss run ends (`_noteBossTime`, `bossTeamTimes`; a round never reached counts 0) —
+then the shared LP pool, and only then the original leader scoring (pool share, then `lp × 2 + remaining s`); an exact
+time tie sets `versusOutcome.timeTie` and the settlement names it. It affects the settlement only, never the boss fights.
 
 ### 6.2 Player state (PlayerState.js) — authoritative per player
 
 ```js
 { playerId, seat, name, isBot, connected,
   alive, lp, bandId,
-  funds, shop: { level, upgradePrice, slots: [ Slot ], frozen: bool, freeRefreshes: n, rewardOffer: null | { tier, source:'merge'|'special', label, queued, slots:[Slot] } },  // a special offer (凯瑟琳's 定向投放 …) by its source's label; queued = offers behind the shown one (§21.2)
+  funds, bountyBank, bountyEarned, withdrawnThisRound, withdrawnGold,  // 2V2 狩猎期: the 赏金 banked at 坎诺特 (never gold; only Match.withdrawBounty turns it into funds), the 赏金 earned over the match (the settlement's 本局赏金收入), the gold withdrawn this round (the ceil/floor switch and the cap, reset per round) and over the match
+  shop: { level, upgradePrice, slots: [ Slot ], frozen: bool, freeRefreshes: n, rewardOffer: null | { tier, source:'merge'|'special', label, queued, slots:[Slot] } },  // a special offer (凯瑟琳's 定向投放 …) by its source's label; queued = offers behind the shown one (§21.2)
   hand: [ Piece|null ×10 ], temp: [ Piece|null ×5 ],
   board: Map<'r,c', Piece>,                          // chess & token pieces on the normal field
   bonds: { [bondId]: { count, active, tier, layers } },  // layers persist all match
@@ -141,10 +167,13 @@ chess merge reacts once and resets at settlement. Gifts are classified by truste
 These hooks consume no gameplay RNG and schedule no game actions.
 
 [ASSUMED] During INFO_CHECK the host may request an opening reroll; all connected human participants must explicitly
-agree, including autoplay humans. Bots and spectators do not vote; one human refreshes immediately. A vote pauses the
-confirmation timer and blocks Ready. Rejection, host cancellation, disconnect or leaving cancels it and restores the
-remaining time / prior Ready state. Success preserves the room, seats, settings and connections, redraws the complete
-opening, resets Ready, and starts the full original timer (single-human matches remain untimed). Fixed stage/bans
+agree, including autoplay humans. Bots and spectators do not vote; one human refreshes immediately. The confirmation
+countdown stays up while the vote runs — the vote gets one whole briefing window of its own (never only the time left) —
+and confirming the current setup is still accepted; only the advance waits for the vote. A rejection, host cancellation,
+disconnect or leave cancels the vote and hands the interrupted remaining time / prior Ready state back, while a vote
+nobody answers expires with its window and the briefing moves on. Success preserves the room, seats, settings and
+connections, redraws the complete opening, resets Ready, and starts the full original timer (single-human matches remain
+untimed). Fixed stage/bans
 remain fixed and random results can repeat. A separate seed-derived stream leaves shop/draft RNG untouched; requests
 have a 300 ms anti-burst guard, revision and vote identities. All new setup data and player DIY stocks are prepared
 before mutation; data preparation failure leaves the old opening intact. This is a remake convenience, not an official

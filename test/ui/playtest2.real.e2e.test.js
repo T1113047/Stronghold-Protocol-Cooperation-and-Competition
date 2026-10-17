@@ -64,9 +64,9 @@ function viewState(c) {
 async function soloToPrep(c, diff) {
   await c.open();
   await c.enter('煌');
-  await c.click('.mode-card', '独立模拟');
+  await c.click('.mode-card', '独立狩猎');
   await c.click('.diff-card', diff);
-  await c.click('.create-box button', '开始独立模拟');
+  await c.click('.create-box button', '开始独立狩猎');
   await c.waitFor((s) => !!s.room, 'solo room');
   if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
   await c.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);
@@ -245,7 +245,7 @@ describe('user playtest #2 item 6 — 前往查看 → 返回战场 in combat (r
     try {
       await c.open();
       await c.enter('煌');
-      await c.click('.mode-card', '同盟模拟');
+      await c.click('.mode-card', '同盟狩猎');
       await c.click('.diff-card', '标准模拟');
       await c.click('.create-box button', '创建同盟');
       await c.waitFor((s) => !!s.room?.code, 'room created');
@@ -377,7 +377,7 @@ describe('user playtest #2 item 10 — boss-round prep on the boss field (real s
     try {
       await host.open();
       await host.enter('凯尔希');
-      await host.click('.mode-card', '同盟模拟');
+      await host.click('.mode-card', '同盟狩猎');
       await host.click('.diff-card', '险境模拟');
       await host.click('.create-box button', '创建同盟');
       const room = (await host.waitFor((s) => !!s.room?.code, 'room created')).room;

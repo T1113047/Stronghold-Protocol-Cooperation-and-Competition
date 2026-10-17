@@ -229,7 +229,7 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
                 <b class="spcard__name">${r.name}</b>
                 ${r.team || (r.kind === 'bounty' && r.coin) ? html`<span class="spcard__tags">
                   ${r.team ? html`<span class="spcard__tag spcard__tag--team">${t('全队获得')}</span>` : null}
-                  ${r.kind === 'bounty' && r.coin ? html`<span class="spcard__tag spcard__tag--coin">${t('赏金 {coin}', { coin: r.coin })}</span>` : null}
+                  ${r.kind === 'bounty' && r.coin ? html`<span class="spcard__tag spcard__tag--coin">${t('金币 {coin}', { coin: r.coin })}</span>` : null}
                 </span>` : null}
               </span>
             </span>

@@ -1,4 +1,4 @@
-// test/http-rooms.test.js — 运维查询接口（移植自服务服 server/http/rooms.js）：回环 GET /api/rooms、POST /api/rooms/reap、
+// test/http-rooms.test.js — 运维查询接口：回环 GET /api/rooms、POST /api/rooms/reap、
 // POST /api/notify 与广播帧 m.notice。非回环 peer 或带任何转发头的请求一律 404 —— 和未知道路一样，不暴露存在性。
 // 独立 describe + 独立 server：房间会跨测试残留，隔离才不会有假命中。
 import { describe, test, before, after, afterEach } from 'node:test';
@@ -126,7 +126,7 @@ describe('运维查询接口 (GET /api/rooms · POST /api/rooms/reap · POST /ap
     assert.deepEqual(cap.errors, [], 'no server errors logged');
   });
 
-  test('GET /api/rooms 回环返回快照：插件要的字段都在，刚建的房间可见', async () => {
+  test('GET /api/rooms 回环返回快照：机器人要的字段都在，刚建的房间可见', async () => {
     const host = await pool.player('Host');
     assert.equal((await host.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' })).t, 'ok');
     const state = await host.waitFor('room.state', (s) => s.mode === 'coop' && s.hostId === host.id);

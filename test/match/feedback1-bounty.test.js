@@ -21,6 +21,7 @@ import { DATA, makeMatch } from './harness.js';
 import { FakeBattle } from './fakeBattle.js';
 import { GameData } from '../../server/match/gamedata.js';
 import { generateDraft, bountyDraftKind } from '../../server/match/choices.js';
+import { eventFoeCardById } from '../../server/match/match/event.js';
 import { createRng } from '../../server/sim/rng.js';
 
 const OFFICIAL = JSON.parse(readFileSync(new URL('../fixtures/official-bounty-drafts.json', import.meta.url), 'utf8'));
@@ -383,8 +384,14 @@ test('#2 E2E (co-op 绝境, the players\' case): the real R3 draft is an officia
       if (!spec) continue;
       rounds.push(f.round);
       const scale = m.gd.enemyScale(f.round);
-      assert.equal(spec.mods.hpMul, scale.hpMul, `R${f.round}: the bounty enemy takes the round's HP scale`);
-      assert.equal(spec.mods.atkMul, scale.atkMul, `R${f.round}: the bounty enemy takes the round's ATK scale`);
+      // 同盟狩猎 事件期: the round's monster entry also reaches the 赏金怪's stats (COOP_HUNT; the 2V2 rule). The spawn's
+      // multipliers are the round scale × the entry's own hp / atk multipliers.
+      const foe = m.eventFoeHistory.find((e) => e.round === f.round);
+      const card = foe ? eventFoeCardById(foe.card) : null;
+      const hpMul = scale.hpMul * (card && Number.isFinite(card.hpMul) && card.hpMul > 0 ? card.hpMul : 1);
+      const atkMul = scale.atkMul * (card && Number.isFinite(card.atkMul) && card.atkMul > 0 ? card.atkMul : 1);
+      assert.equal(spec.mods.hpMul, hpMul, `R${f.round}: the bounty enemy takes the round's HP scale`);
+      assert.equal(spec.mods.atkMul, atkMul, `R${f.round}: the bounty enemy takes the round's ATK scale`);
     }
     assert.deepEqual(rounds, [3, 4], `seed ${seed}: ${picked.name} (两场作战) spawned in R${rounds.join(', R')}`);
     m.dispose();

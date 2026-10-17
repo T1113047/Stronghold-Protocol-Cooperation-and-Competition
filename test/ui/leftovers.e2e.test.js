@@ -231,9 +231,9 @@ describe('client leftovers — real server', { skip: !ENABLED && 'set SP_E2E=1 (
     try {
       await c.open();
       await c.enter('替换');
-      await c.click('.mode-card', '独立模拟');
+      await c.click('.mode-card', '独立狩猎');
       await c.click('.diff-card', '标准模拟');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor((s) => !!s.room, 'solo room');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await c.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);
@@ -358,9 +358,9 @@ describe('client leftovers — real server', { skip: !ENABLED && 'set SP_E2E=1 (
     try {
       await c.open();
       await c.enter('重启');
-      await c.click('.mode-card', '独立模拟');
+      await c.click('.mode-card', '独立狩猎');
       await c.click('.diff-card', '标准模拟');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor((s) => !!s.room, 'solo room');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await c.waitFor((s) => s.phase === 'INFO_CHECK', 'briefing', 30000);
@@ -387,9 +387,9 @@ describe('client leftovers — real server', { skip: !ENABLED && 'set SP_E2E=1 (
       assert.equal(restoring, false);
       await c.shot('restart');
       // the lobby works on the new server: a new solo run starts
-      await c.click('.mode-card', '独立模拟');
+      await c.click('.mode-card', '独立狩猎');
       await c.click('.diff-card', '标准模拟');
-      await c.click('.create-box button', '开始独立模拟');
+      await c.click('.create-box button', '开始独立狩猎');
       await c.waitFor((x) => !!x.room, 'a new solo room on the restarted server');
       if (!(await c.st()).phase) await c.click('.room-bar__right button', '开始模拟', { timeout: 20000 });
       await c.waitFor((x) => x.phase === 'INFO_CHECK', 'briefing on the restarted server', 30000);

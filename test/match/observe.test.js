@@ -38,6 +38,28 @@ test('observeTarget: prep, own battle running / over, boss pairs, eliminated pla
   assert.deepEqual(observeTarget(P('d', 3), dead, 'a'), { fieldId: 'b2' }, 'eliminated: anything');
 });
 
+test('observeTarget: a 2V2 opponent is a stub until R14, then observable like a teammate', () => {
+  const rows = (round, hidden) => [
+    P('a', 0, { team: 0 }), P('b', 1, { team: 0 }),
+    P('c', 2, { team: 1, ...(hidden ? { hidden: true } : {}) }), P('d', 3, { team: 1, ...(hidden ? { hidden: true } : {}) }),
+  ];
+  const before = { ...pubOf('PREP', [], rows(13, true)), round: 13 };
+  assert.match(observeTarget(before.players[2], before, 'a').reason, /R13 之后/);
+  const after = { ...pubOf('PREP', [], rows(14, false)), round: 14 };
+  assert.deepEqual(observeTarget(after.players[2], after, 'a'), { fieldId: 'n:c' });
+  // the other team's boss field opens at the reveal and stays closed in co-op (no `team` on the rows)
+  const fa = { ...pubOf('FINAL_ASSAULT', [
+    { fieldId: 'b1', kind: 'boss', players: ['a', 'b'], live: true },
+    { fieldId: 'b2', kind: 'boss', players: ['c', 'd'], live: true },
+  ], rows(14, false)), round: 14 };
+  assert.deepEqual(observeTarget(fa.players[2], fa, 'a'), { fieldId: 'b2' });
+  const coop = { ...pubOf('FINAL_ASSAULT', fa.fields, [P('a', 0), P('b', 1), P('c', 2), P('d', 3)]), round: 14 };
+  assert.match(observeTarget(coop.players[2], coop, 'a').reason, /另一组/);
+  // a spectator seat (not a row, no team): anyone is observable, at any round — its public view carries no stub
+  const spec = { ...pubOf('PREP', [], rows(13, false)), round: 13 };
+  assert.deepEqual(observeTarget(spec.players[2], spec, 's_spec'), { fieldId: 'n:c' });
+});
+
 test('cameraLayers: ‹ LEFT / 全景 / RIGHT › with "你自己" / name / "无人在家"; none for normal or single boss fields', () => {
   const pub = { players: [P('a', 0), P('b', 1)] };
   const unite = { fieldId: 'u', kind: 'unite', rect: { r0: 9, r1: 12, c0: 0, c1: 20 }, players: ['a', 'b'], sides: { a: 'R', b: 'L' } };

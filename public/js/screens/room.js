@@ -209,7 +209,7 @@ function DifficultyPicker({ room, isHost, busy, onPick }) {
     ${DIFFICULTIES.map((d) => html`<button key=${d} type="button" role="radio" aria-checked=${room.difficulty === d ? 'true' : 'false'}
         class=${`dpick__opt${room.difficulty === d ? ' is-active' : ''}`} style=${`--d-color:${DIFFICULTY_COLORS[d]}`}
         disabled=${!!busy} onClick=${() => room.difficulty !== d && onPick(d)}>
-      <${DifficultyIcon} difficulty=${d} />${t(DIFFICULTY_NAMES[d].replace('模拟', ''))}
+      <${DifficultyIcon} difficulty=${d} />${t(DIFFICULTY_NAMES[d])}
     </button>`)}
   </div>`;
 }
@@ -230,7 +230,7 @@ function AiLastToggle({ option, busy, onToggle }) {
 }
 
 /**
- * [MATCHMAKE] 快速匹配开关（移植自服务服 server_patches/matchmake）：房主开关本房是否对外开放匹配；非房主只看到状态。
+ * [MATCHMAKE] 快速匹配开关：房主开关本房是否对外开放匹配；非房主只看到状态。
  * 样式与「AI 队友最后选择」一致（.ailast 小开关），与它并排。
  */
 function MatchmakeControl({ room, isHost, busy, onToggle }) {
@@ -292,7 +292,7 @@ export function RoomScreen() {
     if (ok) run(`kick${seat}`, () => net.request('room.kick', { seat, playerId }));
   };
   const setDifficulty = (difficulty) => run('diff', () => net.request('room.setDifficulty', { difficulty }));
-  // [MATCHMAKE] 本地补丁：房主开关本房是否对外开放匹配
+  // [MATCHMAKE] 房主开关本房是否对外开放匹配
   const toggleMatchmake = (on) => run('matchmake', () => net.request('room.matchmake', { on }));
   const setAiLast = (on) => run('ailast', () => net.request('room.setAiPicksLast', { on }));
   // 2V2: swap two seats (drag an avatar between the teams; the team follows the seat index)
@@ -350,8 +350,8 @@ export function RoomScreen() {
         <${GuideButton} class="room-guide" variant="secondary" label=${t('玩法说明')} />
       </div>
       <div class="topbar__center">
-        <${MicroLabel} tone="mint">${versus ? 'VERSUS LOBBY' : coop ? 'ALLIANCE LOBBY' : 'SOLO SIMULATION'}<//>
-        <h1 class="topbar__title">${versus ? t('狩猎模拟') : coop ? t('同盟模拟') : t('独立模拟')}<span class="topbar__sep"></span><${DifficultyTag} difficulty=${room.difficulty} size="lg" /></h1>
+        <${MicroLabel} tone="mint">${versus ? 'VERSUS LOBBY' : coop ? 'ALLIANCE LOBBY' : 'SOLO HUNT'}<//>
+        <h1 class="topbar__title">${versus ? t('狩猎模拟') : coop ? t('同盟狩猎') : t('独立狩猎')}<span class="topbar__sep"></span><${DifficultyTag} difficulty=${room.difficulty} size="lg" /></h1>
       </div>
       <div class="topbar__right">
         ${coop ? html`<${InviteBox} code=${room.code} name=${me.name} difficulty=${room.difficulty} versus=${versus} />` : html`<div class="solo-note"><${MicroLabel}>SINGLE OPERATOR<//><span>${t('仅限 1 名博士')}</span></div>`}
@@ -379,7 +379,7 @@ export function RoomScreen() {
         <ul>
           ${info.effects.map((e) => html`<li key=${e}>${e}</li>`)}
           <li>${t('共')} <b class="num">${info.rounds}</b> ${tc('rounds', '回合')}${info.hidden ? t('，满足条件时进入隐秘核心') : ''}</li>
-          <li>${t('独立模拟中休整期与机变阶段不限时')}</li>
+          <li>${t('独立狩猎中休整期与机变阶段不限时')}</li>
         </ul>
       </aside>`}
     </main>

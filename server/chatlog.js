@@ -1,4 +1,4 @@
-// server/chatlog.js — 对局对话记录（移植自服务服 server_patches/chatlog，本地补丁，非上游包）。
+// server/chatlog.js — 对局对话记录：每局封存一份，供服务器查询与运维（本 fork 自有功能，不属上游包）。
 // i18n-ignore-file: 本文件写的是**对局记录文件**的内容（标题/字段名/角色标记），不是界面文案。
 //
 // One file per match, named `<YYYYMMDD-HHmmss>-<roomCode>.log`, under CHAT_LOG_DIR — by default `<app>/对话记录`, i.e.
@@ -8,7 +8,7 @@
 // still lands in the top 参与者 block sorted by join time, above the chronological 对话 transcript:
 //
 //   # 卫戍协议：狩猎模拟 · 对局对话记录
-//   游戏：狩猎                                   ← 本服的标识（盟约服为 盟约）；见 CHAT_LOG_GAME
+//   游戏：狩猎                                   ← 本部署的标识（可用 CHAT_LOG_GAME 覆盖）
 //   房间号 / 模式 / 对局序号 / 开局时间 / 封存时间 / 消息数
 //   ===== 参与者（按加入时间排序）=====           ← [加入时间] [玩家/观众] 名称=… | 账号=QQ:<qq>|游客 | IP=…
 //   ===== 对话（时间轴）=====                     ← [时间] 名称：说了啥（已过滤，但记原文便于审计）
@@ -23,7 +23,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** 默认落盘目录 = <应用根>/对话记录（可用 CHAT_LOG_DIR 覆盖；**不走 HTTP**）。 */
 export const DEFAULT_CHAT_LOG_DIR = path.join(HERE, '..', '对话记录');
 /**
- * 本服「游戏」标识：盟约 / 狩猎 —— 同一份代码两边共用，靠环境变量区分（A 盟约服设 `CHAT_LOG_GAME=盟约`）。
+ * 本部署「游戏」标识（默认 狩猎，可用 CHAT_LOG_GAME 覆盖）—— 同一份代码可以在多个部署共用。
  * 记录文件里写两处：标题行 `# 卫戍协议：<全名> · 对局对话记录` 与独立的 `游戏：<标识>` 行。
  */
 export const CHAT_LOG_GAME = process.env.CHAT_LOG_GAME || '狩猎';

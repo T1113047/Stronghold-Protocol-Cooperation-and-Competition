@@ -2,7 +2,7 @@
 // pills.
 //   Client-side combat (`client` prop, DESIGN §14 — the official behaviour):
 //     * own normal battle over: "⌛ 作战结束，等待队友完成作战" with each teammate's live progress (kills / total, ✓);
-//     * observing a teammate (team row → 前往查看): "👁 name" + 返回战场;
+//     * observing a teammate (team row → 前往查看): "👁 name" + the player's 生命 / 等级 / 上场 ([OVERVIEW]) + 返回战场;
 //     * 联防 / 最终攻势: the ‹ › pill switches the camera LEFT half / 全景 / RIGHT half ("你自己" / name / "全景"); it
 //       replaces the observing pill on such a field watched with 前往查看 (a 联防 leaker, an eliminated spectator — the
 //       official non-helper pill "‹ 👁 helper# ›"), with 返回战场 beside the arrows (DESIGN §20.15);
@@ -31,8 +31,24 @@ function ProgressList({ list }) {
 }
 
 /**
+ * [OVERVIEW] 查看队友时的概览：生命（LP）/ 等级（调度中心）/ 上场（干员数）三段（css/screens/game.css
+ * .chud__ov / .gm__watching__ov）。`ov` = ui/gameLogic/watch.js watchedOverview 的 `m.public.players[]` 那一行；
+ * 缺的数（老服务端、2V2 不可见的对手行）显示 '--'。底部观战条（本文件 ClientHud）与准备期查看阵地条
+ * （screens/game.js）共用同一个组件。
+ * @param {{ ov: { lp: number|null, level: number|null, board: number|null }|null, class?: string }} props
+ */
+export function Overview({ ov, class: cls = 'chud__ov' }) {
+  if (!ov) return null;
+  return html`<span class=${cls}>
+    <span>${t('生命')} <b class="num">${ov.lp ?? '--'}</b></span>
+    <span>${t('等级')} <b class="num">${ov.level ?? '--'}</b></span>
+    <span>${t('上场')} <b class="num">${ov.board ?? '--'}</b></span>
+  </span>`;
+}
+
+/**
  * @param {{ pub:any, myId:string, watching:string|null, hud:any, myDone:boolean, onWatch:(fieldId:string)=>void, spectating?: boolean,
- *   client?: null | { progress?: any[]|null, observing?: { name: string }|null, onBack?: () => void,
+ *   client?: null | { progress?: any[]|null, observing?: { name: string, ov?: { lp: number|null, level: number|null, board: number|null }|null }|null, onBack?: () => void,
  *                     layers?: Array<{ key: string, label: string, self: boolean, watch: boolean }>, layer?: string, onLayer?: (k: string) => void } }} props
  */
 export function CombatHud({ pub, myId, watching, hud, myDone, onWatch, spectating = false, spectator = false, client = null }) {
@@ -69,6 +85,7 @@ function ClientHud({ hud, myDone, spectating, spectator = false, client }) {
     if (n !== idx) client.onLayer(layers[n].key);
   };
   const observing = client.observing;
+  const ov = observing && observing.ov ? observing.ov : null; // [OVERVIEW] 查看队友时的概览
   const halves = layers.length > 0;
   return html`<div class="chud">
     <${DpCounter} dp=${hud?.dp} />
@@ -79,6 +96,7 @@ function ClientHud({ hud, myDone, spectating, spectator = false, client }) {
         : html`<div class="chud__msg chud__msg--dead" role="status"><${Icon} name="close" /><span>${t('你已被淘汰，可点击队友头像前往查看')}</span></div>`) : null}
       ${observing && !halves ? html`<div class="vswitch chud__observe is-single" role="status">
         <span class="vswitch__label"><${GIcon} name="eye" /><span>${observing.name}</span></span>
+        <${Overview} ov=${ov} />
         ${client.onBack ? html`<button type="button" class="btn btn--secondary btn--sm chud__back" onClick=${() => client.onBack()}>
           <span class="btn__label">${t('返回战场')}</span></button>` : null}
       </div>` : null}

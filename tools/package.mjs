@@ -105,8 +105,9 @@ const NOT_TRACKED_SHIP = ['public/dev/', 'public/assets/', 'public/fonts/', 'pub
 export const PLAYER_NPM_SCRIPTS = ['start', 'setup', 'doctor', 'launch', 'postinstall', 'vendor', 'assets'];
 /** Markdown copied into the zip. Relative links to anything else are rewritten at stage time. */
 export const PLAYER_MARKDOWN = [...ROOT_FILES, ...PLAYER_DOCS].filter((f) => f.endsWith('.md'));
-/** Where a packaged doc link points when the file itself is not in the zip. */
-export const GITHUB_REPO = 'https://github.com/sganggs/Stronghold-Protocol';
+/** Where a packaged doc link points when the file itself is not in the zip. THIS fork's repository: the README credits
+ * the upstream project it is built on, but a player who follows a rewritten link must land in this repository. */
+export const GITHUB_REPO = 'https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation';
 
 /**
  * THE SWITCH for the Japanese voice dub in the full zip (`audio.voiceJp` of data/assets.json: 2674 files under

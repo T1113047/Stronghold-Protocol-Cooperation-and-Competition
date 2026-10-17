@@ -152,15 +152,15 @@ export function shopBlockReason(kind, { priv, editable, slot } = {}) {
   const shop = priv.shop || {};
   if (kind === 'buy' || kind === 'reward') {
     if (!isObj(slot) || slot.sold) return kind === 'reward' ? t('已选择') : t('已售出');
-    if ((Number(slot.price) || 0) > funds) return t('资金不足');
+    if ((Number(slot.price) || 0) > funds) return t('金币不足');
     // a full hand refuses every purchase / pick, a merge-completing one too (PRTS 卫戍协议/帮助 §手牌区, GitHub #82)
     if (handFull(priv)) return t('整备区已满');
     return null;
   }
-  if (kind === 'refresh') return (Number(shop.refreshPrice) || 0) > funds ? t('资金不足') : null;
+  if (kind === 'refresh') return (Number(shop.refreshPrice) || 0) > funds ? t('金币不足') : null;
   if (kind === 'levelUp') {
     if ((Number(shop.level) || 1) >= (Number(shop.maxLevel) || 6)) return t('调度中心已达最高等级');
-    return (Number(shop.upgradePrice) || 0) > funds ? t('资金不足') : null;
+    return (Number(shop.upgradePrice) || 0) > funds ? t('金币不足') : null;
   }
   return null;
 }

@@ -337,6 +337,8 @@
 .team__info { display: flex; flex-direction: column; gap: .02rem; min-width: 0; padding: .04rem .12rem .04rem .06rem; background: linear-gradient(90deg, rgba(8, 11, 10, .82), rgba(8, 11, 10, 0)); }
 .team__name { font-size: .15rem; font-weight: 500; color: var(--text-md); max-width: 1.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px #000; }
 .team__line { display: flex; align-items: center; gap: .1rem; }
+/* 2V2: the hint under a hidden opponent stub row ("R13 之后可以看到对面视角" — teamPanel.js) */
+.team__hint { font-size: .11rem; line-height: 1.2; color: var(--text-dim); max-width: 1.6rem; }
 .team__status { width: .26rem; height: .26rem; display: grid; place-items: center; border: 1px solid currentColor; background: rgba(0, 0, 0, .5); }
 .team__status .icon { width: .18rem; height: .18rem; }
 .team__status .lsprite { width: .2rem; height: .2rem; object-fit: contain; }
@@ -543,6 +545,10 @@
 }
 .gm__watching > .icon { width: .24rem; height: .24rem; color: var(--amber); }
 .gm__watching b { color: var(--amber); }
+/* [OVERVIEW] 查看队友时的概览（生命 / 等级 / 上场）：准备期查看阵地条（.gm__watching）与底部观战条（.chud）共用
+   ui/combatHud.js Overview；数字用 --mint-400，缺的数显示 '--' */
+.gm__watching__ov, .chud__ov { display: inline-flex; align-items: center; gap: .05rem; font-size: max(.14rem, 11px); color: var(--text-md); }
+.gm__watching__ov b, .chud__ov b { color: var(--mint-400); }
 .gm__dead {
   position: absolute; left: 50%; bottom: 3.1rem; transform: translateX(-50%); display: flex; align-items: center; gap: .1rem;
   padding: .1rem .26rem; background: rgba(40, 8, 6, .9); border: 1px solid rgba(255, 84, 84, .5); color: var(--red-premium); font-size: .18rem; font-weight: 700;

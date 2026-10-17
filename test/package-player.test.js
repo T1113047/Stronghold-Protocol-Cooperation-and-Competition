@@ -7,12 +7,19 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  PLAYER_MARKDOWN, PLAYER_NPM_SCRIPTS, playerPackageJson, playerPackageProblems, releaseTag, rewritePlayerDoc,
-  selectTracked, trackedFiles,
+  GITHUB_REPO, PLAYER_MARKDOWN, PLAYER_NPM_SCRIPTS, playerPackageJson, playerPackageProblems, releaseTag,
+  rewritePlayerDoc, selectTracked, trackedFiles,
 } from '../tools/package.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// The repository a rewritten doc link must point at: package.json is the single source of truth (a fork rename must not
+// leave this test checking the upstream host). The assertion in the test below keeps tools/package.mjs's own constant
+// honest against it, so the packager and the test can never disagree about where a player link lands.
+const REPO_HOST = (() => {
+  const url = String(pkg.repository?.url || pkg.homepage || '');
+  return url.replace(/^git\+/, '').replace(/#.*$/, '').replace(/\.git$/, '').replace(/\/+$/, '');
+})();
 const DISHONEST = ['test', 'golden', 'golden:update', 'build-data', 'check:imports', 'ci', 'package', 'package:lite', 'lint', 'typecheck'];
 const KEPT = [...PLAYER_NPM_SCRIPTS, 'dev'];
 
@@ -63,7 +70,9 @@ test('packaged copies of the shipped docs point unshipped relative links at the 
   const shipped = new Set(selectTracked(trackedFiles(ROOT)).keep);
   const version = pkg.version;
   const tag = releaseTag(version);
-  const host = 'https://github.com/sganggs/Stronghold-Protocol';
+  const host = REPO_HOST;
+  assert.match(host, /^https:\/\/github\.com\/[^\s/]+\/[^\s/]+$/, 'package.json names a GitHub repository');
+  assert.equal(host, GITHUB_REPO, 'tools/package.mjs rewrites missing doc links to this repository');
   const focus = new Set(['README.md', 'docs/PLAYING.md', 'docs/DEPLOY.md']);
   let fileRewrites = 0;
   assert.ok(PLAYER_MARKDOWN.includes('README.md') && PLAYER_MARKDOWN.includes('docs/PLAYING.md') && PLAYER_MARKDOWN.includes('docs/DEPLOY.md'));

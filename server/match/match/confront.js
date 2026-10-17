@@ -1,5 +1,7 @@
-// server/match/match/confront.js — Match methods: the 2V2 悬赏期 (PHASE.CONFRONT). From the drawn contest round on, after
-// each side's prep, every ALIVE player intervenes once, against ONE opposing player:
+// server/match/match/confront.js — Match methods: the 狩猎期. Two modes share this module:
+//
+//   2V2 ('versus') — PHASE.CONFRONT. From the drawn contest round on, after each side's prep, every ALIVE player
+//   intervenes once, against ONE opposing player:
 //
 //   step 1 (targets, VERSUS_CONFRONT.targetSeconds): each player names the opponent they attack. Inside a team it is
 //     first come, first served — whoever submits first picks, and the teammate is given the opponent that is left (A
@@ -11,7 +13,13 @@
 //     (untimed when the prep is) and it is a CAP only — submitting ends it as soon as EVERY alive player has
 //     (maybeFinishConfront), so the sides never wait on a player who is already done.
 //
-// The budget (confrontBudget) = the round's own wave value × the 5→15 % share (50 % on the R13 追猎 round) ×
+//   同盟狩猎 (co-op, COOP_HUNT) — no phase, no submissions: the SYSTEM fills each alive player's 狩猎期 with its own
+//   deployment (coopHuntPlans), using the same rhythm / budget / bounty tables (huntCfg). The prey is INSERTED into that
+//   player's wave and its kills are banked at 坎诺特.
+//
+// After the 2V2 roster is complete the 悬赏名单 is held for VERSUS_CONFRONT.rosterMs (CONFRONT_ROSTER_MS) before COMBAT.
+//
+// The budget (confrontBudget) = the round's own wave value × the 5→15 % share (50 % on the R13 最终狩猎 round) ×
 // VERSUS_CONFRONT.budgetMul, per PLAYER (each counts on its own) — both teams face the same (synced) wave, so both get
 // the same number. The groups are the OFFICIAL 特训敌人 types (特异 / 飞行 / 频次 / 元素 / 持续 / 隐匿 / 折射), NOT equal
 // value buckets: the player picks a flavour (user decision 2026-10-17). A monster's cost and the wave's value are one
@@ -21,10 +29,12 @@
 // Applying: the placed monsters of an intervention land on ITS TARGET's wave only (confrontFor), replacing originals
 // worth `share × the wave value` picked at random (within 2 % of that value), inserted at the chosen position. The
 // opponent never sees who is aiming at whom (m.public isolation) — the panel shows the opponents as '?'.
+// 同盟狩猎 is the one difference: its prey REPLACES nothing (the wave keeps every original) and lands in the owning
+// player's own wave (applyCoopHunt).
 // Installed on Match.prototype like the other method containers.
-import { PHASE, ERR, VERSUS_CONFRONT } from '../../../shared/constants.js';
+import { PHASE, ERR, VERSUS_CONFRONT, COOP_HUNT, merchantRateFor, merchantCapFor } from '../../../shared/constants.js';
 import { confrontTraitGrade } from './confrontTraits.js';
-import { gateOf, roundMods } from '../waves.js';
+import { gateOf, roundMods, previewInfo } from '../waves.js';
 import { OK, fail } from './common.js';
 
 /**
@@ -60,7 +70,7 @@ export function confrontPool(factions) {
 }
 
 /**
- * The 悬赏期 groups are the OFFICIAL 特训敌人 types (data/factions.json `types`), one group per type in the data's own
+ * The 狩猎期 groups are the OFFICIAL 特训敌人 types (data/factions.json `types`), one group per type in the data's own
  * order — the player picks a FLAVOR (隐匿 / 折射 / 飞行 …), never a strength (user decision 2026-10-17; the groups are
  * deliberately NOT equal-valued any more — the type sizes differ: 特异 35 enemies, 频次 10).
  *
@@ -97,6 +107,12 @@ const CONFRONT_GROUP_EXTRA = Object.freeze({
 });
 
 export class MatchConfront {
+  /**
+   * The 狩猎期 rule table of THIS match: the 2V2 table, or 同盟狩猎's (COOP_HUNT) in a co-op room. Both carry the same
+   * HUNT_RHYTHM; reading through here is what lets the budget / bounty / merchant code serve both modes without a copy.
+   */
+  huntCfg() { return this.isVersus ? VERSUS_CONFRONT : COOP_HUNT; }
+
   /** The 对抗期 is active in the versus mode from the drawn contest round on, on normal (non-boss) rounds. */
   confrontActive() {
     return this.isVersus && this.contestStartRound != null
@@ -104,18 +120,92 @@ export class MatchConfront {
   }
 
   /**
+   * 同盟狩猎 (COOP_HUNT): the co-op room's system-run 狩猎期 — from the drawn start round on, on normal (non-boss)
+   * rounds. R14/R15 are the unchanged boss rounds, so they never carry a hunt.
+   */
+  coopHuntActive() {
+    return !this.isVersus && this.coopHuntOn && this.contestStartRound != null
+      && this.round >= this.contestStartRound && this.round < this.gd.bossRound;
+  }
+
+  /** A 狩猎期 of either kind (2V2's 对抗期 or the co-op hunt) — used by the shared merchant / event gates. */
+  huntActive() { return this.isVersus ? this.confrontActive() : this.coopHuntActive(); }
+
+  /**
+   * 同盟狩猎 本回合投放公示 (user 2026-10-17): after PREP ends — every seat ready or its deadline — the round holds for
+   * CONFRONT_ROSTER_MS (5 s, the same constant as the 2V2 悬赏名单) before COMBAT, showing every player what the system
+   * deployed at them. The phase stays PREP, `confrontStage = 'roster'` and `coopRoster` publishes m.public.confront.
+   *
+   * Server-timed through setDeadline → later → scaled (virtual time and goldens agree). Idempotent: while the roster is
+   * open this returns false and never arms a second timer, so two engine calls (all-ready + deadline, or two hunt rounds
+   * back to back) cannot stack the hold. A non-hunt round / R14 / R15 never opens it.
+   * @returns {boolean} whether a roster hold was opened now
+   */
+  enterCoopHuntRoster() {
+    if (this.phase !== PHASE.PREP || this.confrontStage === 'roster' || !this.coopHuntActive()) return false;
+    const ms = Math.max(0, Number(this.huntCfg().rosterMs) || 0);
+    if (!(ms > 0)) return false;
+    this.confrontStage = 'roster';
+    this.coopRoster = true;
+    this.setDeadline(ms / 1000, () => this.finishCoopHuntRoster());
+    this.markPublic();
+    return true;
+  }
+
+  /** The coop 投放公示's hold expired: clear it and start the round's battles. */
+  finishCoopHuntRoster() {
+    if (this.phase !== PHASE.PREP || this.confrontStage !== 'roster' || !this.coopRoster) return;
+    this.setDeadline(0);
+    this.confrontStage = null;
+    this.coopRoster = false;
+    this.startCombat();
+  }
+
+  /**
+   * The public plans of the coop 投放公示: ONE row per alive player, public information only — the assigned official
+   * 特训敌人 category / its name, the deployment's total value, its monster count and the picks (name + priced value).
+   * Never the budget, the gates / positions or the internal bounty coins.
+   * @returns {Array<{ playerId: string, seat: number, category: string|null, categoryName: string, value: number, count: number, picks: Array<{ name: string, value: number }> }>}
+   */
+  coopHuntRosterPlans() {
+    const plans = this.coopHuntPlans();
+    if (!plans) return [];
+    const groups = new Map(this.confrontGroups().map((g) => [g.id, g]));
+    const out = [];
+    for (const ps of this.alivePlayers().slice().sort((a, b) => a.seat - b.seat)) {
+      const p = plans.get(ps.playerId);
+      if (!p) continue;
+      const g = groups.get(p.category);
+      out.push({
+        playerId: ps.playerId,
+        seat: ps.seat,
+        category: p.category,
+        categoryName: g ? g.name : (p.category || ''),
+        value: p.value,
+        count: p.count,
+        picks: p.picks.map((x) => {
+          const e = this.gd.enemy(x.enemyKey);
+          return { name: e ? e.name : x.enemyKey, value: this.confrontValueOf(x.enemyKey) };
+        }),
+      });
+    }
+    return out;
+  }
+
+  /**
    * The share of the opponent's original wave a team may replace (and the share of its value it may spend) this round:
-   * 5 % at R_contest, +2 %/round, capped at 15 % (VERSUS_CONFRONT.ratioBase / Step / Max). R13 is the 追猎 (hunt) round
+   * 5 % at R_contest, +2 %/round, capped at 15 % (VERSUS_CONFRONT.ratioBase / Step / Max). R13 is the 最终狩猎 (hunt) round
    * — a flat 50 %, the one round the intervention can gut a wave.
    */
   confrontRatio() {
-    if (this.round === VERSUS_CONFRONT.huntRound) return VERSUS_CONFRONT.huntRatio;
+    const cfg = this.huntCfg();
+    if (this.round === cfg.huntRound) return cfg.huntRatio;
     const r = this.round - this.contestStartRound + 1;
-    return Math.min(VERSUS_CONFRONT.ratioMax, VERSUS_CONFRONT.ratioBase + VERSUS_CONFRONT.ratioStep * (r - 1));
+    return Math.min(cfg.ratioMax, cfg.ratioBase + cfg.ratioStep * (r - 1));
   }
 
-  /** Whether THIS round is the 追猎 (hunt) round — the one with the flat, much larger share (R13). */
-  confrontHunt() { return this.round === VERSUS_CONFRONT.huntRound; }
+  /** Whether THIS round is the 最终狩猎 (R13) — the one with the flat, much larger share and the fixed 25 bounty. */
+  confrontHunt() { return this.round === this.huntCfg().huntRound; }
 
   /** The round's hp/atk scaling: card costs and the wave value are both in its unit. */
   confrontScale() { return this.gd.enemyScale(this.round); }
@@ -131,8 +221,8 @@ export class MatchConfront {
     const sig = `${this.round}|${scale.hpMul}|${scale.atkMul}`;
     if (this._traitStep != null && this._traitStepSig === sig) return this._traitStep;
     const en = (this.data && this.data.enemies) || {};
-    const scores = VERSUS_CONFRONT.traitStepScores;
-    const share = Math.max(0, Math.min(0.9, Number(VERSUS_CONFRONT.traitShare) || 0));
+    const scores = this.huntCfg().traitStepScores;
+    const share = Math.max(0, Math.min(0.9, Number(this.huntCfg().traitShare) || 0));
     let stat = 0;
     let steps = 0;
     for (const k of confrontPool(this.data && this.data.factions)) {
@@ -147,7 +237,7 @@ export class MatchConfront {
 
   /**
    * The value of ONE enemy in this match's currency: its stats at `scale` (default: this round's) plus its graded 特性
-   * score. Every value the 悬赏期 uses — the group rows, the wave total, a submission's cost and a kill's bounty — goes
+   * score. Every value the 狩猎期 uses — the group rows, the wave total, a submission's cost and a kill's bounty — goes
    * through here, so the traits are priced exactly once.
    * @param {string} enemyKey
    * @param {{ hpMul?: number, atkMul?: number }|null} scale
@@ -156,12 +246,12 @@ export class MatchConfront {
     const en = (this.data && this.data.enemies) || {};
     const e = en[enemyKey];
     if (!e) return 0;
-    const step = VERSUS_CONFRONT.traitStepScores[confrontTraitGrade(enemyKey) - 1] || 0;
+    const step = this.huntCfg().traitStepScores[confrontTraitGrade(enemyKey) - 1] || 0;
     return confrontValue(e, scale || this.confrontScale()) + this.confrontTraitStep() * step;
   }
 
   /**
-   * The groups offered in the 悬赏期: the official 特训敌人 types, each carrying its pool members priced in this round's
+   * The groups offered in the 狩猎期: the official 特训敌人 types, each carrying its pool members priced in this round's
    * currency (confrontValueOf). Recomputed when the round changes (the scaling moves values between rounds).
    * @returns {Array<{ id: string, name: string, icon: string|null, desc: string, rows: Array<{ key: string, name: string, value: number }> }>}
    */
@@ -196,9 +286,13 @@ export class MatchConfront {
     return this._confrontWaveSpawns().reduce((n, s) => n + Math.max(1, Math.floor(Number(s.count) || 1)), 0);
   }
 
-  /** This round's placement budget: the wave value × the share × VERSUS_CONFRONT.budgetMul — PER PLAYER (个算个的). */
+  /**
+   * 2V2's placement budget: the wave value × the share × VERSUS_CONFRONT.budgetMul — PER PLAYER (个算个的). The 2V2
+   * placement REPLACES originals, so its ×2 keeps the net addition at the share; the co-op hunt INSERTs its prey and
+   * therefore uses `wave value × share` only (coopHuntPlans).
+   */
   confrontBudget() {
-    return Math.round(this.confrontWaveValue() * this.confrontRatio() * VERSUS_CONFRONT.budgetMul);
+    return Math.round(this.confrontWaveValue() * this.confrontRatio() * this.huntCfg().budgetMul);
   }
 
   /** Σ value of a set of picks, at this round's scaling. */
@@ -210,26 +304,342 @@ export class MatchConfront {
   }
 
   /**
-   * The kill bounty one placed monster pays (`VERSUS_CONFRONT.killIncomeShare`): its value as a share of the round's
-   * whole wave, times the round's income — so the total of a team's placements pays at most `killIncomeShare` rounds of
-   * income, i.e. the compensation tracks how much value they actually threw. Read live from the value table every round.
-   * @param {string} enemyKey
+   * This bounty phase's 1-based index in the match — the "第几次狩猎期" of the rule below, independent of which round
+   * (R4 / R5 / R6) the competition started in. Same counter confrontRatio uses.
    */
-  confrontBounty(enemyKey) {
-    const wave = Math.max(1, this.confrontWaveValue());
-    const income = Number(this.gd.income(this.round)) || 0;
-    const share = Number(VERSUS_CONFRONT.killIncomeShare) > 0 ? Number(VERSUS_CONFRONT.killIncomeShare) : 1;
-    return Math.max(1, Math.round((this.confrontValueOf(enemyKey) / wave) * income * share));
+  confrontHuntIndex() {
+    if (this.contestStartRound == null) return 0;
+    return Math.max(0, this.round - this.contestStartRound + 1);
   }
 
   /**
-   * The bounty a whole placement pays (the sum of its monsters' `confrontBounty`) — what the 悬赏名单 shows next to the
-   * pair ("赏金 +N"), and exactly what the sim will credit as those monsters die.
+   * The FIXED bounty of this bounty phase, or null when the phase runs the live formula:
+   *   * the R13 最终狩猎: VERSUS_CONFRONT.finalHuntBounty (25), scaled by the kill ratio;
+   *   * the 1st–4th phase: VERSUS_CONFRONT.bountyCaps = [1, 1, 2, 2];
+   *   * from the 5th on (R13 aside): the live formula — `Σ value(killed) / wave value × the round's income ×
+   *     killIncomeShare`, no cap, no per-monster floor.
+   */
+  confrontFixedBountyCap() {
+    if (this.confrontHunt()) return this.huntCfg().finalHuntBounty;
+    const caps = this.huntCfg().bountyCaps;
+    const i = this.confrontHuntIndex();
+    return i >= 1 && i <= caps.length ? caps[i - 1] : null;
+  }
+
+  /**
+   * What a whole placement has paid once its first `killed` monsters (in insertion order) are down — always an integer:
+   *   fixed phases:  floor(cap × killed / total),  cap = bountyCaps[huntIdx − 1] or finalHuntBounty on R13
+   *   live phases:   floor(Σ value of those monsters / wave value × the round's income × killIncomeShare)
+   * Full clear = cap (fixed) / the whole formula value (live), all leaked = 0; a single cheap monster out of many pays
+   * its share, i.e. 0 unless it completes a whole coin — no `min 1` anywhere (that floor was the farm).
+   * @param {number} killed
+   * @param {object[]} picks the placement, in insertion order
+   */
+  confrontBountyAt(killed, picks) {
+    const list = picks || [];
+    const n = list.length;
+    if (!n) return 0;
+    const k = Math.max(0, Math.min(n, Math.floor(Number(killed) || 0)));
+    const cap = this.confrontFixedBountyCap();
+    if (cap != null) return Math.floor((cap * k) / n);
+    const wave = Math.max(1, this.confrontWaveValue());
+    const income = Number(this.gd.income(this.round)) || 0;
+    const cfgShare = Number(this.huntCfg().killIncomeShare) > 0 ? Number(this.huntCfg().killIncomeShare) : 1;
+    let v = 0;
+    for (let i = 0; i < k; i++) v += this.confrontValueOf(list[i] && list[i].enemyKey);
+    return Math.floor((v / wave) * income * cfgShare);
+  }
+
+  /**
+   * What ONE placement pays, monster by monster: `coins[i] = B(i) − B(i−1)` (B = confrontBountyAt). Each kill adds its
+   * fractional share to the accumulator, and gold is paid only when the integer part grows — a monster may pay 0 — so
+   * the running total is exactly B(killed) and the sum of the array is exactly B(total): no per-kill rounding drift and
+   * no way to farm: sending 64 of the cheapest monsters still totals B(64).
+   * @param {object[]} picks
+   * @returns {number[]} coins, one per pick (same order)
+   */
+  confrontBountyPlan(picks) {
+    const list = picks || [];
+    const n = list.length;
+    const out = [];
+    for (let i = 1; i <= n; i++) out.push(this.confrontBountyAt(i, list) - this.confrontBountyAt(i - 1, list));
+    return out;
+  }
+
+  /**
+   * The bounty ONE monster of a placement can pay its killer: the listed monsters are inserted one by one, so a
+   * single-monster placement is a full clear and pays B(1). Kept as the per-monster lookup the value-table tests use;
+   * the SHOWN total of a placement is `confrontBountyOf` below.
+   * @param {string} enemyKey
+   */
+  confrontBounty(enemyKey) { return this.confrontBountyOf([{ enemyKey, gate: 'lower' }]); }
+
+  /**
+   * The bounty a whole placement pays when every monster of it dies — what the 悬赏名单 shows next to the pair
+   * ("赏金 +N"), and the exact total the sim credits (see confrontBountyPlan for the per-kill split).
    */
   confrontBountyOf(picks) {
-    let n = 0;
-    for (const p of picks || []) n += this.confrontBounty(p && p.enemyKey);
-    return n;
+    const list = picks || [];
+    return this.confrontBountyAt(list.length, list);
+  }
+
+  /**
+   * 同盟狩猎 (COOP_HUNT): the system's 狩猎期 deployment — ONE plan PER ALIVE PLAYER (user addendum 2026-10-17: co-op is
+   * four separate waves, so each player gets their own prey, not one shared batch). Built once when the round's wave is
+   * generated (MatchPhases.startRound) and cached for the round.
+   *
+   * Algorithm (greedy, seeded → fully reproducible):
+   *   1. budget = this round's ratio × the player's wave value (co-op prey is INSERTED, so the net addition is exactly
+   *      the ratio; 2V2 keeps the ×budgetMul because its placement REPLACES originals, which keeps the same net ratio);
+   *      the co-op wave is shared, so the number is the same for everybody, but it is computed per player and stored per
+   *      plan;
+   *   2. the candidate pool is the official 特训敌人 types (confrontGroups: 特异 / 飞行 / 频次 / 元素 / 持续 / 隐匿 / 折射);
+   *   3. the alive players (seat order) are rotated onto the types from a seeded offset, so their MAIN types differ while
+   *      the types last (4 players / 7 types → four different types);
+   *   4. each player fills from their own type, value-descending: take a monster while it fits, up to maxPicks (this
+   *      leaves the budget as full as that type allows);
+   *   5. totals must be PAIRWISE DISTINCT. On a collision the later player changes ONE pick — the closest affordable
+   *      substitute in their own type, else in the other types, else adds / removes the cheapest pick — until the total
+   *      is unique. A full re-fill from another type is the last resort. A player always keeps at least one pick when the
+   *      budget can afford one;
+   *   6. dead / departed players are not part of the distribution: the rotation and the plans cover the ALIVE seats only,
+   *      so their slot passes to the next living player.
+   *
+   * The bounty is priced HERE, at deployment time (`confrontBountyPlan`), and stored on the plan: the per-kill coins a
+   * battle later credits never move when an event card / 强力属性 changes the monster's stats (2V2's rule).
+   * @returns {Map<string, object>|null} playerId → plan
+   *   Each plan carries `value` = the deployment's total VALUE (well below the budget; the pairwise-distinct rule is
+   *   about THIS field) and `count` = how many monsters it holds (1–maxPicks; NOT a total value). `picks` is the list,
+   *   `coins` the per-kill banked bounty priced at deployment time.
+   */
+  coopHuntPlans() {
+    if (!this.coopHuntActive()) return null;
+    if (this._coopHuntRound === this.round && this._coopHuntPlans) return this._coopHuntPlans;
+    const cfg = this.huntCfg();
+    const ratio = this.confrontRatio();
+    const waveValue = this.confrontWaveValue();
+    const groups = this.confrontGroups().filter((g) => g && Array.isArray(g.rows) && g.rows.length);
+    const alive = this.alivePlayers().slice().sort((a, b) => a.seat - b.seat);
+    // seeded rotation of the MAIN type: four alive players land on four different types (7 types available)
+    const offset = groups.length ? Math.floor(this.rngCoopHunt() * groups.length) % groups.length : 0;
+    const used = new Set();
+    const plans = new Map();
+    alive.forEach((ps, i) => {
+      const budget = Math.round(waveValue * ratio);
+      const gi = groups.length ? (offset + i) % groups.length : 0;
+      const group = groups[gi] || null;
+      let picks = group ? this._coopFill(group.rows, budget, cfg.maxPicks) : [];
+      if (!picks.length) picks = this._coopFill(this._coopUnionRows(groups), budget, cfg.maxPicks);
+      let value = this.confrontSpent(picks);
+      if (used.has(value)) {
+        const alt = this._coopUniquePicks(picks, group, groups, budget, used, cfg.maxPicks);
+        if (alt) { picks = alt.picks; value = alt.value; }
+      }
+      used.add(value);
+      const positions = cfg.positions;
+      const position = positions[Math.max(0, Math.min(positions.length - 1, Math.floor(this.rngCoopHunt() * positions.length)))];
+      plans.set(ps.playerId, {
+        round: this.round, playerId: ps.playerId, seat: ps.seat, budget, ratio, value,
+        /** the MAIN official 特训敌人 type this seat was assigned (its picks normally all come from it) */
+        category: group ? group.id : null, group: gi + 1,
+        picks, coins: this.confrontBountyPlan(picks), position,
+        /** number of monsters deployed (the total VALUE is `value`) */
+        count: picks.length,
+      });
+    });
+    this._coopHuntRound = this.round;
+    this._coopHuntPlans = plans;
+    return plans;
+  }
+
+  /** ONE alive player's system deployment of this round (null when the round has no hunt / they have no plan). */
+  coopHuntPlan(ps) {
+    const plans = this.coopHuntPlans();
+    return plans && ps ? (plans.get(ps.playerId) || null) : null;
+  }
+
+  /** The union of every type's rows, de-duplicated by key (a monster may be listed under several types). */
+  _coopUnionRows(groups) {
+    const seen = new Set();
+    const out = [];
+    for (const g of groups || []) {
+      for (const r of g && Array.isArray(g.rows) ? g.rows : []) {
+        if (!r || typeof r.key !== 'string' || seen.has(r.key)) continue;
+        seen.add(r.key);
+        out.push(r);
+      }
+    }
+    return out;
+  }
+
+  /** Greedy fill: rows value-descending, take each monster that still fits (up to maxPicks). Seeded gates. */
+  _coopFill(rows, budget, maxPicks = 64) {
+    const picks = [];
+    let left = budget;
+    const sorted = (rows || []).slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
+    for (const r of sorted) {
+      if (picks.length >= maxPicks) break;
+      if (!(r.value > 0) || r.value > left) continue;
+      left -= r.value;
+      picks.push({ enemyKey: r.key, gate: this.rngCoopHunt() < 0.5 ? 'upper' : 'lower' });
+    }
+    return picks;
+  }
+
+  /**
+   * Resolve a duplicate total: return the closest pick-set whose total is still affordable and not in `used`, else null.
+   * Preference order: one substitute in the player's own type, a substitute in another type, add / remove one pick.
+   * The first tie-break is the smallest change, then the player's own type.
+   * @returns {{ picks: object[], value: number }|null}
+   */
+  _coopUniquePicks(picks, mainGroup, groups, budget, used, maxPicks = 64) {
+    const val = (key) => this.confrontValueOf(key);
+    const total = picks.reduce((s, p) => s + val(p.enemyKey), 0);
+    const keys = new Set(picks.map((p) => p.enemyKey));
+    const out = [];
+    const consider = (next, group) => {
+      if (!next.length || next.length > maxPicks) return;
+      const v = next.reduce((s, p) => s + val(p.enemyKey), 0);
+      if (!(v > 0) || v > budget || used.has(v)) return;
+      out.push({ picks: next, value: v, delta: Math.abs(v - total), own: group === mainGroup ? 0 : 1 });
+    };
+    const order = [mainGroup, ...groups.filter((g) => g !== mainGroup)].filter(Boolean);
+    for (const g of order) {
+      for (let i = 0; i < picks.length; i++) {
+        const cur = picks[i].enemyKey;
+        for (const r of g.rows) {
+          if (r.key === cur || keys.has(r.key)) continue;
+          const next = picks.slice();
+          next[i] = { enemyKey: r.key, gate: picks[i].gate };
+          consider(next, g);
+        }
+      }
+      if (picks.length < maxPicks) {
+        for (const r of g.rows) {
+          if (keys.has(r.key)) continue;
+          consider([...picks, { enemyKey: r.key, gate: 'lower' }], g);
+        }
+      }
+    }
+    if (picks.length > 1) for (let i = 0; i < picks.length; i++) consider(picks.filter((_, j) => j !== i), mainGroup);
+    out.sort((a, b) => a.delta - b.delta || a.own - b.own
+      || a.picks.map((p) => p.enemyKey).join('|').localeCompare(b.picks.map((p) => p.enemyKey).join('|')));
+    if (out.length) return out[0];
+    // last resort: a complete re-fill from another type (or the union), still with a unique total
+    for (const g of order) {
+      const alt = this._coopFill(g.rows, budget, maxPicks);
+      const v = this.confrontSpent(alt);
+      if (alt.length && !used.has(v)) return { picks: alt, value: v };
+    }
+    const union = this._coopFill(this._coopUnionRows(groups), budget, maxPicks);
+    const v = this.confrontSpent(union);
+    return union.length && !used.has(v) ? { picks: union, value: v } : null;
+  }
+
+  /**
+   * Insert ONE player's system-run prey into their spawn list (同盟狩猎). Co-op players each have their own wave, so each
+   * plan is inserted into that player's list at the plan's own position, each monster on the route of its gate. The prey
+   * is a bonus target: `countInTotal: false` means a leak costs no 目标生命值 (exactly like a 2V2 placement), only a kill
+   * pays.
+   *
+   * The bounty is the plan's own per-kill split (`plan.coins`, priced at deployment) plus the receiver's 赏金嗅觉
+   * (eventBountyBonusOf), and it always carries `bank: true`: 赏金 goes to 坎诺特's account, never to the purse.
+   * @param {object[]} spawns the player's wave (already carrying the round's event card / 强力属性)
+   * @param {import('../PlayerState.js').PlayerState} ps
+   * @returns {object[]} a new list (the input is never mutated)
+   */
+  applyCoopHunt(spawns, ps) {
+    const plan = this.coopHuntPlan(ps);
+    if (!plan || !plan.picks.length || !Array.isArray(spawns) || !spawns.length) return spawns;
+    const mods = roundMods(this.confrontScale());
+    const base = this.wave && Array.isArray(this.wave.spawns) ? this.wave.spawns : spawns;
+    const start = this._confrontInsertTime(base, plan.position);
+    const scent = typeof this.eventBountyBonusOf === 'function' ? this.eventBountyBonusOf(ps) : 0;
+    const { routes, leader } = this._confrontRoutes();
+    const out = spawns.slice();
+    plan.picks.forEach((p, i) => {
+      const routeIndex = this.confrontRouteFor(p.enemyKey, p.gate);
+      out.push({
+        time: start + i, enemyKey: p.enemyKey, count: 1, interval: 0,
+        routeIndex,
+        mods: { ...mods }, ownerPlayerId: ps.playerId,
+        // the prep preview must show the REAL gate / movement class of an appended prey (previewOf otherwise defaults
+        // to lower / ground); `prey` marks it display-only: it is not one of the stage's scheduled enemies, so it is
+        // excluded from the HUD capsule's denominator (`countInTotal: false`).
+        preview: previewInfo(this.gd, p.enemyKey, routes[routeIndex], false, leader),
+        prey: true,
+        countInTotal: false,
+        bounty: { coins: (plan.coins[i] || 0) + scent, ownerPlayerId: ps.playerId, total: plan.count, index: i, bank: true },
+      });
+    });
+    return out;
+  }
+
+  /**
+   * 商人「坎诺特」 (user 2026-10-17): a kill bounty on a monster the opponent PLACED never becomes gold — the sim banks
+   * it (`unit.bounty.bank`, economy.js addBank) and settle adds it to PlayerState.bountyBank. The ONLY way from 赏金 to
+   * 金币 is this withdrawal in prep, at the round's rate (VERSUS_CONFRONT.merchantRates): `cost = gold / rate`, rounded
+   * UP on the first withdrawal of a round and DOWN afterwards, at most merchantRoundCap gold a round (R15 uncapped).
+   * @param {number} round absolute round number
+   */
+  merchantRate() { return merchantRateFor(this.round, this.huntCfg()); }
+
+  /** The per-round withdrawal cap of the current round (Infinity in the R15 隐秘核心 round). */
+  merchantCap() { return merchantCapFor(this.round, this.huntCfg()); }
+
+  /** The 赏金 a withdrawal of `gold` costs right now (ceil on this round's first, floor afterwards). */
+  merchantCost(ps, gold) {
+    const g = Math.max(0, Math.trunc(Number(gold) || 0));
+    if (!(g > 0)) return 0;
+    const raw = g / this.merchantRate();
+    // the epsilon keeps exact boundaries exact (4 / 0.2 = 19.999… / 20.000… must cost 20 either way)
+    return !ps || !(ps.withdrawnThisRound > 0) ? Math.ceil(raw - 1e-9) : Math.floor(raw + 1e-9);
+  }
+
+  /**
+   * The 坎诺特 panel of ONE player (m.private.merchant): the banked 赏金, the round's rate and cap, what is left to
+   * withdraw this round and the 1 / 2 / 4 / all options with the 赏金 each of them costs. null outside 2V2.
+   */
+  merchantView(ps) {
+    if (!this.huntMode || !ps) return null;
+    const rate = this.merchantRate();
+    const cap = this.merchantCap();
+    const withdrawn = Math.max(0, Math.trunc(Number(ps.withdrawnThisRound) || 0));
+    const bank = Math.max(0, Math.trunc(Number(ps.bountyBank) || 0));
+    const left = Math.max(0, cap - withdrawn);
+    // the gold this bank can buy at all: bank * rate, floored (the cost of g gold is g / rate)
+    const affordable = Math.floor(bank * rate + 1e-9);
+    const max = Math.max(0, Math.min(left, affordable));
+    const options = [1, 2, 4].map((gold) => ({ gold, cost: this.merchantCost(ps, gold), enabled: gold <= max }));
+    options.push({ gold: max, cost: max > 0 ? this.merchantCost(ps, max) : 0, enabled: max > 0, all: true });
+    return { bank, rate, cap: Number.isFinite(cap) ? cap : null, withdrawn, left: Number.isFinite(left) ? left : null, max, options };
+  }
+
+  /**
+   * `g.confront.withdraw { gold }` (prep only, 2V2): turn 赏金 into 金币 through 坎诺特. The server owns everything —
+   * the rate, the ceil/floor cost, the per-round cap and the balance; the client only sends the intent. Errors:
+   * ERR.WRONG_PHASE (not prep / not 2V2), ERR.MERCHANT_CAP (over this round's cap), ERR.MERCHANT_BANK (not enough 赏金),
+   * ERR.BAD_TARGET (a non-positive / malformed amount).
+   */
+  withdrawBounty(ps, { gold } = {}) {
+    if (!this.huntMode || this.phase !== PHASE.PREP) return fail(ERR.WRONG_PHASE);
+    // the coop 投放公示 freezes the prep: no withdrawal may change the purse in those 5 s
+    if (this.confrontStage === 'roster') return fail(ERR.WRONG_PHASE, 'roster');
+    if (!ps || !ps.alive) return fail(ERR.ELIMINATED);
+    if (ps.ready) return fail(ERR.ALREADY);
+    const g = Math.trunc(Number(gold));
+    if (!Number.isFinite(g) || g <= 0) return fail(ERR.BAD_TARGET, 'illegal 坎诺特 withdraw'); // i18n-ignore: server detail
+    if (ps.withdrawnThisRound + g > this.merchantCap()) return fail(ERR.MERCHANT_CAP);
+    const cost = this.merchantCost(ps, g);
+    if (!(cost > 0) || cost > ps.bountyBank) return fail(ERR.MERCHANT_BANK);
+    ps.bountyBank -= cost;
+    ps.withdrawnThisRound += g;
+    ps.withdrawnGold += g;
+    // addFunds already credits stats.fundsGained; never add it a second time here
+    ps.addFunds(g, { reason: 'merchant' });
+    this.markPrivate(ps);
+    this.markPublic();
+    return OK;
   }
 
   /** The alive, seated members of a team. */
@@ -328,18 +738,25 @@ export class MatchConfront {
     if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster') return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
     if (this.confrontSubs.has(ps.playerId)) return fail(ERR.ALREADY);
-    const member = this._confrontMember(ps, group, position, picks);
+    const arr = Array.isArray(picks) ? picks : [];
+    // the count cap first: it is the protocol's own list bound too (shared/constants.js maxPicks mirrors it)
+    if (arr.length > VERSUS_CONFRONT.maxPicks) return fail(ERR.CONFRONT_COUNT);
+    const member = this._confrontMember(ps, group, position, arr);
     if (!member) return fail(ERR.BAD_TARGET, 'illegal 对抗期 pick'); // i18n-ignore: 服务端内部 detail（客户端显示的是 ERR.BAD_TARGET 的文案）
-    this.confrontSubs.set(ps.playerId, member);
+    if (member.error) return fail(member.error);
+    this.confrontSubs.set(ps.playerId, member.sub);
     this.markPublic();
     this.maybeFinishConfront();
     return OK;
   }
 
   /**
-   * Check a submission: every enemyKey is offered by SOME 特训敌人 type, a legal gate and position, and — the only cap —
-   * the combined VALUE within the round's budget. The player MAY MIX TYPES (user decision 2026-10-17: step into one type,
-   * spend part of the budget, step into another and add more), so `group` is display-only and only the union is checked.
+   * Check a submission: every enemyKey is offered by SOME 特训敌人 type, a legal gate and position, at most
+   * VERSUS_CONFRONT.maxPicks monsters, and the combined VALUE within the round's budget. The player MAY MIX TYPES (user
+   * decision 2026-10-17: step into one type, spend part of the budget, step into another and add more), so `group` is
+   * display-only and only the union is checked. The AUTHORITATIVE cap (the client greys out what does not fit, this
+   * refuses it): over the budget ⇒ ERR.CONFRONT_BUDGET, over the count ⇒ ERR.CONFRONT_COUNT.
+   * @returns {{ sub: object }|{ error: string }|null} null = malformed (unknown monster / gate / position)
    */
   _confrontMember(ps, group, position, picks) {
     const list = this.confrontGroups();
@@ -352,9 +769,10 @@ export class MatchConfront {
       if (!p || typeof p.enemyKey !== 'string' || !allowed.has(p.enemyKey)) return null;
       out.push({ enemyKey: p.enemyKey, gate: p.gate === 'upper' ? 'upper' : 'lower' });
     }
-    if (this.confrontSpent(out) > this.confrontBudget()) return null;
+    if (out.length > VERSUS_CONFRONT.maxPicks) return { error: ERR.CONFRONT_COUNT };
+    if (this.confrontSpent(out) > this.confrontBudget()) return { error: ERR.CONFRONT_BUDGET };
     const gi = Number.isInteger(group) && group >= 1 && group <= list.length ? group : 1;
-    return { target: this.confrontTargets.get(ps.playerId) ?? null, group: gi, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget(), seat: ps.seat };
+    return { sub: { target: this.confrontTargets.get(ps.playerId) ?? null, group: gi, position: pos, picks: out, total: out.length, ratio: this.confrontRatio(), budget: this.confrontBudget(), seat: ps.seat } };
   }
 
   /** An AI player's submission, and the one a player who never submits gets at the window's end: fill the budget from
@@ -369,6 +787,7 @@ export class MatchConfront {
       const picks = [];
       let left = budget;
       for (const r of recs.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)))) {
+        if (picks.length >= VERSUS_CONFRONT.maxPicks) break;
         if (r.value > left) continue;
         left -= r.value;
         picks.push({ enemyKey: r.key, gate: picks.length % 2 ? 'upper' : 'lower' });
@@ -383,16 +802,38 @@ export class MatchConfront {
         if (p.length) { gi = i; picks = p; break; }
       }
     }
-    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: gi + 1, position: 'mid', picks, ratio: this.confrontRatio(), budget, seat: ps.seat });
+    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: gi + 1, position: 'mid', picks, total: picks.length, ratio: this.confrontRatio(), budget, seat: ps.seat });
     this.markPublic();
   }
 
-  /** Step 2 is over (its window ran out): anyone missing a submission gets a bot one, then the battles start. */
+  /**
+   * Step 2 is over (its window ran out): anyone missing a submission gets a bot one, then the roster (悬赏名单) is held
+   * for VERSUS_CONFRONT.rosterMs before the battles start (CONFRONT_ROSTER_MS, user 2026-10-17 addendum). Without the
+   * hold (rosterMs 0) the old path goes straight to COMBAT.
+   */
   finishConfront() {
-    if (this.phase !== PHASE.CONFRONT) return;
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage === 'roster') return;
     this.setDeadline(0);
     for (const ps of this.alivePlayers()) if (!this.confrontSubs.has(ps.playerId)) this.botConfront(ps);
     this.confront = new Map(this.confrontSubs);
+    const rosterMs = Math.max(0, Number(this.huntCfg().rosterMs) || 0);
+    if (rosterMs > 0) {
+      // the phase stays CONFRONT (stage 'roster'): m.public.confront still carries the applied submissions, and
+      // m.public.confront.roster = { until, ms } lets the client play its 5 s announcement before COMBAT.
+      this.confrontStage = 'roster';
+      this.confrontRosterAt = this.sched.now();
+      this.setDeadline(rosterMs / 1000, () => this.finishConfrontRoster());
+      this.markPublic();
+      return;
+    }
+    this.confrontStage = null;
+    this.startCombat();
+  }
+
+  /** The roster hold expired (server-timed by setDeadline → later → scaled): start the round's battles. */
+  finishConfrontRoster() {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'roster') return;
+    this.setDeadline(0);
     this.confrontStage = null;
     this.startCombat();
   }
@@ -404,7 +845,9 @@ export class MatchConfront {
    * @returns {object[]}
    */
   confrontFor(ps) {
-    if (!this.isVersus || !this.confront || !this.confront.size) return [];
+    // never apply a previous round's applied set: only THIS round's active 对抗期 has one (startRound clears it, and
+    // the active guard keeps a direct call from re-deploying stale placements)
+    if (!this.confrontActive() || !this.confront || !this.confront.size) return [];
     return [...this.confront.values()].filter((s) => s && s.target === ps.playerId);
   }
 
@@ -428,6 +871,22 @@ export class MatchConfront {
     if (j >= 0) return j;
     const i = routes.findIndex(motionOk);
     return i >= 0 ? i : 0;
+  }
+
+  /**
+   * The monsters ONE receiver faces this round — every intervention aimed at `ps`, as ONE batch in submission order.
+   * The bounty's numerator and denominator are both read from THIS batch: the receiver's own wave (the round's normal
+   * monsters included) never enters the count, so killing the whole wave pays nothing unless the monsters were placed
+   * by the opponent. A `sub` not in the applied map (a direct call / test) is added as its own batch.
+   * @returns {Array<{ s: object, p: object }>}
+   */
+  _confrontIncoming(ps, sub = null) {
+    const batch = [];
+    for (const s of this.confrontFor(ps)) for (const p of s.picks || []) batch.push({ s, p });
+    if (sub && Array.isArray(sub.picks) && !batch.some((x) => x.s === sub)) {
+      for (const p of sub.picks) batch.push({ s: sub, p });
+    }
+    return batch;
   }
 
   /**
@@ -479,6 +938,24 @@ export class MatchConfront {
     const mods = roundMods(scale);
     const start = this._confrontInsertTime(spawns, sub.position);
     const sentBy = Number.isInteger(sub.seat) ? sub.seat : null;
+    // 赏金 (final rule, user 2026-10-17): the FIRST four bounty phases pay a fixed 1/1/2/2 by the kill ratio
+    // (floor(cap × killed / total)); from the 5th phase on — the R13 最终狩猎 aside — the live formula pays
+    // floor(Σ value(killed) / wave value × income × killIncomeShare), with no cap and no per-monster minimum. R13 pays
+    // the FIXED finalHuntBounty (25) by the same kill ratio. Each monster carries the share that kill completes
+    // (confrontBountyPlan), so a cheap monster can be worth 0 and the running total is exactly the floor above — 64 of
+    // the cheapest monsters cannot beat the formula (or 25 on R13).
+    //
+    // BOTH the numerator and the denominator come from `batch` = the monsters the OPPONENT placed at THIS receiver
+    // (confrontFor → _confrontIncoming). The receiver's wave keeps the round's own monsters in it — they are never
+    // counted, so wiping out the whole wave pays nothing unless the monster was placed. `bounty.total` is the
+    // receiver's batch size (each player may face a different one), `bounty.index` its 0-based slot in that batch.
+    const batch = this._confrontIncoming(ps, sub);
+    const offset = batch.findIndex((x) => x.s === sub);
+    const total = batch.length;
+    const coins = this.confrontBountyPlan(batch.map((x) => x.p));
+    // 2V2 事件期 赏金嗅觉: each monster the opponent placed pays its killer +2 coins (banked 赏金) — the entry belongs to
+    // the RECEIVER of the placement, so it is added here once per placed monster.
+    const scent = typeof this.eventBountyBonusOf === 'function' ? this.eventBountyBonusOf(ps) : 0;
     sub.picks.forEach((p, i) => {
       kept.push({
         time: start + i * 1, enemyKey: p.enemyKey, count: 1, interval: 0, routeIndex: this.confrontRouteFor(p.enemyKey, p.gate),
@@ -488,7 +965,9 @@ export class MatchConfront {
         countInTotal: false,
         // 经济补助: killing a monster the opponent placed pays its killer (the sim's bounty mechanic — the killer's
         // player, a 联防 helper included); anyone the death cannot be credited to pays the wave's owner instead.
-        bounty: { coins: this.confrontBounty(p.enemyKey), ownerPlayerId: ps.playerId },
+        // `total`/`index` are the RECEIVER's batch (the monsters the opponent placed at this player), so the UI can
+        // show "killed / total" of the opponent's placement without ever counting the wave's own monsters.
+        bounty: { coins: (coins[offset + i] || 0) + scent, ownerPlayerId: ps.playerId, total, index: offset + i, bank: true },
       });
     });
     return kept;

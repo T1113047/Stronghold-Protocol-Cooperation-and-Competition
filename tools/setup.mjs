@@ -432,7 +432,7 @@ async function main() {
   const add = (state, label, detail = '') => summary.push({ state, label, detail });
   let fatal = false;
 
-  say(c.bold('\n卫戍协议：盟约 · setup') + c.dim(`  (${ROOT})`));
+  say(c.bold('\n卫戍协议：狩猎模拟 · setup') + c.dim(`  (${ROOT})`));
 
   // 1. Node
   const node = checkNode();

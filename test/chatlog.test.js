@@ -1,4 +1,4 @@
-// test/chatlog.test.js — 对局对话记录（移植自服务服 server_patches/chatlog）：封存格式、**「游戏」标识**、参与者块、
+// test/chatlog.test.js — 对局对话记录：封存格式、**「游戏」标识**、参与者块、
 // 违禁词等长替换、以及 7 天清理。
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -642,8 +642,17 @@ export function specBounds(spec, gd = null) {
   const keySourceCounts = new Map();
   /** spawn keys whose schedule entries may leak without costing LP (countInTotal false, boss / part tags) */
   const uncountedKeys = new Set();
+  /**
+   * Same, but with the scheduled COUNT per key: a `counted: false` leak consumes one of these slots. A key that appears
+   * both in the normal wave and as a 同盟狩猎 prey can therefore not hide the wave's leaks behind the prey's exemption.
+   */
+  const uncountedCounts = new Map();
   let spawnCount = 0;
   let bountyCoins = 0;
+  /** coins the OPPONENT PLACED (spawn.bounty.bank): they may only reach a player's banked `bank`, never `coins` */
+  let bankCoins = 0;
+  /** coins that may legitimately become GOLD: every non-bank bounty (official 悬赏, kill bounties) */
+  let goldCoins = 0;
   const sources = new Set();
   for (const s of Array.isArray(spec && spec.spawns) ? spec.spawns : []) {
     if (!s || typeof s.enemyKey !== 'string') continue;
@@ -652,9 +661,16 @@ export function specBounds(spec, gd = null) {
     keyCounts.set(s.enemyKey, (keyCounts.get(s.enemyKey) || 0) + n);
     const ks = `${s.enemyKey}|${typeof s.sourcePlayerId === 'string' ? s.sourcePlayerId : ''}`;
     keySourceCounts.set(ks, (keySourceCounts.get(ks) || 0) + n);
-    if (s.countInTotal === false || s.tag === 'boss' || s.tag === 'part') uncountedKeys.add(s.enemyKey);
+    if (s.countInTotal === false || s.tag === 'boss' || s.tag === 'part') {
+      uncountedKeys.add(s.enemyKey);
+      uncountedCounts.set(s.enemyKey, (uncountedCounts.get(s.enemyKey) || 0) + n);
+    }
     const coins = Math.max(Number(s.bounty && s.bounty.coins) || 0, Number(s.mods && s.mods.bountyCoins) || 0);
-    if (coins > 0) bountyCoins += coins * n;
+    if (coins > 0) {
+      bountyCoins += coins * n;
+      if (s.bounty && s.bounty.bank === true) bankCoins += coins * n;
+      else goldCoins += coins * n;
+    }
     if (typeof s.sourcePlayerId === 'string') sources.add(s.sourcePlayerId);
   }
   const derived = new Set();
@@ -675,7 +691,11 @@ export function specBounds(spec, gd = null) {
   }
   for (const k of keyCounts.keys()) {
     const rec = gd && typeof gd.enemy === 'function' ? gd.enemy(k) : null;
-    if (rec && rec.notCountInTotal) uncountedKeys.add(k);
+    if (rec && rec.notCountInTotal) {
+      uncountedKeys.add(k);
+      // the whole scheduled count of a key whose data record never counts may leak uncounted
+      uncountedCounts.set(k, Math.max(uncountedCounts.get(k) || 0, keyCounts.get(k) || 0));
+    }
   }
   const players = new Map();
   for (const p of Array.isArray(spec && spec.players) ? spec.players : []) {
@@ -712,7 +732,8 @@ export function specBounds(spec, gd = null) {
   }
   const round = Number(spec && spec.round) || 0;
   return {
-    keyCounts, keySourceCounts, derivedSourceCounts, uncountedKeys, derived, spawnCount, bountyCoins, sources, players,
+    keyCounts, keySourceCounts, derivedSourceCounts, uncountedKeys, uncountedCounts, derived, spawnCount,
+    bountyCoins, bankCoins, goldCoins, sources, players,
     // content spawns (splits, summons, boss minions) can add enemies beyond the schedule
     maxTotal,
     layerCap: 60 + 4 * round,
@@ -754,11 +775,14 @@ const sameMods = (a, b) => {
  * semantics); each leaked enemy key exists in the spawns (multiset bound; keys content may
  * spawn are bounded by the total) — boss fields excepted (their leaks cost team LP through b.progress); a leak is
  * `counted: false` only for enemies that never count (data notCountInTotal, countInTotal false, boss / part entries,
- * content spawns); 联防: leaks + never-spawned re-entries per (enemy, leaker) ≤ what that leaker sent in, and a split /
+ * content spawns), and only up to the scheduled count of such units per key (a normal wave unit cannot hide behind the
+ * same key's prey exemption); 联防: leaks + never-spawned re-entries per (enemy, leaker) ≤ what that leaker sent in, and a split /
  * summon only on a leaker who sent in its parent, ≤ the parents' data offspring count (offspringPerParent); per-bond layer
  * gains ≤ 60 + 4·round + what the player's layer 特质 can add to that bond (layerAllowanceOf: their per-battle caps, no
  * flat bound when one is uncapped) and ≤ the room left under BOND_LAYER_CAP (999) from the bond's starting layers, only
- * on bonds the player's lineup / band / effects / items name, none when the spec disables gains; coins ≤ the spawns' bounty coins;
+ * on bonds the player's lineup / band / effects / items name, none when the spec disables gains; `coins` ≤ the spec's
+ * NON-bank bounty coins (`goldCoins`: a banked 狩猎期 placement / prey bounty can never be reported as gold), `bank` ≤
+ * the banked coins, and `coins + bank` ≤ all bounty coins;
  * perfect consistent with the counted leaks; unit states only for the player's own units, within range. `resolved` (the
  * HUD capsule's numerator): the result's own — the FIELD's, what the client's capsule showed — is kept as reported,
  * clamped to the field's `total`, and is what m.public publishes (never the sum of the players': an enemy that crosses
@@ -784,6 +808,8 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       spawnMods.get(s.enemyKey).push(s);
     }
     const leakCount = new Map();
+    // how many `counted: false` leaks each key may still report (scheduled uncounted units only)
+    const uncountedLeft = new Map(B.uncountedCounts);
     // 联防: (enemyKey, leaker) budget shared by the helpers' leaks and the never-spawned re-entries
     const sourceLeft = new Map(B.keySourceCounts);
     const derivedLeft = new Map(B.derivedSourceCounts);
@@ -820,8 +846,14 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
           const bound = (B.keyCounts.get(key) || 0) + (B.derived.has(key) ? B.maxTotal : 0);
           if (n > bound) return bad('leak multiset');
           // a leak costs LP unless the enemy never counts (data notCountInTotal, countInTotal false, boss / part
-          // entries); content-spawned keys (summons, splits) may carry their own flag
-          if (!counted && !B.uncountedKeys.has(key) && !B.derived.has(key)) return bad('uncounted leak');
+          // entries). The exemption is per scheduled unit, not per key: a key that is both a normal wave unit and a
+          // 同盟狩猎 prey cannot report the normal unit as uncounted once the prey's allowance is spent. Content-spawned
+          // keys (summons, splits) may still carry their own flag when they are not also scheduled.
+          if (!counted) {
+            const left = uncountedLeft.get(key) || 0;
+            if (left > 0) uncountedLeft.set(key, left - 1);
+            else if (!B.derived.has(key) || B.keyCounts.has(key)) return bad('uncounted leak');
+          }
         }
         // mods / tag / source come from the spawn schedule (a leak re-enters 联防 with them). An enemy content spawned
         // (a split, a summon) carries its parent's mods — the round multipliers, a bounty id — so the leak's mods may
@@ -861,8 +893,15 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         if (n > 0) layerGains[bondId] = n;
       }
       const coins = Number(p.coins) || 0;
-      if (!finiteIn(coins, 0, B.bountyCoins + 1e-6)) return bad('coins');
+      // gold may only come from a NON-bank bounty: a 狩猎期 placement / prey bounty is banked at 坎诺特 and cannot be
+      // reported as coins (that would bypass the merchant's rate and the per-round withdrawal cap)
+      if (!finiteIn(coins, 0, B.goldCoins + 1e-6)) return bad('coins');
       coinsSum += coins;
+      // 2V2 / 同盟狩猎: the bounties of the monsters the opponent placed (or the system deployed) are banked (never gold)
+      // — bounded by the banked coins, and together with `coins` by all bounty coins of the spec (no forged split)
+      const bank = Number(p.bank) || 0;
+      if (!finiteIn(bank, 0, B.bankCoins + 1e-6)) return bad('bank');
+      if (!finiteIn(coins + bank, 0, B.bountyCoins + 1e-6)) return bad('bounty split');
       const unitsEnd = [];
       const seen = new Set();
       for (const u of Array.isArray(p.unitsEnd) ? p.unitsEnd : []) {
@@ -891,7 +930,7 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       }
       const stat = (v) => (finiteIn(v, 0, 1e13) ? v : 0);
       perPlayer[pid] = {
-        killed: p.killed, total: p.total, leaked, perfect: countedLeaks === 0, layerGains, coins,
+        killed: p.killed, total: p.total, leaked, perfect: countedLeaks === 0, layerGains, coins, bank,
         damageDealt: stat(p.damageDealt), bossDamage: stat(p.bossDamage), healingDone: stat(p.healingDone), deaths: Math.trunc(stat(p.deaths)),
         unitsEnd, unitStats,
       };
@@ -899,7 +938,7 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       // teammate UI then falls back to `killed`, never to a fabricated 0); clamped to the denominator
       if (Number.isInteger(p.resolved) && p.resolved >= 0) perPlayer[pid].resolved = Math.min(p.total, p.resolved);
     }
-    if (coinsSum > B.bountyCoins + 1e-6) return bad('coins');
+    if (coinsSum > B.goldCoins + 1e-6) return bad('coins');
     const result = { time: raw.time, reason: raw.reason, perPlayer, killed: 0, total: 0, errors: Math.max(0, Math.trunc(Number(raw.errors) || 0)) };
     let ownResolved = 0, ownKnown = pids.length > 0;
     for (const pid of pids) {

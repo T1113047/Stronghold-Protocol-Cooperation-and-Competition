@@ -39,6 +39,21 @@ export const GUIDE_CHAPTERS = [
 ];
 
 /**
+ * The 2V2 chapter of 玩法说明: this fork's own mode (docs/PLAYING.md §14). Kept OUT of GUIDE_CHAPTERS — those keys are
+ * the 19 official co-op tutorial pages (tools/assets/plan.mjs GUIDE_PAGES, test/ui/localArt.test.js) and the chapter is
+ * TEXT, not art. Each entry is a msgid, translated where it is shown.
+ */
+export const VERSUS_HELP = [
+  N_('两支双人小队各有一条共享目标生命值；对手在最终攻势前不可见。'),
+  N_('休整期结束时进入狩猎期：先锁定一名对手，再用价值预算给对面派去猎物。'),
+  N_('投放的怪从官方 7 类「特训敌人」里选，可以跨类型混搭，只限总价值。'),
+  N_('点一下已放置的怪换门，长按拖动调整出怪顺序。'),
+  N_('替换比例从 5% 起每回合 +2%、上限 15%；第 13 回合是最终狩猎，固定 50%。'),
+  N_('猎物漏过不扣目标生命'),
+  N_('击杀对面派来的猎物，赏金归己方'),
+];
+
+/**
  * Flat page list with URLs (only pages the local-art manifest or the asset manifest lists): `urls` best first (the
  * local file, then the mirror copy), `url` the first of them.
  * @returns {Array<{ key: string, title: string, chapter: number, url: string, urls: string[] }>}
@@ -116,6 +131,14 @@ function TipsFallback() {
   </div>`;
 }
 
+/** The 2V2 body: this fork's own mode, as a numbered rule list (no art — the official pages are co-op tutorials). */
+function VersusHelp() {
+  return html`<div class="guide__tips">
+    <${MicroLabel} tone="mint">HUNT SIMULATION 2V2</${MicroLabel}>
+    <ol>${VERSUS_HELP.map((k, i) => html`<li key=${i}>${t(k)}</li>`)}</ol>
+  </div>`;
+}
+
 /** The viewer (mounted once near the root). */
 export function GuideHost() {
   const { open, page } = useStore((s) => s, Object.is, guideStore);
@@ -123,14 +146,16 @@ export function GuideHost() {
   const pages = useMemo(() => (ready ? guidePages() : []), [ready]);
   const [loaded, setLoaded] = useState(() => new Set());
   const [failed, setFailed] = useState(() => new Set());
+  // the 2V2 chapter (VERSUS_HELP) instead of the official pages — reset whenever the viewer closes
+  const [vs, setVs] = useState(false);
   const boxRef = useRef(null);
   const n = pages.length;
   const i = n ? Math.min(Math.max(0, page), n - 1) : 0;
   const cur = pages[i] || null;
-  const go = (k) => { if (n) guideStore.set({ open: true, page: ((k % n) + n) % n }); };
+  const go = (k) => { if (!n) return; setVs(false); guideStore.set({ open: true, page: ((k % n) + n) % n }); };
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) { setVs(false); return undefined; }
     const onKey = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key;
@@ -149,9 +174,9 @@ export function GuideHost() {
   }, [open, n]);
 
   useEffect(() => {
-    if (!open || !n) return;
+    if (!open || !n || vs) return;
     preload(guidePreloadUrl(pages, i, failed));
-  }, [open, i, n, failed]);
+  }, [open, i, n, failed, vs]);
 
   if (!open) return null;
   const chapter = cur ? GUIDE_CHAPTERS[cur.chapter] : null;
@@ -166,19 +191,23 @@ export function GuideHost() {
           <${MicroLabel} tone="mint">HOW TO PLAY // STRONGHOLD PROTOCOL</${MicroLabel}>
           <h2 class="guide__title">${t('玩法说明')}</h2>
         </div>
-        ${n ? html`<nav class="guide__chapters" aria-label=${t('章节')}>
+        <nav class="guide__chapters" aria-label=${t('章节')}>
           ${GUIDE_CHAPTERS.map((ch, ci) => {
             const at = firstOf(ci);
             if (at < 0) return null;
-            return html`<button key=${ch.id} type="button" class=${cx('guide__chapter', cur?.chapter === ci && 'is-on')} onClick=${() => go(at)}>
+            return html`<button key=${ch.id} type="button" class=${cx('guide__chapter', !vs && cur?.chapter === ci && 'is-on')} onClick=${() => go(at)}>
               <span class="guide__chname">${t(ch.name)}</span><span class="guide__chmicro">${ch.micro}</span>
             </button>`;
           })}
-        </nav>` : null}
+          <button key="versus" type="button" class=${cx('guide__chapter', vs && 'is-on')} onClick=${() => setVs(true)}>
+            <span class="guide__chname">${t('狩猎模拟 2V2')}</span><span class="guide__chmicro">HUNT 2V2</span>
+          </button>
+        </nav>
         <button type="button" class="guide__close" aria-label=${t('关闭')} title=${t('关闭 (Esc)')} onClick=${closeGuide}><${Icon} name="close" /></button>
       </header>
 
-      ${src ? html`<div class="guide__stage">
+      ${vs ? html`<div class="guide__stage guide__stage--text"><${VersusHelp} /></div>`
+        : src ? html`<div class="guide__stage">
         <button type="button" class="guide__nav guide__prev" aria-label=${t('上一页')} onClick=${() => go(i - 1)}><${Icon} name="chevronLeft" /></button>
         <div class=${cx('guide__page', isLoaded && 'is-loaded')}>
           <img key=${src} src=${src} alt=${t(cur.title)} draggable=${false}
@@ -189,7 +218,7 @@ export function GuideHost() {
         <button type="button" class="guide__nav guide__next" aria-label=${t('下一页')} onClick=${() => go(i + 1)}><${Icon} name="chevronRight" /></button>
       </div>` : html`<div class="guide__stage guide__stage--text"><${TipsFallback} /></div>`}
 
-      ${n ? html`<footer class="guide__foot">
+      ${n && !vs ? html`<footer class="guide__foot">
         <div class="guide__label">
           <span class="guide__chtag">${t(chapter?.name || '')}</span>
           <b class="guide__ptitle">${t(cur?.title || '')}</b>

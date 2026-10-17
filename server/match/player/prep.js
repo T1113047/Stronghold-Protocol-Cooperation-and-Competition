@@ -12,6 +12,9 @@ export class PlayerPrep {
   _gate({ allowWhenReady = false } = {}) {
     if (!this.alive) return fail(ERR.ELIMINATED);
     if (this.m.phase !== PHASE.PREP) return fail(ERR.WRONG_PHASE);
+    // 同盟狩猎 投放公示: the prep is over (onPrepEnd / endPrep have run) and the 5 s announcement is read-only — no
+    // sell / move / buy / refresh / reward / equip while the battle lineup is frozen.
+    if (this.m.confrontStage === 'roster') return fail(ERR.WRONG_PHASE, 'roster');
     if (this.ready && !allowWhenReady) return fail(ERR.WRONG_PHASE, 'ready');
     return null;
   }
@@ -55,6 +58,8 @@ export class PlayerPrep {
   setReady(on) {
     if (!this.alive) return fail(ERR.ELIMINATED);
     if (this.m.phase !== PHASE.PREP) return fail(ERR.WRONG_PHASE);
+    // 同盟狩猎 投放公示: the lineup is locked for the 5 s announcement — un-readying would reopen the whole prep
+    if (this.m.confrontStage === 'roster') return fail(ERR.WRONG_PHASE, 'roster');
     if (on && this.personalChoice) return fail(ERR.BAD_TARGET, '请先完成教鞭选择'); // i18n-ignore: developer error detail
     if (on && !this.tempEmpty) return fail(ERR.TEMP_NOT_EMPTY);
     if (this.ready === !!on) return OK;

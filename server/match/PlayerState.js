@@ -156,10 +156,26 @@ export class PlayerState {
     this.bandId = null;
     this.funds = 0;
     this.pendingFunds = 0;
+    /**
+     * 猎人赏金 (2V2 商人「坎诺特」 / 同盟狩猎): the 赏金 banked from killing monsters the OPPONENT placed (2V2) or the
+     * SYSTEM deployed (co-op hunt). It is NOT gold — the only way out is a withdrawal in prep (Match.withdrawBounty:
+     * rate by round, cost = gold / rate, first withdrawal of a round ceil, later ones floor, ≤ merchantRoundCap gold a
+     * round). Survives rounds and reconnects (it lives on the server-side PlayerState); a new match starts empty.
+     */
+    this.bountyBank = 0;
+    /** Gold withdrawn at 坎诺特 this round (the ceil/floor switch and the per-round cap); reset in startRound. */
+    this.withdrawnThisRound = 0;
+    /** Gold withdrawn at 坎诺特 over the whole match (a summary counter; 赏金 leaves the bank, this only grows). */
+    this.withdrawnGold = 0;
+    /**
+     * 赏金 earned over the whole match = every `bank` settle added to `bountyBank` (the settlement screen's 「本局赏金
+     * 收入」). It only grows: a withdrawal moves bank → gold, never this. 赏金 ≠ 金币 (docs/design/match.md).
+     */
+    this.bountyEarned = 0;
     this.ready = false;
     this.infoReady = this.isBot;
     this.lastEmoteAt = -Infinity;
-    /** [CHAT] 上次发言时间（发送冷却，移植自服务服 server_patches/chat） */
+    /** [CHAT] 上次发言时间（发送冷却） */
     this.lastChatAt = -Infinity;
     /** operator loadout (DESIGN §16): frozen { [baseChessId]: { skill, module } }, {} = every chess on its defaults */
     this.loadout = Object.freeze({});
@@ -224,7 +240,7 @@ export class PlayerState {
     /** free-form counters for content (ctx.counter / setCounter) */
     this.counters = {};
     /** per-round counters (reset at round start) */
-    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0 };
+    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0, eventRefreshes: 0 };
     this.deployCapBonus = 0;
     this.deployCapMin = 0;
     this.deviceOverrides = {};
@@ -232,6 +248,21 @@ export class PlayerState {
     this.stats = {
       dmgDealt: 0, kills: 0, leaks: 0, gold: 0, refreshes: 0, merges: 0, itemMerges: 0, itemsEquipped: 0,
       bossDamage: 0, lpLost: 0, buys: 0, sells: 0, perfectRounds: 0, fundsGained: 0, healing: 0,
+    };
+    /**
+     * 2V2 事件期 (server/match/match/event.js): the entries this player RECEIVED — `{ card, mag, from, round, target }` —
+     * and the accumulated modifiers they produce (eventModsFor). `eventTargets` = the target keys this player has already
+     * given an entry to (no repeats in one match). The battle side reads eventEntries through battleInput, the economy
+     * hooks read eventMods (income / refresh / sell / deploy cap / placed-monster bounty).
+     */
+    this.eventEntries = [];
+    this.eventTargets = [];
+    /** the ally entries this player has drawn so far (ids; a card is never drawn twice for one player) */
+    this.eventCards = [];
+    this.eventMods = {
+      atkPct: 0, aspd: 0, hpPct: 0, defPct: 0, defIgnorePct: 0, regenPct: 0, dmgTakenMul: 1, moveMul: 1, deploy: 0,
+      spRecoveryMul: 1, spRecoveryFlat: 0, spCostFlat: 0,
+      goldPerRound: 0, bountyGold: 0, enemySpeedMul: 1, refreshDiscount: 0, refreshUses: 0, sellDiscount: 0,
     };
     this.eliminatedRound = null;
     this.lpAtFinal = null;

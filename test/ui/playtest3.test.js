@@ -208,7 +208,8 @@ describe('3: the temp overflow row (临时整备区)', () => {
     assert.deepEqual(tempInfo(p), { count: 2, items: 1 });
     assert.match(tempReadyReason(p), /^临时整备区还有 2 个单位：/);
     assert.ok(tempReadyReason(p).includes(TEMP_RULE));
-    assert.match(TEMP_RULE, /休整期结束时.*销毁/, 'says what happens at the end of the prep');
+    assert.match(TEMP_RULE, /仅本休整期内到期的会被销毁/, 'says what happens at the end of the prep');
+    assert.match(TEMP_RULE, /准备就绪\/战后获得的保留到下一休整期/, 'and what is kept');
     const v = ReadyToggle({ priv: p, onToggle() {}, readyCount: 1, total: 4 });
     const why = [...walk(v)].find((n) => hasClass(n, 'readywrap__why'));
     assert.ok(why, 'visible reason');
@@ -252,10 +253,11 @@ describe('3: the temp overflow row (临时整备区)', () => {
   });
 
   test('the row\'s label matches the server\'s due rule (PlayerState tempDue): destroyed at this prep\'s end unless ready — then kept through the next prep', () => {
-    assert.match(tempRowRule(false), /才能准备；休整期结束时仍在此处的将被销毁$/);
+    assert.match(tempRowRule(false), /仅本休整期内到期的会被销毁/);
+    assert.match(tempRowRule(false), /准备就绪\/战后获得的保留到下一休整期$/);
     // Ready is refused while the row holds pieces: what lies there while ready arrived after it (due at the next prep)
-    assert.match(tempRowRule(true), /保留到下个休整期/);
-    assert.match(tempRowRule(true), /取消准备则在本休整期结束时销毁/);
+    assert.match(tempRowRule(true), /仅本休整期内到期的会被销毁/);
+    assert.match(tempRowRule(true), /准备就绪\/战后获得的保留到下一休整期$/);
   });
 
   test('the game screen frames the row only on the own prep board while it holds pieces (source contract)', () => {

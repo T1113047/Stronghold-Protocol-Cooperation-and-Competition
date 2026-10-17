@@ -1588,11 +1588,11 @@ function MatchScreen() {
     ${phase === PHASE.EVENT ? html`<${EventOverlay} pub=${pub} busy=${eventBusy}
       onPick=${async (target) => { setEventBusy(true); try { await actions.eventPick(target); } finally { setEventBusy(false); } }} />` : null}
 
-    ${pub?.confront?.active ? html`<${ConfrontOverlay} pub=${pub} busy=${confBusy}
+    ${pub?.confront && (pub.confront.active || pub.confront.roster) ? html`<${ConfrontOverlay} pub=${pub} busy=${confBusy}
       onTarget=${async (targetPlayerId) => { setConfBusy(true); try { await actions.confrontTarget(targetPlayerId); } finally { setConfBusy(false); } }}
       onConfirm=${async (group, position, picks) => { setConfBusy(true); try { await actions.confront(group, position, picks); } finally { setConfBusy(false); } }} />` : null}
 
-    ${pub?.confront && !pub.confront.active ? html`<${ConfrontClash} pub=${pub} />` : null}
+    ${pub?.confront && !pub.confront.active && !pub.confront.roster ? html`<${ConfrontClash} pub=${pub} />` : null}
 
     ${banner ? html`<${PhaseBanner} key=${banner.key} mode="overlay" title=${banner.title} sub=${banner.sub} micro=${banner.micro}
       tone=${banner.tone} duration=${banner.duration || 1500} onDone=${() => setBanner(null)} />` : null}

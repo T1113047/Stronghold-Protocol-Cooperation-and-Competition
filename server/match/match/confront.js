@@ -27,10 +27,10 @@
 // (confrontTraits.js, 30 % of the whole table — confrontValueOf / confrontTraitStep).
 //
 // Applying: the placed monsters of an intervention land on ITS TARGET's wave only (confrontFor), replacing originals
-// worth `share × the wave value` picked at random (within 2 % of that value), inserted at the chosen position. The
-// opponent never sees who is aiming at whom (m.public isolation) — the panel shows the opponents as '?'.
-// 同盟狩猎 is the one difference: its prey REPLACES nothing (the wave keeps every original) and lands in the owning
-// player's own wave (applyCoopHunt).
+// worth `share × the wave value` picked at random (as close to that value as whole monsters allow, priced with
+// confrontValueOf), inserted at the chosen position. The opponent never sees who is aiming at whom (m.public isolation)
+// — the panel shows the opponents as '?'. 同盟狩猎 is the one difference: its prey REPLACES nothing (the wave keeps
+// every original) and lands in the owning player's own wave (applyCoopHunt).
 // Installed on Match.prototype like the other method containers.
 import { PHASE, ERR, VERSUS_CONFRONT, COOP_HUNT, merchantRateFor, merchantCapFor } from '../../../shared/constants.js';
 import { confrontTraitGrade } from './confrontTraits.js';
@@ -902,8 +902,12 @@ export class MatchConfront {
   applyConfront(spawns, sub, ps) {
     if (!sub || !Array.isArray(sub.picks) || !sub.picks.length || !Array.isArray(spawns) || !spawns.length) return spawns;
     const scale = this.confrontScale();
-    const en = (this.data && this.data.enemies) || {};
-    const valueOf = (key) => confrontValue(en[key], scale);
+    // price the originals EXACTLY like confrontWaveValue prices the wave (confrontValueOf = stats + the graded 特性
+    // score at this round's scale), so the value actually dropped / the wave value is the nominal share (5→15 %, 50 %
+    // on R13) — a stat-only price would under-replace by the trait share (30 % of the table). The event card / 强力属性
+    // multipliers are deliberately NOT part of this price: confrontWaveValue and the budget use the base wave, and a
+    // replacement share must stay comparable with them.
+    const valueOf = (key) => this.confrontValueOf(key, scale);
     const out = spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));
     // 1) drop originals at random until the target value is (nearly) reached
     const target = this.confrontWaveValue() * sub.ratio;
@@ -912,18 +916,52 @@ export class MatchConfront {
       const cnt = Math.max(1, Math.floor(Number(s.count) || 1));
       for (let k = 0; k < cnt; k++) units.push({ i, v: Math.max(1, valueOf(s.enemyKey)) });
     });
-    // shuffle (seeded) then take what fits; the last unit is the one that closes the gap best
+    // shuffle (seeded), then close the target with the closest of two builds: (a) fill what fits, then add the single
+    // remaining unit nearest the gap; (b) the shuffled order's first crossing of the target (and the one before it).
+    // The picked set is the one closest to `share × wave value` in value terms, so a coarse wave (a 5 % share smaller
+    // than every original) replaces the smallest original or nothing — whichever is closer — instead of overshooting by
+    // a whole run; the announced ratio is what actually leaves the wave.
     for (let i = units.length - 1; i > 0; i--) {
       const j = Math.floor(this.rngConfront() * (i + 1));
       [units[i], units[j]] = [units[j], units[i]];
     }
-    let left = target;
+    const totalOf = (list) => list.reduce((sum, u) => sum + units[u].v, 0);
     const take = new Map();
-    for (const u of units) {
-      if (u.v > left) continue;
-      left -= u.v;
-      take.set(u.i, (take.get(u.i) || 0) + 1);
-      if (left <= 0) break;
+    if (target > 0 && units.length) {
+      const greedy = [];
+      let left = target;
+      for (let u = 0; u < units.length; u++) {
+        if (units[u].v > left) continue;
+        greedy.push(u);
+        left -= units[u].v;
+        if (left <= 0) break;
+      }
+      if (left > 0 && greedy.length < units.length) {
+        let best = -1;
+        let bestGap = left;
+        for (let u = 0; u < units.length; u++) {
+          if (greedy.includes(u)) continue;
+          const gap = Math.abs(units[u].v - left);
+          if (gap < bestGap) { bestGap = gap; best = u; }
+        }
+        if (best >= 0) greedy.push(best);
+      }
+      const prefix = [];
+      let acc = 0;
+      for (let u = 0; u < units.length; u++) {
+        prefix.push(u);
+        acc += units[u].v;
+        if (acc >= target) break;
+      }
+      const candidates = [greedy, prefix];
+      if (prefix.length > 1) candidates.push(prefix.slice(0, -1));
+      let bestList = candidates[0];
+      for (const c of candidates.slice(1)) {
+        const d = Math.abs(totalOf(c) - target);
+        const bd = Math.abs(totalOf(bestList) - target);
+        if (d < bd || (d === bd && c.length < bestList.length)) bestList = c;
+      }
+      for (const u of bestList) take.set(units[u].i, (take.get(units[u].i) || 0) + 1);
     }
     // 2) apply the drops by REBUILDING the list (splicing while iterating would shift the indexes under us);
     //    a spawn that loses every unit goes away

@@ -835,6 +835,29 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
   .evohist__row { padding: .02rem .08rem; }
 }
 
+/* ---- [ROSTER] 公示 (ui/rosterPanel.js): 悬赏名单 / 同盟狩猎 投放公示 / 事件期 词条公示, one shared shape ------- */
+.rospov .spov__inner { gap: .14rem; }
+.rospov__timer { display: flex; align-items: baseline; gap: .08rem; font-size: calc(.26 * var(--t)); font-weight: 800; letter-spacing: .04em; color: var(--gold-2); text-shadow: 0 0 .18rem rgba(242, 189, 62, .4); white-space: nowrap; }
+.rospov--clash { z-index: 60; pointer-events: none; }
+.rospov__rows { display: flex; flex-direction: column; gap: .08rem; margin: 0; padding: 0 .04rem 0 0; list-style: none; overflow-y: auto; min-height: 0; max-height: min(64vh, calc(7 * var(--t))); scrollbar-width: thin; }
+.rospov__row { display: flex; align-items: center; min-height: calc(.62 * var(--t)); padding: .05rem .12rem; background: rgba(255, 255, 255, .025); border: 1px solid var(--line); }
+.rospov__group { padding: .06rem .04rem .02rem; font-size: calc(.15 * var(--t)); font-weight: 800; letter-spacing: .1em; color: var(--mint-400); }
+.rospov__group:not(:first-child) { margin-top: .06rem; color: #ffab97; }
+.rospov__note { margin: 0; font-size: calc(.13 * var(--t)); }
+.rospov__foe { flex: 0 0 auto; display: flex; flex-direction: column; gap: .04rem; padding: .07rem .14rem .08rem; border: 1px solid var(--line-2); background: rgba(255, 255, 255, .02); }
+.rospov__h { margin: 0; color: var(--text-lo); font-size: calc(.13 * var(--t)); letter-spacing: .08em; }
+.rospov__foeline { display: flex; align-items: baseline; gap: .14rem; flex-wrap: wrap; margin: 0; font-size: calc(.15 * var(--t)); color: var(--text-md); }
+.rospov__foeline b { color: var(--mint-400); }
+.rospov__foeline.is-elite b { color: var(--gold-2); }
+.rospov__plan, .rospov__give { display: flex; align-items: baseline; gap: .1rem; flex-wrap: wrap; font-size: calc(.2 * var(--t)); color: var(--text-md); }
+.rospov__who, .rospov__p { color: var(--mint-400); }
+.rospov__name { max-width: 2.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #eafff8; }
+.rospov__sep { color: var(--text-lo); }
+.rospov__cat { color: var(--gold-2); font-weight: 700; }
+.rospov__verb { color: var(--text-dim); }
+.rospov__eff { margin-left: .1rem; color: var(--mint-400); }
+.confclash__count { font-size: calc(.14 * var(--t)); font-weight: 700; color: var(--text-md); white-space: nowrap; }
+
 /* 对抗期 clash: after both sides are locked, the own team's pairs collide on screen (display only, self-fading) */
 /* 悬赏名单: once the bounty phase closes, BOTH teams' boards are revealed (who sent what at whom, and the bounty) */
 .confclash { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(4, 6, 6, .86); animation: clashVeil 5.2s ease both; pointer-events: none; }

@@ -241,7 +241,7 @@ export function tempInfo(priv) {
 }
 
 /** What the temp row asks of the player (the ready button's reason, the row's label). */
-export const TEMP_RULE = N_('放入整备区或战场、配发或使用后才能准备就绪；休整期结束时仍留在临时整备区的单位将被销毁');
+export const TEMP_RULE = N_('放入整备区或战场、配发或使用后才能准备就绪；仅本休整期内到期的会被销毁，准备就绪/战后获得的保留到下一休整期');
 
 /** Why 准备就绪 is refused while the temp row holds pieces (null when it is empty). */
 export function tempReadyReason(priv) {

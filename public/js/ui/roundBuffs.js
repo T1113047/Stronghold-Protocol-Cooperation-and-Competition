@@ -20,22 +20,9 @@
 // overlay's own 「本回合 {share}% 的敌人带「{attr}」」.
 import { html } from './components.js';
 import { t } from '../../../shared/i18n.js';
-import { ALLY_NAMES, FOE_NAMES, allyEffect, foeEffect, eventAllyCard, eventFoeCard } from './eventOverlay.js';
+import { ALLY_NAMES, FOE_NAMES, allyEffect, foeEffect, eventAllyCard, eventFoeCard, eventReceiver } from './eventOverlay.js';
 
-/**
- * Who received a recorded pick: the target map's playerId for that picker / key, else the record's own `targetId`.
- * Null when the record carries no `target` (an old record from before the server sent it): the caller skips it.
- * @param {any} rec an `ally.history` row
- * @param {Record<string, Record<string, string|null>>} [targets] `m.public.event.ally.targets`
- * @returns {string|null}
- */
-export function eventReceiver(rec, targets = {}) {
-  if (!rec || typeof rec.target !== 'string' || !rec.target) return null;
-  const map = targets && targets[rec.playerId];
-  const viaMap = map && typeof map === 'object' ? map[rec.target] : null;
-  if (typeof viaMap === 'string' && viaMap) return viaMap;
-  return typeof rec.targetId === 'string' && rec.targetId ? rec.targetId : null;
-}
+export { eventReceiver };
 
 /**
  * The strip's rows, in reading order: every entry I received this round (in history order), then the round's monster

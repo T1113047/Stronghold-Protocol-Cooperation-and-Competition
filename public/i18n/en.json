@@ -662,7 +662,6 @@
   "队友每击倒一个就少扣 1 点": "each one your teammates defeat costs 1 less",
   "目标生命值 {lp}：联防中，你漏过的敌人还剩 {left} 个，{each}；按现在结算扣除 {pending} 点（每回合至多 {cap} 点）": "LP {lp}: Unite in progress, {left} enemies that got past you remain; {each}. Settling now would cost {pending} LP (max {cap} per round)",
   "目标生命值 {lp}：联防中，队友正在迎战你漏过的敌人，结算时按联防后剩余的敌人扣除（至多 {pending} 点）": "LP {lp}: Unite in progress, teammates are engaging the enemies that got past you; the loss at settlement depends on the enemies left after Unite (max {pending} LP)",
-  "放入整备区或战场、配发或使用后才能准备就绪；休整期结束时仍留在临时整备区的单位将被销毁": "Move them to the Bench or Battlefield, equip or use them before you can Ready; units still on the Temporary Bench when the Rest Phase ends will be destroyed",
   "取消准备": "Cancel Ready",
   "本局信息（策略 / 禁用盟约 / 干员）": "Match Info (Strategies / Banned Alliances / Operators)",
   "查看即将迎击的敌方单位": "View the enemies you are about to face",
@@ -746,8 +745,6 @@
   "撤退": "Retreat",
   "撤退至整备区": "Retreat to Bench",
   "出售，获得 {sell} 资金": "Sell for {sell} Funds",
-  "已准备就绪后进入的单位保留到下个休整期，届时仍在此处的将被销毁（取消准备则在本休整期结束时销毁）": "Units that arrived after Ready are kept until the next Rest Phase; anything still here then will be destroyed (cancel Ready and they are destroyed at the end of this Rest Phase)",
-  "放入整备区或战场、配发或使用后才能准备；休整期结束时仍在此处的将被销毁": "Move to the Bench or Battlefield, equip or use them before you can Ready; anything still here at the end of the Rest Phase will be destroyed",
   "结算": "Settlement",
   "模拟结束": "Simulation Over",
   "表情套组：卫戍协议": "Emote Set: Stronghold Protocol",
@@ -1437,5 +1434,12 @@
   "队友获得：": "Teammate gains: ",
   "对方获得：": "Opponent gains: ",
   "两队各自迎战领袖，先比较 R14 剩余时间，再比共享生命": "Each squad fights its own leader: R14 time left first, then shared LP",
-  "时间同分、生命持平，按领袖伤害判定": "Time and LP tied — decided by leader damage"
+  "时间同分、生命持平，按领袖伤害判定": "Time and LP tied — decided by leader damage",
+  "{s} 秒后开始作战": "Combat starts in {s}s",
+  "本回合投放公示": "This Round's Deployment",
+  "词条公示": "Entries Revealed",
+  "把「{card}」给了": "gave 「{card}」 to",
+  "放入整备区或战场、配发或使用后才能准备就绪；仅本休整期内到期的会被销毁，准备就绪/战后获得的保留到下一休整期": "Move them to the Bench or Battlefield, equip or use them before you can Ready; only pieces due THIS Rest Phase are destroyed — pieces gained after Ready / battle stay until the next Rest Phase",
+  "仅本休整期内到期的会被销毁；准备就绪/战后获得的保留到下一休整期": "Only pieces due this Rest Phase are destroyed; pieces gained after Ready / battle stay until the next Rest Phase",
+  "放入整备区或战场、配发或使用后才能准备；仅本休整期内到期的会被销毁，准备就绪/战后获得的保留到下一休整期": "Move to the Bench or Battlefield, equip or use them before you can Ready; only pieces due this Rest Phase are destroyed — pieces gained after Ready / battle stay until the next Rest Phase"
 }

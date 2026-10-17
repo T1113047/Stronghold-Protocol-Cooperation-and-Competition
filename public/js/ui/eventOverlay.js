@@ -7,6 +7,7 @@
 // lines are rebuilt from those same constants (signs and magnitudes, self ×EVENT_SELF_MUL).
 import { html, Icon, MicroLabel, Countdown } from '../ui/components.js';
 import { useStore } from '../store.js';
+import { RosterPanel } from './rosterPanel.js';
 import { t, N_ } from '../../../shared/i18n.js';
 import {
   EVENT_CARDS, EVENT_FOE_CARDS, EVENT_FOE_ELITES, EVENT_PICK_SECONDS,
@@ -59,6 +60,56 @@ export function eventAllyCard(rec) {
 export function eventFoeCard(foe) {
   if (!foe) return null;
   return FOE_BY_KEY.get(foe.key) || FOE_BY_ID.get(foe.card) || null;
+}
+
+/**
+ * Who received a recorded pick: the target map's playerId for that picker / key, else the record's own `targetId`.
+ * Null when the record carries no `target` (an old record from before the server sent it): the caller skips it.
+ * Shared with ui/roundBuffs.js (the 本回合词条 strip), so "who got it" can never be resolved two different ways.
+ * @param {any} rec an `ally.history` row
+ * @param {Record<string, Record<string, string|null>>} [targets] `m.public.event.ally.targets`
+ * @returns {string|null}
+ */
+export function eventReceiver(rec, targets = {}) {
+  if (!rec || typeof rec.target !== 'string' || !rec.target) return null;
+  const map = targets && targets[rec.playerId];
+  const viaMap = map && typeof map === 'object' ? map[rec.target] : null;
+  if (typeof viaMap === 'string' && viaMap) return viaMap;
+  return typeof rec.targetId === 'string' && rec.targetId ? rec.targetId : null;
+}
+
+/**
+ * The 词条公示 rows: every pick of THIS period (ally.history rows with the current index), "who gave「X」to whom" and the
+ * entry's effect at its own magnitude. The receiver is resolved through eventReceiver (the target map first, the record's
+ * own targetId as the fallback). Rows whose card is unknown are skipped — never guessed.
+ * @returns {Array<{ key: string, body: any }>}
+ */
+export function eventRosterRows(pub, ally, index) {
+  const players = Array.isArray(pub && pub.players) ? pub.players : [];
+  const byId = new Map(players.map((p) => [p.playerId, p]));
+  const targets = (ally && ally.targets) || {};
+  const history = (ally && Array.isArray(ally.history) ? ally.history : [])
+    .filter((r) => r && Number(r.index) === Number(index));
+  const out = [];
+  for (const rec of history) {
+    const card = eventAllyCard(rec);
+    if (!card) continue;
+    const picker = byId.get(rec.playerId) || null;
+    const rid = eventReceiver(rec, targets);
+    const to = rid ? byId.get(rid) || null : null;
+    const name = t(ALLY_NAMES[card.key] || card.key);
+    const effect = allyEffect(card, Number(rec.mag) || 1);
+    out.push({
+      key: `event:${rec.playerId}`,
+      body: html`<span class="rospov__give">
+        <b class="rospov__p num">${pNo(picker)}</b><span class="rospov__name">${(picker && picker.name) || '?'}</span>
+        <span class="rospov__verb">${t('把「{card}」给了', { card: name })}</span>
+        <b class="rospov__p num">${pNo(to)}</b><span class="rospov__name">${(to && to.name) || '?'}</span>
+        ${effect ? html`<span class="rospov__eff">${effect}</span>` : null}
+      </span>`,
+    });
+  }
+  return out;
 }
 
 /** P1 / P2 … of a player row (the seat number). */
@@ -200,6 +251,16 @@ export function EventOverlay({ pub, busy = false, onPick }) {
     else if (!ally.active) why = t('事件期已结束');
     return { player, sel, disabled, why };
   };
+
+  // 词条公示 (the server's event roster hold): every pick of this period is final and the picking UI is gone — show
+  // who gave which entry to whom, its effect, and the 5 s countdown (ui/rosterPanel.js, shared with the hunt rosters).
+  if (ally.stage === 'roster' && ally.roster) {
+    const rosterRows = eventRosterRows(pub, ally, index);
+    if (rosterRows.length) {
+      return html`<${RosterPanel} title=${t('词条公示')} micro=${'ENTRIES // ' + t('词条公示')} tone="mint"
+        testid="event-roster" rows=${rosterRows} until=${Number(ally.roster.until) || Number(pub.deadline) || 0} />`;
+    }
+  }
 
   return html`<div class="spov evov" role="dialog" aria-label=${t('事件期')} data-testid="event-phase">
     <div class="spov__veil" aria-hidden="true"></div>

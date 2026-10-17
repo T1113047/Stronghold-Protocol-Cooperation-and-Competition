@@ -14,6 +14,8 @@ import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
 import { enemyIconUrl, factionIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
 import { toast } from '../ui/toasts.js';
+import { RosterPanel } from './rosterPanel.js';
+import { FOE_NAMES, foeEffect, eliteEffect, eventFoeCard } from './eventOverlay.js';
 import { t, N_ } from '../../../shared/i18n.js';
 import { VERSUS_CONFRONT } from '../../../shared/constants.js';
 
@@ -43,6 +45,95 @@ let lastSquad = null;
 
 /** P1 / P2 … of a player row (the seat number) — how the panel tells hidden opponents apart. */
 const pNo = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '');
+
+/** The roster row of ONE 2V2 placement: attacker → target, the monsters sent, their count and the announced bounty. */
+function clashRowBody(gd, players, r) {
+  const pNoOf = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '?');
+  const side = (p) => (p && p.team === 1 ? 'red' : 'blue');
+  const foe = players.find((p) => p.playerId === r.sub.target) || null;
+  const picks = Array.isArray(r.sub.picks) ? r.sub.picks : [];
+  return html`<div class="confclash__row" data-testid="confront-clash-row">
+    <span class=${cx('confclash__side', `confclash__side--${side(r.atk)}`)}>
+      <${PlayerAvatar} player=${r.atk} size="sm" />
+      <span class="confclash__p confseat num">${pNoOf(r.atk)}</span>
+    </span>
+    <span class="confclash__mid">
+      ${picks.slice(0, 8).map((pk, i) => html`<${Img} key=${`${pk.enemyKey}:${i}`} src=${enemyIconUrl(gd.m, pk.enemyKey)} fallback=${html`<${GIcon} name="target" />`} />`)}
+      <span class="confclash__vs">→</span>
+    </span>
+    <span class=${cx('confclash__side', `confclash__side--${side(foe)}`)}>
+      <span class="confclash__q">?</span>
+      <span class="confclash__p confseat num">${pNoOf(foe)}</span>
+    </span>
+    <span class="confclash__count num">${t('共 {count} 只', { count: picks.length })}</span>
+    <span class="confclash__coin num">${t('赏金 +{n}', { n: r.sub.coins || 0 })}</span>
+  </div>`;
+}
+
+/**
+ * The 2V2 名单 rows (both teams, own team first) from the applied submissions. `myTeam` only decides the order / the
+ * 我方 / 对面 headings — the roster itself is public (server messaging.js keeps both teams while the roster runs).
+ * @returns {Array<{ key: string, heading?: any, body?: any }>}
+ */
+function clashRows(gd, pub, conf, myTeam) {
+  const players = pub.players || [];
+  const subs = (conf && conf.subs) || {};
+  const list = players
+    .filter((p) => p.team != null && subs[p.playerId] && (subs[p.playerId].picks || []).length)
+    .map((p) => ({ atk: p, sub: subs[p.playerId], mine: myTeam != null && p.team === myTeam }));
+  const mine = list.filter((r) => r.mine);
+  const foes = list.filter((r) => !r.mine);
+  const out = [];
+  if (mine.length) out.push({ key: 'mine', heading: t('我方') });
+  for (const r of mine) out.push({ key: r.atk.playerId, body: clashRowBody(gd, players, r) });
+  if (foes.length) out.push({ key: 'foe', heading: t('对面') });
+  for (const r of foes) out.push({ key: r.atk.playerId, body: clashRowBody(gd, players, r) });
+  return out;
+}
+
+/** The round's monster entry (name + effect, then 强力属性), if THIS round's event published one. */
+function rosterFoe(pub, round) {
+  const foe = pub && pub.event && pub.event.foe ? pub.event.foe : null;
+  if (!foe || Number(foe.round) !== Number(round)) return null;
+  const card = eventFoeCard(foe);
+  if (!card) return null;
+  const elite = foe.elite || null;
+  const attr = elite && elite.attr ? (FOE_NAMES[elite.attr] ? t(FOE_NAMES[elite.attr]) : String(elite.attr)) : '';
+  return html`<section class="rospov__foe" data-testid="roster-foe">
+    <h3 class="rospov__h">${t('本回合的怪物词条')}</h3>
+    <p class="rospov__foeline"><b>${t(FOE_NAMES[card.key] || card.key)}</b><span>${foeEffect(card)}</span></p>
+    ${attr ? html`<p class="rospov__foeline is-elite"><b>${t('强力属性')}</b>
+      <span>${t('本回合 {share}% 的敌人带「{attr}」', { share: Math.round((Number(elite.share) || 0) * 100), attr })}</span>
+      <span>${t('共 {count} 只', { count: Number(elite.count) || 0 })}</span>
+      <span>${eliteEffect(elite.attr)}</span>
+    </p>` : null}
+  </section>`;
+}
+
+/** The roster panel of the 同盟狩猎 投放公示: one public plan per alive player (`plans`), plus this round's entry. */
+function coopRosterPanel(gd, pub, conf, players) {
+  const roster = conf.roster || {};
+  const rows = (Array.isArray(roster.plans) ? roster.plans : []).map((p) => {
+    const ps = players.find((x) => x.playerId === p.playerId) || { seat: p.seat, name: '?' };
+    const cat = p.category ? typeLabel(groupName(gd, { id: p.category, name: p.categoryName })) : '';
+    return {
+      key: p.playerId,
+      body: html`<span class="rospov__plan">
+        <b class="rospov__who num">${pNo(ps)}</b>
+        <span class="rospov__name">${ps.name || '?'}</span>
+        <span class="rospov__sep">·</span><span class="rospov__cat">${cat || '—'}</span>
+        <span class="rospov__sep">·</span><span>${t('总价值 {v}', { v: p.value })}</span>
+        <span class="rospov__sep">·</span><span>${t('共 {count} 只', { count: p.count })}</span>
+      </span>`,
+    };
+  });
+  const until = Number(roster.until) || Number(pub.deadline) || 0;
+  return html`<${RosterPanel} title=${t('本回合投放公示')} micro=${'DELIVERY // ' + t('本回合投放公示')} tone="gold"
+    testid="coop-roster" rows=${rows} until=${until} note=${t('猎物漏过不扣目标生命')}>
+    ${rosterFoe(pub, conf.round != null ? conf.round : pub.round)}
+  <//>`;
+}
+
 
 /** A small enemy chip: icon + name + value (used in the group cards and the placement panel).
  *  `blocked` = the monster does not fit the remaining budget: greyed and marked `aria-disabled`, and a tap only shows
@@ -228,6 +319,16 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
     onConfirm(group, position, picks);
   };
 
+  // 悬赏名单 / 投放公示 (the server's roster hold): the submissions are final, the battles have not started. The pick /
+  // submit UI is GONE here — only the announced list and the countdown are shown (ui/rosterPanel.js).
+  if (stage === 'roster') {
+    if (conf.roster && conf.roster.coop) return coopRosterPanel(gd, pub, conf, players);
+    const until = Number(conf.roster && conf.roster.until) || Number(pub && pub.deadline) || 0;
+    return html`<${RosterPanel} title=${t('悬赏名单')} micro=${'BOUNTY LIST // ' + t('悬赏名单')} tone="gold"
+      testid="confront-roster" rows=${clashRows(gd, pub, conf, myTeam)} until=${until}
+      note=${t('击杀对面派来的猎物，赏金归己方')} />`;
+  }
+
   return html`<div class="spov confov" role="dialog" aria-label=${t('狩猎期')}>
     <div class="spov__veil" aria-hidden="true"></div>
     <div class="spov__inner">
@@ -337,8 +438,9 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
 }
 
 /**
- * The 悬赏名单: once the bounty phase closes (both sides locked, the battles about to start) BOTH teams' boards are
- * revealed — who sent what at whom, and what killing it pays. Display only: it fades out by itself.
+ * The 悬赏名单 AFTER the phase: once the battles start, the applied submissions stay on the public view for a moment —
+ * both teams' boards are revealed (who sent what at whom, and what killing it pays). Display only: it fades out by
+ * itself. The roster hold itself is rendered by this file's ConfrontOverlay (stage 'roster').
  * @param {{ pub:any }} props
  */
 export function ConfrontClash({ pub }) {
@@ -356,38 +458,8 @@ export function ConfrontClash({ pub }) {
   const players = pub.players || [];
   const me = players.find((p) => p.playerId === myId) || null;
   const myTeam = me ? me.team : null;
-  const rows = players
-    .filter((p) => p.team != null && conf.subs[p.playerId] && (conf.subs[p.playerId].picks || []).length)
-    .map((p) => ({ atk: p, sub: conf.subs[p.playerId], mine: myTeam != null && p.team === myTeam }));
+  const rows = clashRows(gd, pub, conf, myTeam);
   if (!rows.length) return null;
-  const pNoOf = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '?');
-  const side = (p) => (p && p.team === 1 ? 'red' : 'blue');
-  const groups = [rows.filter((r) => r.mine), rows.filter((r) => !r.mine)].filter((l) => l.length);
-  return html`<div class="confclash" role="dialog" aria-label=${t('悬赏名单')}>
-    <div class="confclash__inner">
-      <header class="confclash__head"><${MicroLabel} tone="gold">BOUNTY LIST // ${t('悬赏名单')}</${MicroLabel}></header>
-      ${groups.map((list, gi) => html`<section key=${gi} class=${cx('confclash__team', `confclash__team--${gi === 0 ? 'mine' : 'foe'}`)}>
-        <span class="confclash__teamtag">${gi === 0 ? t('我方') : t('对面')}</span>
-        ${list.map((r) => {
-          const foe = players.find((p) => p.playerId === r.sub.target) || null;
-          return html`<div key=${r.atk.playerId} class="confclash__row" data-testid="confront-clash-row">
-            <span class=${cx('confclash__side', `confclash__side--${side(r.atk)}`)}>
-              <${PlayerAvatar} player=${r.atk} size="sm" />
-              <span class="confclash__p confseat num">${pNoOf(r.atk)}</span>
-            </span>
-            <span class="confclash__mid">
-              ${(r.sub.picks || []).slice(0, 8).map((pk, i) => html`<${Img} key=${`${pk.enemyKey}:${i}`} src=${enemyIconUrl(gd.m, pk.enemyKey)} fallback=${html`<${GIcon} name="target" />`} />`)}
-              <span class="confclash__vs">→</span>
-            </span>
-            <span class=${cx('confclash__side', `confclash__side--${side(foe)}`)}>
-              <span class="confclash__q">?</span>
-              <span class="confclash__p confseat num">${pNoOf(foe)}</span>
-            </span>
-            <span class="confclash__coin num">${t('赏金 +{n}', { n: r.sub.coins || 0 })}</span>
-          </div>`;
-        })}
-      </section>`)}
-      <p class="confclash__tip">${t('击杀对面派来的猎物，赏金归己方')}</p>
-    </div>
-  </div>`;
+  return html`<${RosterPanel} title=${t('悬赏名单')} micro=${'BOUNTY LIST // ' + t('悬赏名单')} tone="gold"
+    className="rospov--clash" testid="confront-clash" rows=${rows} note=${t('击杀对面派来的猎物，赏金归己方')} />`;
 }

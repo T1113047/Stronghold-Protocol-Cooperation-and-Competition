@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { makeMatch, DATA } from './harness.js';
 import { PHASE, ERR, VERSUS_CONFRONT, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS, opponentRevealed } from '../../shared/constants.js';
 import { confrontPool } from '../../server/match/match/confront.js';
+import { buildNormalWave } from '../../server/match/waves.js';
 import { validateC2S } from '../../shared/protocol.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
@@ -959,6 +960,55 @@ describe('versus (2V2) match: team model', () => {
     assert.equal(m.confrontBudget(), Math.round(m.confrontWaveValue() * m.confrontRatio() * 2));
     assert.equal(m.confrontHunt(), m.round === 13, 'the hunt flag follows the round');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: the intervention replaces the NOMINAL share — originals priced with 特性 (5 % at R_contest, 50 % on R13)', () => {
+    // The panel announces "本轮替换 5 %" (50 % on R13). `applyConfront` must therefore value the originals with the SAME
+    // currency as confrontWaveValue (stats + the graded 特性 score, confrontValueOf), not the stat half (confrontValue):
+    // with the stat price alone the dropped value came out ~30 % short of the share. The drop also picks the candidate
+    // set closest to the target, instead of stopping at the first unit that no longer fits.
+    const budgetSeed = (m) => {
+      const wave = m.confrontWaveValue();
+      const nominal = m.confrontRatio();
+      const row = m.confrontGroups().flatMap((g) => g.rows).sort((a, b) => a.value - b.value)[0];
+      const target = m.alivePlayers().find((p) => m.teamIdOf(p) === 1);
+      const sub = { target: target.playerId, picks: [{ enemyKey: row.key, gate: 'lower' }], position: 'mid', ratio: nominal, seat: 0 };
+      const budget = m.confrontBudget();
+      const bounty = m.confrontBountyOf(sub.picks);
+      const out = m.applyConfront(m.wave.spawns, sub, target);
+      assert.equal(m.confrontBudget(), budget, 'the budget still = wave value × share × budgetMul');
+      assert.equal(m.confrontBudget(), Math.round(wave * nominal * VERSUS_CONFRONT.budgetMul), 'the budget formula did not move');
+      assert.equal(m.confrontBountyOf(sub.picks), bounty, 'the bounty of the same picks did not move with the drop');
+      let kept = 0;
+      for (const s of out) {
+        if (s.confrontSeat != null) continue;
+        kept += m.confrontValueOf(s.enemyKey, s.mods) * Math.max(1, Math.floor(Number(s.count) || 1));
+      }
+      return { actual: (wave - kept) / wave, bounty };
+    };
+    // 5 %: the drawn contest round (R4 / R5 / R6 depending on the seed)
+    for (const seed of [3, 5, 7, 11, 12, 23]) {
+      const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed, fake: true }).start();
+      const m = h.m;
+      assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), `seed ${seed}: reached the 狩猎期`);
+      assert.equal(m.round, m.contestStartRound, 'the drawn contest round');
+      const r = budgetSeed(m);
+      assert.ok(Math.abs(r.actual - 0.05) <= 0.02, `seed ${seed}: replaced ${(r.actual * 100).toFixed(2)} % of the wave, nominal 5 %`);
+      assert.equal(r.bounty, 1, 'the 1st bounty phase still pays the fixed cap 1 on a full clear');
+      assert.deepEqual(h.logs.error, [], `seed ${seed}: no engine errors`);
+      m.dispose();
+      // R13 最终狩猎: a fresh match swapped onto the hunt round's wave (the scaling / ratio / seeded drop all agree)
+      const h13 = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed, fake: true }).start();
+      const m13 = h13.m;
+      m13.round = 13;
+      m13.wave = buildNormalWave(m13.gd, m13.rngWaves, m13.factions, 13);
+      assert.equal(m13.confrontRatio(), 0.5, 'R13 is the flat 50 %');
+      const r13 = budgetSeed(m13);
+      assert.ok(Math.abs(r13.actual - 0.5) <= 0.02, `seed ${seed}: R13 replaced ${(r13.actual * 100).toFixed(2)} % of the wave, nominal 50 %`);
+      assert.equal(r13.bounty, VERSUS_CONFRONT.finalHuntBounty, 'R13 still pays the fixed 25 on a full clear');
+      assert.deepEqual(h13.logs.error, [], `seed ${seed}: no engine errors on R13`);
+      m13.dispose();
+    }
   });
 
   test('versus: a submission may MIX 特训敌人 types (the budget is the only cap)', () => {

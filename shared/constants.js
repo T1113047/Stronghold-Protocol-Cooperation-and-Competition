@@ -164,9 +164,10 @@ export const VERSUS_CONFRONT = Object.freeze({
  * but every 狩猎期 is filled by the SYSTEM instead of the players. The rhythm is the 2V2 one (HUNT_RHYTHM: the drawn
  * start round R4/R5/R6, 5 % +2 %/round, cap 15 %, R13 最终狩猎 50 %), the monsters come from the official 特训敌人 types
  * within the round's budget (= wave value × ratio; the prey is INSERTED, not replacing, so the net addition is the ratio
- * itself), and they are INSERTED into the shared wave (every player meets the same prey). Killing one banks its bounty
- * at 坎诺特 (never gold), like a 2V2 placement. The 事件期 keeps its three periods with only `self` / `mate` targets (no
- * opponent in co-op). `enabled` is the one switch: false leaves co-op exactly as it was before.
+ * itself). EVERY ALIVE PLAYER GETS THEIR OWN plan (每人一份: one official category per seat, the totals pairwise
+ * distinct), and each plan is INSERTED into that player's OWN wave/波次 — not one shared batch. Killing one banks its
+ * bounty at 坎诺特 (never gold), like a 2V2 placement. The 事件期 keeps its three periods with only `self` / `mate`
+ * targets (no opponent in co-op). `enabled` is the one switch: false leaves co-op exactly as it was before.
  */
 export const COOP_HUNT = Object.freeze({
   enabled: true,

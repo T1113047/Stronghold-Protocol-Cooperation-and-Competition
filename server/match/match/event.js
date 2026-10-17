@@ -181,7 +181,9 @@ const magMul = (m, mag) => 1 + (m - 1) * mag;
 export function eventEntryActive(entry, round = null) {
   const cur = Number(round);
   if (!Number.isFinite(cur)) return true;
-  const picked = Number(entry && entry.round);
+  const raw = entry && entry.round;
+  if (raw == null || raw === '') return true;
+  const picked = Number(raw);
   if (!Number.isFinite(picked)) return true;
   return cur >= picked && cur < picked + EVENT_DURATION_ROUNDS;
 }

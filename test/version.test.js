@@ -18,7 +18,7 @@ const lock = JSON.parse(read('package-lock.json'));
 
 // This fork's own release metadata: the version it ships under, the upstream release it is built on, and the
 // repository it lives in (package.json / package-lock.json / shared/constants.js / README.md, one number everywhere).
-const PKG_NAME = 'stronghold-protocol-hunt-simulation';
+const PKG_NAME = 'hunt-simulation';
 const FORK_REPO = 'https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation';
 
 test('one release version: this fork\'s 0.0.1 everywhere, the upstream 0.2.6 beside it', () => {

@@ -15,9 +15,9 @@
 // merged into the same line. Outside a hunt mode m.public.event is null, so nothing renders there; a round without an
 // event renders nothing either, and no empty row is left behind.
 //
-// The names and the effect lines come from ui/eventOverlay.js (ALLY_NAMES / FOE_NAMES / allyEffect / foeEffect /
-// eventAllyCard / eventFoeCard) — never a second copy of the 24 + 12 card tables. No new msgids: the 强力属性 line is the
-// overlay's own 「本回合 {share}% 的敌人带「{attr}」」.
+// The names, the effect lines and the receiver rule come from ui/eventOverlay.js (ALLY_NAMES / FOE_NAMES / allyEffect /
+// foeEffect / eventAllyCard / eventFoeCard / eventReceiver) — never a second copy of the 24 + 12 card tables. No new
+// msgids: the 强力属性 line is the overlay's own 「本回合 {share}% 的敌人带「{attr}」」.
 import { html } from './components.js';
 import { t } from '../../../shared/i18n.js';
 import { ALLY_NAMES, FOE_NAMES, allyEffect, foeEffect, eventAllyCard, eventFoeCard, eventReceiver } from './eventOverlay.js';
@@ -78,7 +78,7 @@ export function RoundBuffs({ pub, myId }) {
   return html`<div class="rbuffs" data-testid="round-buffs">
     ${rows.map((r, i) => html`<div key=${`${r.kind}:${i}`} class=${`rbuff rbuff--${r.kind}`}
       data-testid=${`round-buff-${r.kind}`} title=${r.title}>
-      <b class="rbuff__name">${r.name}</b>${r.effect ? html`<span class="rbuff__eff">${r.effect}</span>` : null}${r.elite ? html`<span class="rbuff__elite">${r.elite}</span>` : null}
+      <b class="rbuff__name">${r.name}</b>${r.effect ? html` <span class="rbuff__eff">${r.effect}</span>` : null}${r.elite ? html` <span class="rbuff__elite">${r.elite}</span>` : null}
     </div>`)}
   </div>`;
 }

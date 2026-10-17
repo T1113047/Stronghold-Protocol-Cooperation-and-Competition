@@ -64,7 +64,7 @@ test('the strip lists the entries I RECEIVED this round — from my own pick and
   assert.deepEqual(rows.slice(0, 3).map((r) => r.effect), ['攻击力 +20%', '无视防御 +22%', '攻击力 -18%']);
   assert.equal(rows[3].effect, '敌人攻击力 ×1.15', 'the monster entry, in the overlay\'s wording');
   assert.equal(rows[3].elite, '本回合 10% 的敌人带「疾行」', '强力属性 merged into the monster line');
-  assert.equal(rows[0].title, '磨刃 攻击力 +20%', 'the full line survives in the tooltip when CSS truncates it');
+  assert.equal(rows[0].title, '磨刃 攻击力 +20%', 'the full line stays in the title when CSS truncates the text');
 });
 
 test('the receiver is ally.targets[picker][target]; a missing map falls back to the record\'s targetId; no target means no row', () => {

@@ -435,8 +435,8 @@
 .rbuff--foe { border-left-color: var(--red-premium); }
 .rbuff__name { color: var(--amber); font-weight: 700; }
 .rbuff--foe .rbuff__name { color: var(--orange-hi); }
-.rbuff__eff { margin-left: .04rem; color: var(--text-md); }
-.rbuff__elite { margin-left: .04rem; color: var(--text-dim); }
+.rbuff__eff { margin-left: .02rem; color: var(--text-md); }
+.rbuff__elite { margin-left: .02rem; color: var(--text-dim); }
 
 /* ---- [CHAT] in-match text chat (independent bar in the corner stack, above the 交流 row) ----------------------- */
 .gchat { position: relative; display: flex; align-items: center; gap: .06rem; width: max(3.6rem, 240px); max-width: 72vw; }

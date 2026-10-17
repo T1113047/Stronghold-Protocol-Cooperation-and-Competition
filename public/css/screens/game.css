@@ -299,6 +299,18 @@
   background: rgba(8, 11, 10, .85); border: 1px dashed rgba(255, 255, 255, .25);
 }
 
+/* ---- [DAMAGEBOARD] in-match damage stats: under the 盟约 (bond strip), left-aligned, display-only ------------ */
+/* the sizes stay on plain rem like the strip above (test/ui/text-scale.test.js NOT_SCALED: the in-match chrome pass) */
+.dmgboard {
+  position: absolute; left: 1.56rem; top: 2.06rem; display: flex; align-items: center; flex-wrap: wrap;
+  gap: .08rem .1rem; max-width: 8rem; pointer-events: none;
+}
+.dmgboard__cell { display: flex; align-items: center; gap: .04rem; padding: .02rem .07rem .02rem .02rem;
+  background: rgba(8, 11, 10, .55); border: 1px solid var(--line); }
+.dmgboard__num { font-size: .14rem; font-weight: 700; color: var(--gold); text-shadow: 0 1px 2px #000; }
+.dmgboard__heal { font-size: .14rem; font-weight: 700; color: var(--ice); text-shadow: 0 1px 2px #000; }
+.dmgboard__x { font-size: .11rem; color: var(--text-lo); }
+
 /* ---- team panel ------------------------------------------------------------------------------------------- */
 .team { position: absolute; left: .22rem; top: 2.36rem; display: flex; flex-direction: column; gap: .14rem; pointer-events: none; }
 .team__row { position: relative; display: flex; align-items: center; gap: .1rem; pointer-events: auto; }

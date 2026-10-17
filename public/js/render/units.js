@@ -729,12 +729,16 @@ export class UnitView {
   _loadSpine(retry = false) {
     const a = this.ctx.assets;
     if (!a || !a.spineEntry || !a.spine) return;
+    const um = this.ctx.settings?.unitModels;
+    if (um === 'off') return; // [UNITMODELS] 不加载角色模型：沿用头像 / 稀有度菱形 fallback（已加载的由 refreshModel 清掉）
     const id = this.info.spine || this.info.defId;
     // Front/Back rule (research 07 §5.5 / 09 §1.2): Front facing right/down (mirrored for left), Back facing up — while
     // standing (a knocked-out operator lies with the model that has a fall: _wantsBack).
     const back = this._wantsBack();
     const entry = id ? a.spineEntry(id, { back }) : null;
-    if (!entry || this.ctx.settings?.quality === 'low' && this.isEnemy && !this.isBoss && this.ctx.crowded?.()) return;
+    // [UNITMODELS] 低画质 + 敌人 + 拥挤时跳模型，但「强制加载」(on) 除外
+    const crowdSkip = um !== 'on' && this.ctx.settings?.quality === 'low' && this.isEnemy && !this.isBoss && this.ctx.crowded?.();
+    if (!entry || crowdSkip) return;
     this.entryBack = back;
     this._acquireSpine(entry, id, retry);
   }
@@ -753,6 +757,27 @@ export class UnitView {
     if (this.actor) return;
     if (!this._spineBusy) { this._retryAt = 0; this._loadSpine(true); return; }
     if (this._spineHidden && !this._stuckAt && !globalThis.document?.hidden) this._stuckAt = nowMs() + SPINE_STUCK_MS;
+  }
+
+  /**
+   * [UNITMODELS] Apply 设置「角色模型」(ctx.settings.unitModels): 'off' cancels any in-flight load and drops the model now,
+   * so the avatar-in-rarity-diamond fallback shows (like a model that never loaded); 'on' / 'auto' (re)starts a load when
+   * none shows. render/app.js calls it for every view when 画面质量 →「角色模型」changes.
+   * @param {'auto'|'on'|'off'} m
+   */
+  refreshModel(m) {
+    if (this.destroyed) return;
+    if (m === 'off') {
+      if (this.actor || this._spineBusy) {
+        this._spineReq = (this._spineReq || 0) + 1; // cancel the in-flight load (its resolve sees a stale request)
+        this._spineBusy = false;
+        this._dropActor();
+        this.swapT = 1; this.fallback.alpha = 1; this.fallback.visible = true;
+        this._ensurePicture();
+      }
+      return;
+    }
+    if (!this.actor && !this._spineBusy) { this._retryAt = 0; this._loadSpine(true); }
   }
 
   /**

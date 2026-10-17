@@ -147,22 +147,22 @@ import { promotionsOf } from './promote.js';
 import { ensurePixi } from './app/pixi.js';
 import { pieceDirOf, pickUnitOf } from './app/pick.js';
 import { CAMERA_MS, BOARD3D_STABLE_MS, BOARD3D_RETRY_MS, PEN_CAMERA_MS, RANGE_GROUPS, LEADER_HIT_STYLE, DRAG_HOLD_TILES, CHAIN_KINDS, DROP_PENDING_MS, DEPLOY_REPLAY_MS } from './app/tune.js';
-import { boardPreference, switchableBox, bandFor, fieldRows, boardArea, viewKind, penShown, leaderShown } from './app/view.js';
+import { boardPreference, unitSetting, switchableBox, bandFor, fieldRows, boardArea, viewKind, penShown, leaderShown } from './app/view.js';
 import { renderInfo, FORCED_EXIT, showsDeathFx } from './app/info.js';
 import { resolveAssets, makeData, withTimeout, QUALITY_RES, BOARD_RES, releaseGl } from './app/host.js';
 import { t } from '../../../shared/i18n.js';
 
 export { ensurePixi } from './app/pixi.js';
 export { PEN_CAMERA_MS, LEADER_HIT_STYLE, DRAG_HOLD_TILES, DEPLOY_REPLAY_MS } from './app/tune.js';
-export { viewKind, boardArea, bandFor, fieldRows, penShown, leaderShown, boardPreference, switchableBox } from './app/view.js';
+export { viewKind, boardArea, bandFor, fieldRows, penShown, leaderShown, boardPreference, unitSetting, switchableBox } from './app/view.js';
 export { FORCED_EXIT, showsDeathFx, renderInfo } from './app/info.js';
 export { releaseGl } from './app/host.js';
 
 /**
  * Create the battlefield view inside `host` (an element sized by CSS; the canvas fills it).
  * @param {HTMLElement} host
- * @param {{ data?: any, assets?: any, audio?: any, settings?: { damageNumbers?: boolean, officialDamageNumbers?: boolean, ammoCount?: boolean, quality?: string }, signal?: AbortSignal,
- *           padding?: object|((kind:string, size:{width:number,height:number}) => object),
+ * @param {{ data?: any, assets?: any, audio?: any, settings?: { damageNumbers?: boolean, officialDamageNumbers?: boolean, ammoCount?: boolean, quality?: string, pictureAuto?: boolean, unitsForce?: 'on'|'off' }, signal?: AbortSignal,
+ *           weakGpu?: boolean, padding?: object|((kind:string, size:{width:number,height:number}) => object),
  *           hud?: {top:number,bottom:number}|((kind:'prep'|'bossPrep', size:{width:number,height:number}, o:{shop:boolean}) => {top:number,bottom:number}|null) }} [opts]
  */
 export async function createFieldView(host, options = {}) {
@@ -175,6 +175,11 @@ export async function createFieldView(host, options = {}) {
   const assets = resolveAssets(opts.assets);
   const data = makeData(opts.data);
   const settings = { damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', ...(opts.settings || {}) };
+  // [UNITMODELS] 角色模型模式（画面自动调节 / 强制加载·不加载）折算成 ctx.settings.unitModels，units.js 直接读。
+  // `opts.weakGpu`: ui/fieldHost.js passes the same `gpuTier() === 'weak'` it uses to start on the 2D board — a weak
+  // renderer then starts without any Spine model (avatar-in-rarity-diamond fallback). A player's own 角色模型 choice wins.
+  const weakGpu = !!opts.weakGpu;
+  settings.unitModels = unitSetting(settings, weakGpu);
   // the 3D board (three.js + the official art) loads in parallel with everything else
   const boardPref = boardPreference(opts.board);
   const want3d = boardPref !== '2d' && webgl2Available(boardPref === '3d');
@@ -324,6 +329,20 @@ export async function createFieldView(host, options = {}) {
   let camBeforePen = null;    // { kind, opts } the camera the pen returns to
   let leader = null;          // { key, view, stand, area } the round leader standing on the boss field in the prep (setLeader)
   let leaderHidden = true;    // shown only by the boss-field prep camera (leaderShown)
+
+  /**
+   * [UNITMODELS] Apply a 角色模型 choice immediately (设置 →「画面质量」): 'auto'/'on' load the Spine models ('on' also skips
+   * the low-quality crowded-enemy skip), 'off' drops them now — the avatar-in-rarity-diamond fallback takes over
+   * (render/units.js UnitView.refreshModel). `settings.unitModels` is what the views read.
+   * @param {'auto'|'on'|'off'} m
+   */
+  function applyUnitModels(m) {
+    const want = m === 'on' || m === 'off' ? m : 'auto';
+    settings.unitModels = want;
+    for (const v of views.values()) v.refreshModel?.(want);
+    for (const v of penViews.values()) v.refreshModel?.(want);
+    leader?.view?.refreshModel?.(want);
+  }
 
   const heightAt = (r, c) => (tiles ? tiles.heightAt(r, c) : 0);
   const ctx = {
@@ -2000,6 +2019,12 @@ export async function createFieldView(host, options = {}) {
       if (typeof s.ammoCount === 'boolean') settings.ammoCount = s.ammoCount;   // the units read it every frame (ctx.settings)
       if (s.quality === 'high' || s.quality === 'medium' || s.quality === 'low') settings.quality = s.quality;
       if (q !== settings.quality) { board3d?.setQuality?.(settings.quality); resize(); }
+      // [UNITMODELS] 画面自动调节 / 角色模型「加载·不加载」改动：立即生效（跨「简化平面/引擎」边界时由 fieldHost 重挂载）
+      const unitsBefore = settings.unitModels;
+      if (typeof s.pictureAuto === 'boolean') settings.pictureAuto = s.pictureAuto;
+      if (s.unitsForce === 'on' || s.unitsForce === 'off') settings.unitsForce = s.unitsForce;
+      const unitsAfter = unitSetting(settings, weakGpu);
+      if (unitsAfter !== unitsBefore) applyUnitModels(unitsAfter);
     },
     resize,
     /** Dev / settings: switch the board layer ('3d' loads three.js + the art when available; '2d' = atlas board). */

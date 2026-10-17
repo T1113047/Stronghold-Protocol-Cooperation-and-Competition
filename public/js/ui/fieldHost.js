@@ -14,6 +14,12 @@ import { data } from '../data.js';
 import { audio } from '../audio.js';
 import { settingsStore } from './settings.js';
 import { gpuTier } from '../diag.js';
+import { installOpPrefetch } from './prefetchOps.js';
+
+// [PREFETCH] 干员素材预取: installed at boot — fieldHost.js is the client-side asset-orchestration module
+// (seedAssets below) and is loaded with the router. The install is idempotent and subscribes to the app store: each
+// operator's avatar + battle Spine is warmed as soon as it shows up in the match state.
+installOpPrefetch();
 
 const LOAD_TIMEOUT_MS = 12000;
 const METHODS = ['setStage', 'setCamera', 'setPrep', 'enterBattle', 'pushSnapshot', 'pushEvents', 'highlightTiles', 'on', 'resize', 'destroy'];
@@ -222,9 +228,13 @@ export async function mountFieldView(host, { signal } = {}) {
   const opts = { data, assets: data.get('assets'), audio, settings: settingsStore.get(), padding: hudPadding, hud: hudBands };
   // 按 GPU 自动降档: without a real GPU the official 3D board is the heaviest layer on screen, so a weak renderer
   // starts on the 2D atlas board. boardPreference reads `?board=` from the URL first, so 3D can still be forced.
+  // [UNITMODELS] the same probe also tells the renderer to start without the Spine models (render/app/view.js
+  // unitSetting): a weak GPU's default is the avatar-in-rarity-diamond fallback, and a player's own 角色模型 choice
+  // (画面自动调节 off) always wins.
   if (gpuTier() === 'weak') {
     opts.board = '2d';
-    if (pref !== 'fallback') console.info('[field] weak GPU — starting on the 2D board (?board=3d forces the 3D one)');
+    opts.weakGpu = true;
+    if (pref !== 'fallback') console.info('[field] weak GPU — starting on the 2D board without operator models (?board=3d / 设置·角色模型 force them)');
   }
   if (pref !== 'fallback') {
     const controller = new AbortController();

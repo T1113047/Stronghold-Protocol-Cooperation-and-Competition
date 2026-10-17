@@ -39,6 +39,8 @@ function fixture(extra = {}) {
     console: { warn: (...args) => warnings.push(args), info: () => {} },
     gpuTier: () => 'ok',
     audio: {}, data: { get() { return null; } }, settingsStore: { get() { return {}; } },
+    // [PREFETCH]: fieldHost installs the operator-asset prefetch at module load; the real module needs the store / data
+    installOpPrefetch: () => {},
     setTimeout(fn) { timers.set(++timerId, fn); return timerId; },
     clearTimeout(id) { timers.delete(id); },
     importAssets: async () => null,

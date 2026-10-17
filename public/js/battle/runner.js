@@ -904,6 +904,32 @@ export function createBattleRunner(deps) {
           return { ...o, ...(si ? { standInFor: si } : {}), ...(diy ? { diy: { ...diy } } : {}) };
         });
     },
+    /**
+     * In-match damage board (ui/damageBoard.js): `ownerId`'s operators in the battle on screen, each with the damage
+     * it has dealt **so far in this battle** (the sim's per-unit stats.dmg, server/sim/units.js; the round resets it)
+     * and the healing it has done (stats.heal — the regen a provider granted is credited to it, server/sim/battle/status.js
+     * attributeRegen). Copies of one operator are summed by `defId` ("每个干员的总伤害"), rows sorted by damage desc.
+     * Display-only: reads the sim's counters, never steps or mutates the battle. [] without a battle on screen.
+     * @param {string} ownerId @param {string|null} [fieldId]
+     * @returns {Array<{ defId: string, dmg: number, kills: number, heal: number, count: number }>}
+     */
+    damageBoard(ownerId, fieldId = null) {
+      const e = cur;
+      if (!e || typeof ownerId !== 'string' || !ownerId || (fieldId != null && e.fieldId !== fieldId)) return [];
+      const list = Array.isArray(e.battle.allyUnits) ? e.battle.allyUnits : [];
+      const byDef = new Map();
+      for (const u of list) {
+        if (!u || u.kind !== 'op' || u.ownerId !== ownerId || typeof u.defId !== 'string') continue;
+        const s = u.stats || {};
+        const rec = byDef.get(u.defId) || { defId: u.defId, dmg: 0, kills: 0, heal: 0, count: 0 };
+        rec.dmg += Math.max(0, Math.round(Number(s.dmg) || 0));
+        rec.kills += Math.max(0, Math.trunc(Number(s.kills) || 0));
+        rec.heal += Math.max(0, Math.round(Number(s.heal) || 0));
+        rec.count += 1;
+        byDef.set(u.defId, rec);
+      }
+      return [...byDef.values()].sort((a, b) => b.dmg - a.dmg || a.defId.localeCompare(b.defId));
+    },
     /** Re-show the current battle (the game screen remounted). */
     reshow() { if (cur) show(cur); },
     /** Test / debug hooks. */

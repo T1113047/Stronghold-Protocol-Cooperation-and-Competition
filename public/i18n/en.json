@@ -29,6 +29,8 @@
   "界面发生错误": "An interface error occurred",
   "重新加载界面": "Reload Interface",
   "启动失败，请刷新页面重试": "Failed to start. Please refresh the page and try again.",
+  "全服通知": "Server Notice",
+  "关闭通知": "Close notice",
   "时长较短的模拟训练": "A shorter simulation exercise",
   "可以快速完成作战": "Battles can be completed quickly",
   "常规奖励": "Standard rewards",
@@ -168,6 +170,11 @@
   "弹药数量": "Ammo Count",
   "弹药类技能开启时，在弹药条下方显示剩余弹药 / 总弹药数（如 13/14）。官方界面没有这个数字。": "While an ammo skill runs, shows the rounds left / in total under its ammo bar (e.g. 13/14). The official interface has no such number.",
   "画面质量": "Graphics Quality",
+  "画面自动调节": "Auto Picture",
+  "开启时按设备自动选择角色模型；关闭后可强制。": "When on, operator models are chosen automatically for your device; turn it off to force them.",
+  "角色模型": "Operator Models",
+  "加载": "Load",
+  "不加载": "Don't load",
   "触屏操作：点击单位选中（撤退 / 出售）· 长按单位或卡牌查看详情 · 拖动部署后滑动选择朝向": "Touch controls: tap a unit to select it (Retreat / Sell) · long-press a unit or card for details · after dragging to deploy, swipe to choose a direction",
   "快捷键": "Hotkeys",
   "发生未知错误": "An unknown error occurred",
@@ -1303,5 +1310,8 @@
   "观战中只能旁观": "Spectating: you can only watch",
   "靠前": "Front",
   "靠中": "Middle",
-  "靠后": "Back"
+  "靠后": "Back",
+  "伤害 / 治疗统计": "Damage / healing stats",
+  "伤害（黄）/ 治疗（蓝）：本场战斗累计": "Damage (gold) / healing (blue): this battle's total",
+  "伤害 {dmg} · 治疗 {heal}（本场）": "Damage {dmg} · Healing {heal} (this battle)"
 }

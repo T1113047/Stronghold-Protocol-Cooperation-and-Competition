@@ -9,6 +9,47 @@ import { palsyBuff } from '../damage.js';
 import { evadesGround } from '../targeting.js';
 import { stampFear } from '../fear.js';
 
+/**
+ * [HEALSRC] Move the externally-provided share of one natural-regeneration tick onto its providers.
+ *
+ * The regen tick heals the unit with itself as the source (`heal(u, u, …)`), so the whole amount lands on the
+ * *receiver*'s `stats.heal`. Several auras grant an ally `hpRegen` / `hpRegenRatio` through a buff whose `source` is
+ * the provider (吟游者 / 调香师 / 源 etc.); that healing should count for the provider. We credit each such buff's
+ * share — proportional to its rate out of the unit's total regen — to that provider's `stats.heal` (and its owner's
+ * `healingDone`), and take it back off the receiver. Base `hpRecoveryPerSec` and self-sourced buffs stay with the unit.
+ * `totalRate` is the unit's whole regen rate for this tick's window, `credited` the HP actually restored.
+ */
+function attributeRegen(battle, u, totalRate, credited) {
+  if (!(credited > 0) || !(totalRate > 0)) return;
+  const buffs = Array.isArray(u.buffs) ? u.buffs : [];
+  let externalRate = 0;
+  const shares = [];
+  for (const b of buffs) {
+    const m = b && b.mods;
+    if (!m) continue;
+    const rate = (Number(m.hpRegen) || 0) + (Number(m.hpRegenRatio) || 0) * u.s.maxHp;
+    if (rate <= 0) continue;
+    const src = b.source;
+    if (!src || src === u || !src.stats) continue;
+    externalRate += rate;
+    shares.push([src, rate]);
+  }
+  if (!shares.length || externalRate <= 0) return;
+  const span = credited * Math.min(1, externalRate / totalRate);
+  let moved = 0;
+  for (let i = 0; i < shares.length; i++) {
+    const [src, rate] = shares[i];
+    const part = i === shares.length - 1 ? span - moved : span * (rate / externalRate);
+    if (!(part > 0)) continue;
+    moved += part;
+    src.stats.heal += part;
+    if (src.side === 'ally' && src.ownerId != null) { const pp = battle._pp(src.ownerId); if (pp) pp.healingDone += part; }
+  }
+  if (!(moved > 0)) return;
+  u.stats.heal = Math.max(0, u.stats.heal - moved);
+  if (u.side === 'ally' && u.ownerId != null) { const pp = battle._pp(u.ownerId); if (pp) pp.healingDone = Math.max(0, pp.healingDone - moved); }
+}
+
 export class BattleStatus {
   addBuff(unit, b) {
     if (!unit || (!unit.alive && !b.allowDead)) return null;
@@ -121,7 +162,9 @@ export class BattleStatus {
         if (regen > 0 && u.hp < u.s.maxHp) {
           u._regenAcc = (u._regenAcc ?? 0) + regen * dt;
           if (u._regenAcc >= 1 || u.hp + u._regenAcc >= u.s.maxHp) {
+            const before = u.stats.heal;
             this.heal(u, u, u._regenAcc, { self: true, silent: true, regen: true });
+            attributeRegen(this, u, regen, u.stats.heal - before); // [HEALSRC] 把外部来源的回血记到提供者头上
             u._regenAcc = 0;
           }
         }

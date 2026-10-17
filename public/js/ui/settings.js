@@ -99,6 +99,11 @@ function Toggle({ label, micro, value, onChange }) {
 
 const QUALITY = [['high', N_('高')], ['medium', N_('中')], ['low', N_('低')]];
 /**
+ * [UNITMODELS] 角色模型：画面自动调节关掉后出现的「加载 / 不加载」二选一（值见 ui/gameLogic/settings.js UNIT_FORCES，
+ * 默认不加载；不加载退回头像 + 稀有度菱形，不请求 Spine）。
+ */
+const UNIT_MODELS = [['on', N_('加载')], ['off', N_('不加载')]];
+/**
  * 文字大小: one step of TEXT_SIZES (ui/gameLogic/settings.js) with its label — 小 is the design's own sizes, the others
  * raise the text root `--t` (css/theme.css) and with it every readable font-size; the board and the HUD's boxes stay.
  */
@@ -290,6 +295,17 @@ export function SettingsModal({ open, onClose }) {
             class=${s.quality === id ? 'is-on' : ''} onClick=${() => updateSettings({ quality: id })}>${t(label)}</button>`)}
         </div>
       </div>
+      <!-- [UNITMODELS] 画面自动调节开关；关掉后强制「角色模型 加载/不加载」（改完立即生效）。弱 GPU 默认不加载（同上「按 GPU 自动降档」）。 -->
+      <${Toggle} label=${t('画面自动调节')} micro="AUTO PICTURE" value=${s.pictureAuto !== false}
+        onChange=${(v) => updateSettings({ pictureAuto: v })} />
+      <p class="set-hint">${t('开启时按设备自动选择角色模型；关闭后可强制。')}</p>
+      ${s.pictureAuto === false ? html`<div class="set-row">
+        <span class="set-row__label">${t('角色模型')}<${MicroLabel}>MODELS<//></span>
+        <div class="set-seg" role="radiogroup" aria-label=${t('角色模型')} data-testid="units-force">
+          ${UNIT_MODELS.map(([id, label]) => html`<button key=${id} type="button" role="radio" aria-checked=${(s.unitsForce || 'off') === id ? 'true' : 'false'}
+            class=${(s.unitsForce || 'off') === id ? 'is-on' : ''} onClick=${() => updateSettings({ unitsForce: id })}>${t(label)}</button>`)}
+        </div>
+      </div>` : null}
       <div class="set-row">
         <span class="set-row__label">${t('文字大小')}<${MicroLabel}>TEXT SIZE<//></span>
         <div class="set-seg set-textsize" role="radiogroup" aria-label=${t('文字大小')} data-testid="text-size">

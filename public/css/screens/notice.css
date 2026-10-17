@@ -1,0 +1,77 @@
+/* ==========================================================================================
+   screens/notice.css — [NOTICE] 全服通知 (js/ui/notice.js): one top-centre strip shown to the whole server when an
+   admin sends /服务器通知 (the server pushes `m.notice`). It is not a toast (css/components.css): a single banner
+   with its own host, a 20 s life and a click to close, so it has its own stylesheet, and the toast stack yields to it
+   while it shows (html.sp-notice, set by ui/notice.js — classes instead of :has(), which Firefox ESR 115 /
+   Safari < 15.4 lack; the same trick as the connection banner's sp-conn).
+   Type follows the 文字大小 text root --t (css/theme.css), never a bare rem.
+   ========================================================================================== */
+
+.notice-host {
+  position: fixed;
+  top: calc(.12rem + var(--sa-t, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  max-width: 92vw;
+  pointer-events: none;
+}
+.notice {
+  --nc: var(--mint-400);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: .12rem;
+  min-width: 3.2rem;
+  max-width: 9.6rem;
+  padding: .1rem .12rem .1rem .16rem;
+  background: rgba(9, 12, 11, .96);
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--nc);
+  box-shadow: 0 .08rem .28rem rgba(0, 0, 0, .55);
+  box-shadow: 0 .08rem .28rem rgba(0, 0, 0, .55), 0 0 .18rem color-mix(in srgb, var(--nc) 22%, transparent);
+  color: var(--text-hi);
+  font-size: calc(.17 * var(--t));
+  line-height: 1.45;
+  cursor: pointer;
+  animation: notice-in var(--t-med) var(--ease-out);
+}
+.notice__tag {
+  flex: none;
+  padding: 0 .08rem;
+  border: 1px solid var(--line-2);
+  border: 1px solid color-mix(in srgb, var(--nc) 45%, transparent);
+  font-family: var(--font-num);
+  font-size: calc(.13 * var(--t));
+  letter-spacing: .06em;
+  color: var(--nc);
+  white-space: nowrap;
+}
+.notice__text { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.notice__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: .3rem;
+  height: .3rem;
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-lo);
+  cursor: pointer;
+}
+.notice__close .icon { width: .18rem; height: .18rem; }
+.notice__close:hover { color: var(--text-hi); border-color: var(--line-2); }
+@keyframes notice-in { from { opacity: 0; transform: translateY(-.12rem); } }
+
+/* In a match the top-centre capsule (round / phase / kills) and the ticker strip under it are taken: the banner sits
+   below them, where the connection banner goes (components.css .sp-in-match), and below the connection banner when
+   that too shows. The toast stack then moves under the banner (it already sits at 1.34rem in a match). */
+.sp-in-match .notice-host { top: calc(1.34rem + var(--sa-t, 0px)); }
+.sp-in-match.sp-conn .notice-host { top: calc(2.0rem + var(--sa-t, 0px)); }
+.sp-notice:not(.sp-in-match) .toast-host { top: calc(.58rem + var(--sa-t, 0px)); }
+.sp-in-match.sp-notice .toast-host { top: calc(1.74rem + var(--sa-t, 0px)); }
+.sp-in-match.sp-conn.sp-notice .toast-host { top: calc(2.4rem + var(--sa-t, 0px)); }

@@ -61,6 +61,8 @@ const NOT_SCALED = [
   /\.bstrip/, /\.bslot/, /\.effect/, /\.efftip/, /\.ebubble/, /\.ticker/, /\.dpbox/, /\.vswitch/,
   /\.specpill/, /\.otwarn/, /\.team/, /\.enemybtn/, /\.readybtn/, /\.ewheel/, /\.fwheel/, /\.chud/, /\.toolbtn/,
   /\.shopbar/, /\.scard/, /\.scr\b/,
+  // the 伤害 / 治疗统计板 (ui/damageBoard.js) sits in the bond strip's own column, under it: the same in-match chrome pass
+  /\.dmgboard/,
   // text inside a fixed-height bar (the HP bar of the detail card, the boss bar's fill)
   /\.dhp\b/,
   // the 机变 card: its grid fits 7 lines of the effect text (game-panels.css), so a bigger font would clamp text away

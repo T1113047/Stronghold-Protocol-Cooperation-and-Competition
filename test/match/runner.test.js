@@ -475,3 +475,46 @@ test('live unit stats (user playtest #4 item 7): unitStats(id) reads the battle 
   assert.equal(r.runner.unitIdOf(ally.uid, ally.ownerId), null);
   r.runner.dispose();
 });
+
+test('runner: damageBoard(ownerId) sums the battle on screen\'s per-operator stats (dmg / kills / heal, copies by defId), [] elsewhere', async () => {
+  const start = realStart(7306);
+  const r = rig();
+  r.net.emit('b.start', start);
+  await r.settle();
+  const e = r.runner._entries.get(start.battleId);
+  const pid = start.spec.players[0].playerId;
+  assert.deepEqual(r.runner.damageBoard(null), []);
+  assert.deepEqual(r.runner.damageBoard('ghost'), []);
+  assert.deepEqual(r.runner.damageBoard(''), []);
+  assert.deepEqual(r.runner.damageBoard(pid, 'n:nobody'), [], 'another field: nothing');
+  assert.deepEqual(r.runner.damageBoard(pid, null).map((x) => x.defId), r.runner.damageBoard(pid, start.fieldId).map((x) => x.defId),
+    'the field on screen is the default');
+  // the rows always mirror the sim's own units of that owner, even before anyone dealt damage
+  const mine = () => e.battle.allyUnits.filter((u) => u.kind === 'op' && u.ownerId === pid);
+  assert.ok(mine().length > 0, 'the board fields operators');
+  assert.deepEqual(r.runner.damageBoard(pid).map((x) => x.defId).sort(), [...new Set(mine().map((u) => u.defId))].sort());
+  for (let i = 0; i < 600 && !e.done && !mine().some((u) => u.stats.dmg > 0); i++) r.advance(500, 50);
+  assert.ok(mine().some((u) => u.stats.dmg > 0), 'the operators fought (damage on the sim counters)');
+  const rows = r.runner.damageBoard(pid);
+  assert.ok(rows.length > 0);
+  for (const row of rows) {
+    assert.equal(typeof row.defId, 'string');
+    for (const k of ['dmg', 'heal', 'kills', 'count']) assert.ok(Number.isFinite(row[k]) && row[k] >= 0, `${row.defId}.${k}=${row[k]}`);
+  }
+  // the copies of one operator are summed: each row equals the sum over its sim units of that defId
+  for (const row of rows) {
+    const list = mine().filter((u) => u.defId === row.defId);
+    assert.equal(row.count, list.length, `${row.defId}: the copies fielded`);
+    assert.equal(row.dmg, list.reduce((n, u) => n + Math.max(0, Math.round(u.stats.dmg)), 0));
+    assert.equal(row.heal, list.reduce((n, u) => n + Math.max(0, Math.round(u.stats.heal)), 0));
+  }
+  if (!e.done) assert.ok(rows.some((x) => x.dmg > 0), 'a fought battle shows damage');
+  for (let i = 1; i < rows.length; i++) assert.ok(rows[i - 1].dmg >= rows[i].dmg, 'sorted by damage desc');
+  // display-only: reading it neither steps nor mutates the battle
+  const ticks = e.battle.tickCount;
+  assert.deepEqual(r.runner.damageBoard(pid), rows);
+  assert.equal(e.battle.tickCount, ticks);
+  r.runner.clear();
+  assert.deepEqual(r.runner.damageBoard(pid), [], 'nothing on screen after the battles were dropped');
+  r.runner.dispose();
+});

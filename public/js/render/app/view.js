@@ -70,6 +70,24 @@ export function boardPreference(opt) {
 }
 
 /**
+ * [UNITMODELS] The operator-model mode a settings object asks for: 'auto' unless 设置 →「画面质量」has 画面自动调节 off, in
+ * which case its 角色模型 (`unitsForce`: 'on'|'off'; 'off' keeps the avatar-in-rarity-diamond fallback). Default (or an old
+ * saved profile) has `pictureAuto !== false` → 'auto'.
+ *
+ * The automatic mode follows the same `gpuTier()` probe the「按 GPU 自动降档」uses (ui/settings.js / ui/fieldHost.js):
+ * `weak` (the caller passes `gpuTier() === 'weak'`) starts without any Spine model — a weak renderer cannot hold the 3D
+ * board + the models, and units.js draws its avatar diamonds instead. A player who turns 画面自动调节 off and picks a
+ * 角色模型 always keeps that choice (this function never consults the tier then).
+ * @param {{ pictureAuto?: boolean, unitsForce?: string }} [settings]
+ * @param {boolean} [weak] whether the renderer is weak (`diag.js gpuTier() === 'weak'`)
+ * @returns {'auto'|'on'|'off'}
+ */
+export function unitSetting(settings, weak = false) {
+  if (settings && settings.pictureAuto === false) return settings.unitsForce === 'on' ? 'on' : 'off';
+  return weak ? 'off' : 'auto';
+}
+
+/**
  * A battle device box (render/units.js DeviceView `ctx.createBox()` contract: `{ mesh, update(cam, b), destroy() }`)
  * that follows the board layer: the 3D scene's crate mesh while `board()` returns a BoardScene, else the Pixi box of
  * the 2D board. A board switch mid-battle (lost WebGL context → 2D, or back to 3D) swaps the inner box on the next

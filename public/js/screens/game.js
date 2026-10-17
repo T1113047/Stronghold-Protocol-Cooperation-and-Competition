@@ -85,6 +85,7 @@ import { EnemyDrawer } from '../ui/enemyDrawer.js';
 import { Ticker } from '../ui/ticker.js';
 import { EmoteWheel } from '../ui/emotes.js';
 import { ChatBox, CHAT_BUBBLE_MS, chatBubblesActive } from '../ui/chat.js';
+import { DamageBoard } from '../ui/damageBoard.js'; // [DAMAGEBOARD]
 import { EffectsList } from '../ui/effectsList.js';
 import { CombatHud } from '../ui/combatHud.js';
 import { SettingsModal, settingsStore } from '../ui/settings.js';
@@ -798,6 +799,7 @@ function MatchScreen() {
   const bubbles = activeBubbles(emotes, Date.now(), bubbleMs);
   const chatBubbles = chatBubblesActive(chat, Date.now(), CHAT_BUBBLE_MS);
   useTicker(bubbles.size || chatBubbles.size ? 500 : 0); // re-render only while a bubble is showing (to expire it)
+  useTicker(cc && combat ? 700 : 0); // [DAMAGEBOARD] poll the live per-operator damage while a battle is on screen
   const lastEmote = useRef(emotes.length ? emotes[emotes.length - 1].seq : 0);
   useEffect(() => {
     const e = emotes[emotes.length - 1];
@@ -1362,6 +1364,10 @@ function MatchScreen() {
     field, layers, layer, who: watchWho, bondLayers: battleState?.bondLayers || null,
   });
   const stripFid = strip.fieldId;
+  // [DAMAGEBOARD] per-operator damage of the player whose bonds the strip shows, in the battle on screen (本场累计)
+  const dmgRows = cc && combat && battleRunner && battleState?.fieldId && strip.ownerId
+    ? battleRunner.damageBoard(strip.ownerId, battleState.fieldId)
+    : null;
   const liveLayers = (combat || settleMode) && battleState?.bondLayers ? battleState.bondLayers : null;
   // the observing pill names the player whose bonds the strip shows (the same teammate as the strip's "👁 name" tag)
   const observingName = cc && combat && watchedFid ? (!strip.self && stripFid === watchedFid ? strip.name : (players.find((p) => p.fieldId === watchedFid || ownFieldId(p.playerId) === watchedFid)?.name || t('队友'))) : null;
@@ -1491,6 +1497,8 @@ function MatchScreen() {
             owner=${strip.name} onOpen=${(id) => openBond(id, strip.ownerId, 'strip')} />
         </div>
       </div>
+
+      <${DamageBoard} rows=${dmgRows} />
 
       <${TeamPanel} pub=${pub} myId=${myId} watching=${watchingNow} bubbles=${bubbles} chatBubbles=${chatBubbles} onWatch=${watchPlayer} cap=${gd.config?.lpCapPerRound ?? 10} uniteLocal=${uniteLocal}
         self=${Number.isFinite(ownLp) ? { lp: ownLp, pending: liveLpNow.pending, unite: liveLpNow.unite, left: liveLpNow.left } : null}

@@ -27,7 +27,8 @@
 // warmed in the background as soon as the player is in a room (warmGameData), before the match needs them.
 // Language (ui/lang.js, docs/I18N.md): chosen before the first render (initLang); App re-renders on a switch (useLang).
 // Server texts are translated on arrival: m.toast / m.ticker frames (msgid + params, or the text as a msgid; a
-// config.broadcasts line from its id + args), error codes (ui/toasts.js describeError) and room.closed reasons.
+// config.broadcasts line from its id + args), error codes (ui/toasts.js describeError) and room.closed reasons. The
+// 全服通知 an admin broadcasts (m.notice, ui/notice.js) is free text, not a msgid: it shows exactly as it arrived.
 
 // Polyfills first (older Safari / Firefox ESR): every module evaluated after this one sees them.
 import './ui/compat.js';
@@ -36,6 +37,7 @@ import { useErrorBoundary } from '../vendor/hooks.module.js';
 import { html, UiHosts, Button, MicroLabel, closeAllDialogs } from './ui/components.js';
 import { ConnectionBanner } from './ui/connBanner.js';
 import { ToastHost, toast, toastError, describeError } from './ui/toasts.js';
+import { NoticeHost, pushNotice, dismissNotice } from './ui/notice.js'; // [NOTICE] 全服通知 banner
 import { net, identity, NetError } from './net.js';
 import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating } from './store.js';
 import { data } from './data.js';
@@ -133,14 +135,15 @@ function maybeFinishRestore() {
 
 /**
  * Leave whatever room / match was on screen for the lobby with nothing stale left behind: open imperative dialogs,
- * the post-resume restore timer, ticker lines, emote bubbles and chat lines of the old match (the battle runner and
- * the 暂离 flag follow the store themselves).
+ * the post-resume restore timer, ticker lines, emote bubbles and chat lines of the old match, and the 全服通知 banner
+ * (the battle runner and the 暂离 flag follow the store themselves).
  */
 function backToLobby() {
   identity.rememberMatch(null);
   clearTimeout(restoreTimer);
   const s = store.get();
   if (s.room || s.match.public) closeAllDialogs();
+  dismissNotice(); // [NOTICE]
   store.set({ room: null, match: emptyMatch(), ticker: [], emotes: [], chat: [] });
   store.patch('ui', { restoring: false });
 }
@@ -190,8 +193,11 @@ function onRoomState(msg) {
   }
   const prevRoom = store.get().room;
   // A (new) match starts: forget the previous match's state so stale results never show — its chat lines included
-  // ([CHAT] a new match must not open on the last one's conversation).
-  if (room.inMatch && !(prevRoom && prevRoom.inMatch && prevRoom.code === room.code)) store.set({ match: emptyMatch(), chat: [] });
+  // ([CHAT] a new match must not open on the last one's conversation), and the 全服通知 banner with it ([NOTICE]).
+  if (room.inMatch && !(prevRoom && prevRoom.inMatch && prevRoom.code === room.code)) {
+    dismissNotice();
+    store.set({ match: emptyMatch(), chat: [] });
+  }
   store.set({ room });
   identity.rememberMatch(room.inMatch && seats.some((seat) => seat?.playerId === myId)
     ? { name: store.get().me.name, code: room.code || '' } : null);
@@ -247,6 +253,11 @@ function wireNet() {
     const kind = ['info', 'success', 'warn', 'error'].includes(msg.kind) ? msg.kind : 'info';
     // msgid + params (server ≥ 0.2.0) or the text itself as a msgid, in the current language
     toast(translateWire(msg), kind);
+  });
+  // [NOTICE] 全服通知: the admin's own text (an admin's /服务器通知 → the server's loopback /api/notify) reaches every
+  // socket as `m.notice`. It is NOT a toast: its own top-centre banner (ui/notice.js), shown as it arrived.
+  net.on('m.notice', (msg) => {
+    if (typeof msg.text === 'string') pushNotice(msg.text);
   });
   net.on('m.ticker', (msg) => {
     if (typeof msg.text !== 'string') return;
@@ -315,6 +326,7 @@ function App() {
     <div class="app-bg" aria-hidden="true"></div>
     ${error ? html`<${ScreenCrashed} error=${error} reset=${resetError} />` : html`<${Screen} key=${route} />`}
     <${ConnectionBanner} />
+    <${NoticeHost} />
     <${ToastHost} />
     <${UiHosts} />
     <${GuideHost} />

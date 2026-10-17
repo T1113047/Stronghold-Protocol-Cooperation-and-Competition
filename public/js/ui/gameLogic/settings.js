@@ -25,15 +25,23 @@ export const TEXT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
 /** keys: the in-match shortcuts' key map (ui/gameLogic/shortcuts.js; settings → 快捷键). voiceLang: VOICE_LANGS.
  *  textSize: TEXT_SIZES (css/theme.css `--t`, applied by ui/settings.js applyTextSize). ammoCount: 设置「弹药数量」 — the
  *  rounds left / the magazine under an ammo skill's bar (render/units.js; PR #552), off by default: the official HUD has no
- *  such number (the maintainer's decision of 2026-10-13). */
-export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', keys: DEFAULT_HOTKEYS });
+ *  such number (the maintainer's decision of 2026-10-13). pictureAuto: [UNITMODELS] 画面自动调节开关；unitsForce: 强制
+ *  角色模型 on|off（皆本机相关，不进账号同步）。 */
+export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', pictureAuto: true, unitsForce: 'off', keys: DEFAULT_HOTKEYS });
 const QUALITIES = ['high', 'medium', 'low'];
+
+/**
+ * [UNITMODELS] 设置 →「画面质量」里角色模型的强制档（`unitsForce`）：加载 / 不加载（`on`/`off`；不加载退回头像 +
+ * 稀有度菱形，不请求 Spine）。仅在「画面自动调节」（`pictureAuto`）关闭时生效；开启时按设备自动选择
+ * （render/app/view.js `unitSetting`：弱 GPU `gpuTier()==='weak'` 默认不加载）。默认不加载（最省的一档）。
+ */
+export const UNIT_FORCES = Object.freeze(['on', 'off']);
 
 /**
  * Sanitize persisted settings.
  * @param {any} raw
  * @returns {{ bgm: number, sfx: number, voice: number, voiceLang: 'cn'|'jp', voiceOverrides: Record<string, string>, muted: boolean, damageNumbers: boolean, officialDamageNumbers: boolean, ammoCount: boolean, quality: 'high'|'medium'|'low',
- *   textSize: 'sm'|'md'|'lg'|'xl', keys: Record<'refresh'|'freeze'|'levelUp'|'retreat'|'sell'|'ready', string> }}
+ *   textSize: 'sm'|'md'|'lg'|'xl', pictureAuto: boolean, unitsForce: 'on'|'off', keys: Record<'refresh'|'freeze'|'levelUp'|'retreat'|'sell'|'ready', string> }}
  */
 export function sanitizeSettings(raw) {
   const r = isObj(raw) ? raw : {};
@@ -50,6 +58,8 @@ export function sanitizeSettings(raw) {
     ammoCount: typeof r.ammoCount === 'boolean' ? r.ammoCount : DEFAULT_SETTINGS.ammoCount,
     quality: QUALITIES.includes(r.quality) ? r.quality : DEFAULT_SETTINGS.quality,
     textSize: TEXT_SIZES.includes(r.textSize) ? r.textSize : DEFAULT_SETTINGS.textSize,
+    pictureAuto: typeof r.pictureAuto === 'boolean' ? r.pictureAuto : DEFAULT_SETTINGS.pictureAuto, // [UNITMODELS]
+    unitsForce: UNIT_FORCES.includes(r.unitsForce) ? r.unitsForce : DEFAULT_SETTINGS.unitsForce, // [UNITMODELS]
     keys: sanitizeHotkeys(r.keys),
   };
 }

@@ -80,6 +80,26 @@ test('the receiver is ally.targets[picker][target]; a missing map falls back to 
   assert.deepEqual(rows.map((r) => r.kind), ['foe'], 'the ally line is dropped, the monster line still renders');
 });
 
+test('an ally entry shows while in force (picked … picked+3) and disappears at picked+4', () => {
+  const pub = pubWith([]);
+  pub.event.foe = null;
+  const rec = { round: 5, index: 1, playerId: 'b', target: 'mate', targetId: 'a', card: 1, key: 'whetstone', kind: 'up', mag: 1 };
+  pub.event.ally.history = [rec];
+  // the server publishes the window (m.public.event.ally.duration); the shared constant is the fallback
+  for (const [round, shown] of [[5, true], [6, true], [7, true], [8, true], [9, false]]) {
+    pub.round = round;
+    pub.event.ally.round = round;
+    const rows = roundBuffRows(pub, 'a');
+    assert.equal(rows.length, shown ? 1 : 0, `R${round} ${shown ? 'still in force' : 'expired'}`);
+    if (shown) assert.equal(rows[0].name, '磨刃');
+  }
+  pub.round = 8;
+  pub.event.ally.round = 8;
+  assert.equal(roundBuffRows(pub, 'a').length, 1, 'without an explicit duration the constant (4) applies');
+  pub.event.ally.duration = 2;
+  assert.deepEqual(roundBuffRows(pub, 'a'), [], 'the server duration wins when present');
+});
+
 test('nothing renders outside a hunt mode, without an event this round, or for a seat that received nothing', () => {
   assert.deepEqual(roundBuffRows(null, 'a'), []);
   assert.deepEqual(roundBuffRows({ round: 8 }, 'a'), [], 'no m.public.event — a non-hunt mode');

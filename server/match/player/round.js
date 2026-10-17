@@ -8,7 +8,7 @@
 
 import { boardOrder, pieceDir } from '../board.js';
 import { computeBonds, bondSnapshot, activatedLayers, bondsWithGains } from '../bondsMeta.js';
-import { eventBattleRefs } from '../match/event.js';
+import { eventBattleRefs, eventModsFor } from '../match/event.js';
 
 export class PlayerRound {
   startRound(r) {
@@ -18,8 +18,12 @@ export class PlayerRound {
     this.withdrawnThisRound = 0;
     this.pendingLayerGains = null; // settled (or lapsed) at the last SETTLE
     if (r > 1) this.shop.upgradePrice = Math.max(0, this.shop.upgradePrice - 1);
+    // 2V2 事件期: re-derive the modifiers for THIS round first — an entry is in force only in the EVENT_DURATION_ROUNDS
+    // rounds after it was picked, so an expired one must stop touching income / prices / deploy / bounty right here.
+    this.eventRound = r;
+    this.eventMods = eventModsFor(this.eventEntries, r);
     // onIncome handlers may rewrite ev.income / ev.pending (e.g. 老鲤 withholds R1–R2 income until R3)
-    // 2V2 事件期: 猎人佣金 / 空手而归 move the round's income (±2 per round, self ×2) before the handlers see it.
+    // 2V2 事件期: 猎人佣金 / 空手而归 move the round's income (±3 per round, self ×2) before the handlers see it.
     const eventGold = Math.trunc(Number(this.eventMods?.goldPerRound) || 0);
     const ev = { round: r, income: Math.max(0, this.gd.income(r) + eventGold), pending: this.pendingFunds };
     this.pendingFunds = 0;
@@ -149,8 +153,8 @@ export class PlayerRound {
         ...this.effects.filter((e) => e.battle !== false).map((e) => ({
           id: e.id, key: e.key ?? null, source: e.iconKind ?? null, params: e.params ?? null, counter: e.counter ?? null, data: e.data ?? null,
         })),
-        // 2V2 事件期: the received entries as battle refs (server/sim/content/event.js)
-        ...eventBattleRefs(this.eventEntries),
+        // 2V2 事件期: the received entries still in force this round as battle refs (server/sim/content/event.js)
+        ...eventBattleRefs(this.eventEntries, this.eventRound || this.m.round),
       ],
       deviceOverrides: { ...this.deviceOverrides },
     };

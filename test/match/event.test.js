@@ -8,12 +8,13 @@ import assert from 'node:assert/strict';
 import { makeMatch } from './harness.js';
 import {
   PHASE, ERR, EVENT_TARGETS, EVENT_CARDS, EVENT_SELF_MUL, EVENT_SEQUENCE, EVENT_ROSTER_MS,
-  EVENT_FOE_CARDS, EVENT_FOE_ELITES,
+  EVENT_FOE_CARDS, EVENT_FOE_ELITES, EVENT_DURATION_ROUNDS,
 } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
 import {
   eventCardById, eventCardByKey, eventKindOf, eventMagnitude, eventModsFor, eventEvFor, eventBattleRefs,
-  eventFoeCardById, eventFoeCardByKey, eventFoeKindOf, eventFoeEv, eventFoeMeanEv, eventFoeEliteByKey,
+  eventEntryActive, eventActiveEntries, eventFoeCardById, eventFoeCardByKey, eventFoeKindOf, eventFoeEv,
+  eventFoeMeanEv, eventFoeEliteByKey,
 } from '../../server/match/match/event.js';
 import { createRng } from '../../server/sim/rng.js';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
@@ -596,6 +597,104 @@ describe('2V2 事件期: the monster channel', () => {
     toEvent(h2, h2.m.eventRounds[0]);
     assert.deepEqual(h2.m.foeEvent.elite, elite);
     assert.deepEqual(h2.m.publicView().event.foe.elite, m.publicView().event.foe.elite);
+  });
+});
+
+describe('2V2 事件期: an ally entry lasts EVENT_DURATION_ROUNDS rounds', () => {
+  test('the window is picked … picked+3; picked+4 is back to the baseline (mods and battle refs)', () => {
+    assert.equal(EVENT_DURATION_ROUNDS, 4);
+    const entry = { card: C('whetstone'), mag: 1, round: 8 };
+    const atk = (r) => eventModsFor([entry], r).atkPct;
+    assert.ok(Math.abs(atk(7)) < 1e-12, 'not picked yet');
+    for (const r of [8, 9, 10, 11]) assert.ok(Math.abs(atk(r) - 0.20) < 1e-12, `R${r} (= picked+${r - 8}) is in force`);
+    assert.equal(atk(12), 0, 'picked+4 expired: base ATK');
+    assert.equal(eventEntryActive(entry, 11), true);
+    assert.equal(eventEntryActive(entry, 12), false);
+    assert.deepEqual(eventActiveEntries([entry], 12), []);
+    // the battle side follows the same window
+    for (const r of [8, 9, 10, 11]) assert.equal(eventBattleRefs([entry], r).length, 1, `R${r} refs`);
+    assert.deepEqual(eventBattleRefs([entry], 12), []);
+    // entries without a round (hand-built states / the raw log) are never filtered
+    assert.ok(Math.abs(eventModsFor([{ card: C('whetstone'), mag: 1 }], 99).atkPct - 0.20) < 1e-12);
+    assert.equal(eventBattleRefs([{ card: C('whetstone'), mag: 1 }], 99).length, 1);
+  });
+
+  test('a picked entry holds for 4 rounds, then income / battle refs return to the baseline (startRound re-derives)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 51, fake: true }).start();
+    const ps = h.ps('p_0');
+    const picked = 8;
+    ps.eventEntries = [
+      { card: C('hunter_commission'), mag: 1, from: 'ai_1', round: picked, target: 'oppA' },
+      { card: C('whetstone'), mag: 1, from: 'ai_1', round: picked, target: 'oppA' },
+    ];
+    for (const r of [picked, picked + 1, picked + 2, picked + 3]) {
+      ps.funds = 0;
+      ps.startRound(r);
+      assert.equal(ps.eventMods.goldPerRound, 3, `R${r}: still in force`);
+      assert.equal(ps.funds, ps.gd.income(r) + 3, `R${r}: income +3`);
+      assert.ok(ps.battleInput().playerEffects.some((e) => e.source === 'event'), `R${r}: the battle still receives it`);
+    }
+    ps.funds = 0;
+    ps.startRound(picked + 4);
+    assert.equal(ps.eventMods.goldPerRound, 0, 'expired: no event gold');
+    assert.equal(ps.funds, ps.gd.income(picked + 4), 'expired: base income');
+    assert.deepEqual(ps.battleInput().playerEffects.filter((e) => e.source === 'event'), [], 'expired: no battle refs');
+    assert.equal(ps.eventEntries.length, 2, 'the records themselves are kept (history, not "currently in force")');
+  });
+
+  test('economy entries (每回合金 / 刷新费 / 出售价) expire with the window too', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 53, fake: true }).start();
+    const ps = h.ps('p_0');
+    const picked = 5;
+    ps.eventEntries = [
+      { card: C('hunter_commission'), mag: 1, round: picked },
+      { card: C('market_swap'), mag: 1, round: picked },
+    ];
+    const chessId = 'chess_char_1_01_a';
+    const baseSell = ps.gd.sellPrice(chessId);
+    for (const r of [picked, picked + 1, picked + 2, picked + 3]) {
+      ps.funds = 0;
+      ps.startRound(r);
+      assert.equal(ps.eventMods.goldPerRound, 3, `R${r} income entry`);
+      assert.equal(ps.funds, ps.gd.income(r) + 3, `R${r} income +3`);
+      assert.equal(ps.eventRefreshDiscount(), 1, `R${r} refresh −1`);
+      assert.equal(ps.eventSellGain(baseSell), baseSell - 1, `R${r} sell −1`);
+    }
+    ps.funds = 0;
+    ps.startRound(picked + 4);
+    assert.equal(ps.eventMods.goldPerRound, 0);
+    assert.equal(ps.funds, ps.gd.income(picked + 4), 'the income entry expired');
+    assert.equal(ps.eventRefreshDiscount(), 0, 'the refresh discount expired');
+    assert.equal(ps.eventSellGain(baseSell), baseSell, 'the sell discount expired (a sold operator returns its base price)');
+  });
+
+  test('two events keep their own windows (an entry picked at 8 and one at 10 overlap, then each expires on its own)', () => {
+    const first = { card: C('whetstone'), mag: 1, round: 8 };      // ATK +20 %, in force R8–R11
+    const second = { card: C('hunter_cloak'), mag: 1, round: 10 };  // HP +38 %, in force R10–R13
+    const mods = (r) => eventModsFor([first, second], r);
+    assert.ok(Math.abs(mods(8).atkPct - 0.20) < 1e-12 && mods(8).hpPct === 0);
+    assert.ok(Math.abs(mods(9).atkPct - 0.20) < 1e-12 && mods(9).hpPct === 0);
+    assert.ok(Math.abs(mods(10).atkPct - 0.20) < 1e-12 && Math.abs(mods(10).hpPct - 0.38) < 1e-12, 'R10: both in force');
+    assert.ok(Math.abs(mods(11).atkPct - 0.20) < 1e-12 && Math.abs(mods(11).hpPct - 0.38) < 1e-12, 'R11: both still in force');
+    assert.ok(mods(12).atkPct === 0 && Math.abs(mods(12).hpPct - 0.38) < 1e-12, 'R12: only the second remains');
+    assert.ok(mods(13).atkPct === 0 && Math.abs(mods(13).hpPct - 0.38) < 1e-12);
+    assert.deepEqual(eventActiveEntries([first, second], 14), [], 'R14: both expired');
+    // the real E1/E2 distance is 4 rounds, so the two real windows are adjacent (E1 ends at E2−1)
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 57, fake: true }).start();
+    assert.equal(h.m.eventRounds[1] - h.m.eventRounds[0], EVENT_DURATION_ROUNDS);
+  });
+
+  test('m.public.event exposes the duration; history still carries every pick (only "in force" is filtered)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 59, fake: true }).start();
+    const m = h.m;
+    toEvent(h, m.eventRounds[0]);
+    assert.deepEqual(m.handle('p_0', { t: 'g.event.pick', target: 'self' }), { ok: true });
+    assert.ok(h.run(() => m.phase !== PHASE.EVENT));
+    const pub = m.publicView();
+    assert.equal(pub.event.ally.duration, EVENT_DURATION_ROUNDS);
+    const rec = pub.event.ally.history.find((r) => r.playerId === 'p_0');
+    assert.equal(rec.round, m.eventRounds[0], 'the pick keeps its round');
+    assert.equal(pub.event.ally.history.length, m.alivePlayers().length, 'the full record is still public');
   });
 });
 

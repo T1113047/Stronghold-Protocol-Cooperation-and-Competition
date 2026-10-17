@@ -249,6 +249,14 @@ export const eventRoundsFor = (contestStartRound) => {
 export const EVENT_TARGETS = Object.freeze(['self', 'mate', 'oppA', 'oppB']);
 /** A self-targeted entry's magnitude multiplier (all numeric values in the entry, refresh uses included). */
 export const EVENT_SELF_MUL = 2;
+/**
+ * How many rounds an ally entry stays in force (user 2026-10-17: 集市换货's 出售价 −1 lasted the whole match, so a sold
+ * operator returned nothing — far too strong). An entry picked at round R is active in R, R+1, …, R+duration−1 and
+ * expires at R+duration, for every effect (battle stats, deploy cap, income, prices, bounty). History keeps every pick:
+ * only "currently in force" is filtered. Monster entries are NOT affected — they already act on their own single round
+ * (foeEvent.round === this.round). One line to tune.
+ */
+export const EVENT_DURATION_ROUNDS = 4;
 /** The event phase's selection window in seconds (a timed-out seat is auto-picked by EV: botEventTarget). */
 export const EVENT_PICK_SECONDS = 20;
 /**

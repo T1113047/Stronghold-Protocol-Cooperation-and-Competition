@@ -14,7 +14,9 @@
 // Effect injection: the ally entries accumulate on the target's PlayerState (eventEntries / eventMods). Battles receive
 // one `event:` EffectRef per entry (PlayerState.battleInput → server/sim/content/event.js reads them), the economy hooks
 // read the same fields: income (startRound), refresh / sell prices (economy.js), the deploy cap (basics.js) and the
-// placed-monster bounty (confront.js applyConfront, +2 coins per kill).
+// placed-monster bounty (confront.js applyConfront, +3 coins per kill). An entry is in force for EVENT_DURATION_ROUNDS
+// rounds from the one it was picked in (round … round+duration−1), then expires: eventModsFor / eventBattleRefs filter
+// the accumulated log by the current round; startRound re-derives eventMods each round. History keeps all picks.
 //
 // The phase is timed (EVENT_PICK_SECONDS; always, also in a single-human versus room) and every botControlled seat picks
 // at once. A timeout — or a seat that never answers — is auto-picked by botEventTarget (the highest expected value),
@@ -24,7 +26,7 @@
 
 import {
   PHASE, ERR, EVENT_TARGETS, EVENT_SELF_MUL, EVENT_PICK_SECONDS, EVENT_CARDS, EVENT_SEQUENCE,
-  EVENT_FOE_CARDS, EVENT_FOE_ELITES, EVENT_ROSTER_MS, COOP_HUNT,
+  EVENT_FOE_CARDS, EVENT_FOE_ELITES, EVENT_ROSTER_MS, EVENT_DURATION_ROUNDS, COOP_HUNT,
 } from '../../../shared/constants.js';
 import { OK, fail } from './common.js';
 
@@ -169,6 +171,27 @@ export function eventEvFor(target, sequence = 2) {
 const magMul = (m, mag) => 1 + (m - 1) * mag;
 
 /**
+ * Whether a received entry is in force at `round`: it was picked at R and is active in R, R+1, …, R+duration−1
+ * (`EVENT_DURATION_ROUNDS` = 4 → [R, R+3]). No `round` (the raw log / hand-built states) keeps every entry; an entry
+ * without its own `round` is always in force (the published history carries the round on every real pick).
+ * @param {{ round?: number }|null|undefined} entry
+ * @param {number|null} [round] the current absolute round (null = no filter)
+ * @returns {boolean}
+ */
+export function eventEntryActive(entry, round = null) {
+  const cur = Number(round);
+  if (!Number.isFinite(cur)) return true;
+  const picked = Number(entry && entry.round);
+  if (!Number.isFinite(picked)) return true;
+  return cur >= picked && cur < picked + EVENT_DURATION_ROUNDS;
+}
+
+/** The entries in force at `round` (round null → the whole log, unchanged). */
+export function eventActiveEntries(entries, round = null) {
+  return (entries || []).filter((e) => e && eventEntryActive(e, round));
+}
+
+/**
  * Accumulate received entries into the NON-BATTLE summary used by income / prices / deploy / bounty. This summary is
  * not the battle rule. Battle percentages go through the
  * **环境buff乘区 / environment buff bucket** instead (eventBattleRefs → server/sim/content/event.js):
@@ -176,16 +199,18 @@ const magMul = (m, mag) => 1 + (m - 1) * mag;
  *   ② flat values (ASPD / SP recovery / SP cost) are highest priority, added to the panel first and never scaled;
  *   ③ the bucket is event-only and never mixes with the additive pool of bonds / equipment / skills / 机变.
  * `dmgTakenMul` / `enemySpeedMul` / `moveMul` / `spRecoveryMul` multiply here too (each entry's own value; self ×2
- * doubles the bonus part).
- * @param {Array<{ card: object, mag?: number }>} entries
+ * doubles the bonus part). Entries are filtered to those in force at `round` (EVENT_DURATION_ROUNDS); no `round` means
+ * the whole log (the raw accumulation, used by the pure helpers / tests).
+ * @param {Array<{ card: object, mag?: number, round?: number }>} entries
+ * @param {number|null} [round] current absolute round (null = no filter)
  */
-export function eventModsFor(entries) {
+export function eventModsFor(entries, round = null) {
   const out = {
     atkPct: 0, aspd: 0, hpPct: 0, defPct: 0, defIgnorePct: 0, regenPct: 0, dmgTakenMul: 1, moveMul: 1, deploy: 0,
     spRecoveryMul: 1, spRecoveryFlat: 0, spCostFlat: 0,
     goldPerRound: 0, bountyGold: 0, enemySpeedMul: 1, refreshDiscount: 0, refreshUses: 0, sellDiscount: 0,
   };
-  for (const e of entries || []) {
+  for (const e of eventActiveEntries(entries, round)) {
     const c = e && e.card;
     if (!c) continue;
     const mag = Number.isFinite(e.mag) ? e.mag : 1;
@@ -216,12 +241,14 @@ export function eventModsFor(entries) {
  * unique, so two copies of the same entry stack), `params` only the battle-relevant numbers. server/sim/content/event.js
  * reads them at battleStart (own operators) and on enemySpawn (enemy move speed), applying each ref in the
  * **环境buff乘区 / environment buff bucket** — `base × Π(1 + p_i)`, with flat values on the panel first; the bucket is
- * event-only and does not touch the additive pool of other systems.
- * @param {Array<{ card: object, mag?: number }>} entries
+ * event-only and does not touch the additive pool of other systems. Only the entries in force at `round` become refs
+ * (EVENT_DURATION_ROUNDS); no `round` keeps the whole log.
+ * @param {Array<{ card: object, mag?: number, round?: number }>} entries
+ * @param {number|null} [round] current absolute round (null = no filter)
  */
-export function eventBattleRefs(entries) {
+export function eventBattleRefs(entries, round = null) {
   const refs = [];
-  (entries || []).forEach((e, i) => {
+  eventActiveEntries(entries, round).forEach((e, i) => {
     const c = e && e.card;
     if (!c) return;
     const mag = Number.isFinite(e.mag) ? e.mag : 1;
@@ -407,7 +434,7 @@ export class MatchEvent {
     ps.eventTargets.push(target);
     this.event.picks.set(ps.playerId, rec);
     targetPs.eventEntries.push({ card, mag, from: ps.playerId, round: this.round, target });
-    targetPs.eventMods = eventModsFor(targetPs.eventEntries);
+    targetPs.eventMods = eventModsFor(targetPs.eventEntries, this.round);
     this.broadcast({
       t: 'm.event', round: this.round, index: this.event.index, playerId: ps.playerId,
       target, targetId: targetPs.playerId, card: card.id, key: card.key, kind: card.kind, mag, auto: !!auto,
@@ -602,6 +629,8 @@ export class MatchEvent {
         round: ev ? ev.round : null,
         index: ev ? ev.index : this.eventHistory.length,
         active: this.phase === PHASE.EVENT,
+        // an entry stays in force this many rounds (picked … picked+duration−1); history keeps every pick
+        duration: EVENT_DURATION_ROUNDS,
         done: !!(ev && ev.done),
         stage: this.eventStage || null,
         roster: this.eventStage === 'roster' ? { until: (ev && ev.rosterUntil) || 0, ms: EVENT_ROSTER_MS } : null,

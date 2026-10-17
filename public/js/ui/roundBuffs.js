@@ -7,7 +7,8 @@
 //   foe           this period's monster entry: { round, card, key, elite: { share, attr, count } }
 //
 // The ally lines are "who RECEIVED it", not "what I picked": another player may send their entry to me. A record counts
-// when its `round` is the current round and its receiver resolves to myId. The receiver is
+// when it is still in force this round (`round` ∈ [picked, picked + duration − 1], EVENT_DURATION_ROUNDS — an expired
+// entry is no longer shown) and its receiver resolves to myId. The receiver is
 // ally.targets[pickerId][target] (the map's meaning at view time) or, when that map no longer carries the picker / key,
 // the record's own `targetId` (written by the server at pick time — a co-op mate can be recomputed when a teammate
 // leaves). A record predating `target` has no receiver at all and is SKIPPED — never guessed, never thrown on.
@@ -20,14 +21,16 @@
 // msgids: the 强力属性 line is the overlay's own 「本回合 {share}% 的敌人带「{attr}」」.
 import { html } from './components.js';
 import { t } from '../../../shared/i18n.js';
+import { EVENT_DURATION_ROUNDS } from '../../../shared/constants.js';
 import { ALLY_NAMES, FOE_NAMES, allyEffect, foeEffect, eventAllyCard, eventFoeCard, eventReceiver } from './eventOverlay.js';
 
 export { eventReceiver };
 
 /**
- * The strip's rows, in reading order: every entry I received this round (in history order), then the round's monster
- * entry with its 强力属性. Empty outside a hunt mode, without an event this round, or on a spectator seat that received
- * nothing.
+ * The strip's rows, in reading order: every entry I received that is still in force this round (in history order),
+ * then the round's monster entry with its 强力属性. An ally entry lasts `duration` rounds from its pick
+ * (`EVENT_DURATION_ROUNDS`; server m.public.event.ally.duration, falling back to the shared constant). Empty outside a
+ * hunt mode, without an event this round, or on a spectator seat with nothing in force.
  * @param {any} pub m.public
  * @param {string|null} myId the viewer's playerId
  * @returns {Array<{ kind: 'ally'|'foe', key: string, name: string, effect: string, elite: string, title: string }>}
@@ -41,9 +44,11 @@ export function roundBuffRows(pub, myId) {
   const foe = ev.foe || null;
   const targets = ally.targets && typeof ally.targets === 'object' ? ally.targets : {};
   const history = Array.isArray(ally.history) ? ally.history : [];
+  const duration = Math.max(1, Math.trunc(Number(ally.duration) || EVENT_DURATION_ROUNDS));
   const rows = [];
   for (const rec of history) {
-    if (!rec || Number(rec.round) !== round) continue;
+    const picked = Math.trunc(Number(rec && rec.round));
+    if (!Number.isFinite(picked) || round < picked || round >= picked + duration) continue;
     if (eventReceiver(rec, targets) !== myId) continue;
     const card = eventAllyCard(rec);
     if (!card) continue;

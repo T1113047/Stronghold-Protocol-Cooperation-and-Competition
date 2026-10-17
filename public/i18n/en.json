@@ -1441,5 +1441,7 @@
   "把「{card}」给了": "gave 「{card}」 to",
   "放入整备区或战场、配发或使用后才能准备就绪；仅本休整期内到期的会被销毁，准备就绪/战后获得的保留到下一休整期": "Move them to the Bench or Battlefield, equip or use them before you can Ready; only pieces due THIS Rest Phase are destroyed — pieces gained after Ready / battle stay until the next Rest Phase",
   "仅本休整期内到期的会被销毁；准备就绪/战后获得的保留到下一休整期": "Only pieces due this Rest Phase are destroyed; pieces gained after Ready / battle stay until the next Rest Phase",
-  "放入整备区或战场、配发或使用后才能准备；仅本休整期内到期的会被销毁，准备就绪/战后获得的保留到下一休整期": "Move to the Bench or Battlefield, equip or use them before you can Ready; only pieces due this Rest Phase are destroyed — pieces gained after Ready / battle stay until the next Rest Phase"
+  "放入整备区或战场、配发或使用后才能准备；仅本休整期内到期的会被销毁，准备就绪/战后获得的保留到下一休整期": "Move to the Bench or Battlefield, equip or use them before you can Ready; only pieces due this Rest Phase are destroyed — pieces gained after Ready / battle stay until the next Rest Phase",
+  "本回合词条": "This round’s modifiers",
+  "暂无": "None"
 }

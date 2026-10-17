@@ -74,11 +74,13 @@ export function roundBuffRows(pub, myId) {
  */
 export function RoundBuffs({ pub, myId }) {
   const rows = roundBuffRows(pub, myId);
-  if (!rows.length) return null;
   return html`<div class="rbuffs" data-testid="round-buffs">
-    ${rows.map((r, i) => html`<div key=${`${r.kind}:${i}`} class=${`rbuff rbuff--${r.kind}`}
-      data-testid=${`round-buff-${r.kind}`} title=${r.title}>
-      <b class="rbuff__name">${r.name}</b>${r.effect ? html` <span class="rbuff__eff">${r.effect}</span>` : null}${r.elite ? html` <span class="rbuff__elite">${r.elite}</span>` : null}
-    </div>`)}
+    <div class="rbuffs__title">${t('本回合词条')}</div>
+    ${rows.length
+      ? rows.map((r, i) => html`<div key=${`${r.kind}:${i}`} class=${`rbuff rbuff--${r.kind}`}
+          data-testid=${`round-buff-${r.kind}`} title=${r.title}>
+          <b class="rbuff__name">${r.name}</b>${r.effect ? html` <span class="rbuff__eff">${r.effect}</span>` : null}${r.elite ? html` <span class="rbuff__elite">${r.elite}</span>` : null}
+        </div>`)
+      : html`<div class="rbuff rbuff--none" data-testid="round-buff-none">${t('暂无')}</div>`}
   </div>`;
 }

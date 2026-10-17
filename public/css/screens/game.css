@@ -827,3 +827,8 @@
 .pauseov__plate h2 { font-size: calc(.5 * var(--t)); font-weight: 900; letter-spacing: .3em; color: #fff; text-shadow: 0 0 .2rem rgba(0, 0, 0, .8); }
 .pauseov__note { font-size: calc(.17 * var(--t)); color: var(--text-md); text-shadow: 0 1px 2px #000; }
 .pauseov__btns { display: flex; gap: .2rem; }
+
+/* 本回合词条：常驻在队伍面板最后一行（P4）下面 */
+.rbuffs { display: flex; flex-direction: column; gap: .03rem; margin-top: .05rem; }
+.rbuffs__title { font-size: calc(.09 * var(--t)); letter-spacing: .12em; color: var(--text-lo); text-transform: uppercase; }
+.rbuff--none { opacity: .45; }

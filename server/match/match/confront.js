@@ -12,10 +12,10 @@
 //     (maybeFinishConfront), so the sides never wait on a player who is already done.
 //
 // The budget (confrontBudget) = the round's own wave value × the 5→15 % share (50 % on the R13 追猎 round) ×
-// VERSUS_CONFRONT.budgetMul, per PLAYER
-// (each counts on its own) — both teams face the same (synced) wave, so both get the same number, and the 6 groups hold
-// the same total value (equalValueGroups), so the choice is never about raw strength. A monster's cost and the wave's
-// value are one unit: the formula carries the round's hp/atk scaling (confrontValue) AND the monster's graded 特性 score
+// VERSUS_CONFRONT.budgetMul, per PLAYER (each counts on its own) — both teams face the same (synced) wave, so both get
+// the same number. The groups are the OFFICIAL 特训敌人 types (特异 / 飞行 / 频次 / 元素 / 持续 / 隐匿 / 折射), NOT equal
+// value buckets: the player picks a flavour (user decision 2026-10-17). A monster's cost and the wave's value are one
+// unit: the formula carries the round's hp/atk scaling (confrontValue) AND the monster's graded 特性 score
 // (confrontTraits.js, 30 % of the whole table — confrontValueOf / confrontTraitStep).
 //
 // Applying: the placed monsters of an intervention land on ITS TARGET's wave only (confrontFor), replacing originals
@@ -60,21 +60,41 @@ export function confrontPool(factions) {
 }
 
 /**
- * Split `rows` ({ key, value }) into `G` groups of EQUAL TOTAL VALUE: strongest first, each row into the currently
- * cheapest group (LPT greedy). The groups come out equal in value (and, at this pool size, in count) — so the choice
- * between them is about WHICH monsters to throw, never about raw strength. Deterministic.
+ * The 悬赏期 groups are the OFFICIAL 特训敌人 types (data/factions.json `types`), one group per type in the data's own
+ * order — the player picks a FLAVOR (隐匿 / 折射 / 飞行 …), never a strength (user decision 2026-10-17; the groups are
+ * deliberately NOT equal-valued any more — the type sizes differ: 特异 35 enemies, 频次 10).
+ *
+ * An enemy may be offered by SEVERAL types when the data lists it in both (宿主士兵 is 特异 AND 隐匿) — it then shows
+ * up in each of them. These template-slot enemies carry NO type in the data at all, so they are hand-assigned
+ * (CONFRONT_GROUP_EXTRA) to keep the promise that every pool enemy is offered somewhere (test/match/versus.test.js).
+ *
+ * @param {object} factions data/factions.json
+ * @param {(key: string) => { key: string, name: string, value: number }} rowOf
+ * @returns {Array<{ id: string, name: string, icon: string|null, desc: string, rows: object[] }>}
  */
-export function equalValueGroups(rows, G) {
-  const desc = rows.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
-  const buckets = Array.from({ length: G }, () => ({ rows: [], sum: 0 }));
-  for (const r of desc) {
-    buckets.sort((x, y) => x.sum - y.sum || x.rows.length - y.rows.length);
-    buckets[0].rows.push(r);
-    buckets[0].sum += r.value;
+export function confrontTypeGroups(factions, rowOf, extra = CONFRONT_GROUP_EXTRA) {
+  const types = (factions && factions.types) || {};
+  const inPool = new Set(confrontPool(factions));
+  const out = [];
+  for (const [id, t] of Object.entries(types)) {
+    const keys = new Set([...(t.pool || []), ...(t.entries || []), ...(extra[id] || [])]);
+    const rows = [...keys].filter((k) => inPool.has(k)).map((k) => rowOf(k))
+      .sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
+    out.push({ id, name: t.name || id, icon: t.icon || null, desc: t.desc || '', rows });
   }
-  buckets.sort((x, y) => x.sum - y.sum || String(x.rows[0].key).localeCompare(String(y.rows[0].key)));
-  return buckets.map((b) => b.rows);
+  return out;
 }
+
+/**
+ * The template-slot enemies the official type lists leave out (they are a wave's guaranteed spawns, not 特训): assigned
+ * by mechanic — 灵幛 hits everything around it (特异), 暴鸰 is a flying bomber (飞行), 枯朽前锋 / 孽罪奇美拉 spread
+ * 源石污染 (持续).
+ */
+const CONFRONT_GROUP_EXTRA = Object.freeze({
+  SPECIAL: ['enemy_1427_lrnazg'],
+  FLY: ['enemy_1040_bombd'],
+  DOT: ['enemy_1422_lrsldr', 'enemy_1425_lrcmra'],
+});
 
 export class MatchConfront {
   /** The 对抗期 is active in the versus mode from the drawn contest round on, on normal (non-boss) rounds. */
@@ -141,19 +161,18 @@ export class MatchConfront {
   }
 
   /**
-   * The 6 groups offered in the 对抗期: the pool (confrontPool) valued with THIS round's scaling and split into equal
-   * total value (equalValueGroups). Recomputed when the round changes (the scaling moves values between rounds).
-   * @returns {Array<Array<{ key: string, name: string, value: number }>>}
+   * The groups offered in the 悬赏期: the official 特训敌人 types, each carrying its pool members priced in this round's
+   * currency (confrontValueOf). Recomputed when the round changes (the scaling moves values between rounds).
+   * @returns {Array<{ id: string, name: string, icon: string|null, desc: string, rows: Array<{ key: string, name: string, value: number }> }>}
    */
   confrontGroups() {
     const scale = this.confrontScale();
     const sig = `${this.round}|${scale.hpMul}|${scale.atkMul}`;
     if (this._confrontGroups && this._confrontSig === sig) return this._confrontGroups;
     const en = (this.data && this.data.enemies) || {};
-    const rows = confrontPool(this.data && this.data.factions)
-      .filter((k) => en[k])
-      .map((k) => ({ key: k, name: en[k].name || k, value: this.confrontValueOf(k, scale) }));
-    this._confrontGroups = equalValueGroups(rows, VERSUS_CONFRONT.groups);
+    this._confrontGroups = confrontTypeGroups(this.data && this.data.factions, (k) => ({
+      key: k, name: (en[k] && en[k].name) || k, value: this.confrontValueOf(k, scale),
+    }));
     this._confrontSig = sig;
     return this._confrontGroups;
   }
@@ -318,12 +337,13 @@ export class MatchConfront {
   }
 
   /**
-   * Check a submission against the chosen group: every enemyKey in the group, a legal gate, a legal position, and — the
-   * only cap — the combined VALUE within the round's budget (no count limit; the group's own size bounds the count).
+   * Check a submission: every enemyKey is offered by SOME 特训敌人 type, a legal gate and position, and — the only cap —
+   * the combined VALUE within the round's budget. The player MAY MIX TYPES (user decision 2026-10-17: step into one type,
+   * spend part of the budget, step into another and add more), so `group` is display-only and only the union is checked.
    */
   _confrontMember(ps, group, position, picks) {
-    const list = this.confrontGroups()[group - 1] || [];
-    const allowed = new Set(list.map((r) => r.key));
+    const list = this.confrontGroups();
+    const allowed = new Set(list.flatMap((g) => g.rows.map((r) => r.key)));
     const arr = Array.isArray(picks) ? picks : [];
     const pos = VERSUS_CONFRONT.positions.includes(position) ? position : null;
     if (!pos) return null;
@@ -333,13 +353,14 @@ export class MatchConfront {
       out.push({ enemyKey: p.enemyKey, gate: p.gate === 'upper' ? 'upper' : 'lower' });
     }
     if (this.confrontSpent(out) > this.confrontBudget()) return null;
-    return { target: this.confrontTargets.get(ps.playerId) ?? null, group, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget(), seat: ps.seat };
+    const gi = Number.isInteger(group) && group >= 1 && group <= list.length ? group : 1;
+    return { target: this.confrontTargets.get(ps.playerId) ?? null, group: gi, position: pos, picks: out, ratio: this.confrontRatio(), budget: this.confrontBudget(), seat: ps.seat };
   }
 
   /** An AI player's submission, and the one a player who never submits gets at the window's end: fill the budget from
    *  its group, most expensive fitting monster first (the client's 自动选择 button walks the group the player chose — the
-   *  AI walks the LAST one, the strongest cards, and falls back to the first group that can actually afford something,
-   *  since a tight budget can leave the last group with nothing at all and the AI would place nothing). */
+   *  AI prefers 特异 (the biggest, most "generic" type), then walks the types in order until one can actually afford
+   *  something, since a tight budget can leave a small type with nothing at all). */
   botConfront(ps) {
     if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster' || this.confrontSubs.has(ps.playerId)) return;
     const groups = this.confrontGroups();
@@ -354,11 +375,11 @@ export class MatchConfront {
       }
       return picks;
     };
-    let gi = groups.length - 1;
-    let picks = plan(groups[gi] || []);
+    let gi = 0;
+    let picks = plan((groups[0] && groups[0].rows) || []);
     if (!picks.length) {
-      for (let i = 0; i < groups.length - 1; i++) {
-        const p = plan(groups[i]);
+      for (let i = 1; i < groups.length; i++) {
+        const p = plan(groups[i].rows || []);
         if (p.length) { gi = i; picks = p; break; }
       }
     }

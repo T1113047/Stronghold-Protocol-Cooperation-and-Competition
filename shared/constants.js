@@ -66,15 +66,14 @@ export const VERSUS_LOW_LP = 21;
 export const VERSUS_INFO_SECONDS = 45;
 /**
  * 悬赏期 tunables (2V2): the target-selection window (s; ends early once every alive player holds a target), the
- * number of monster groups offered, the insertion positions (share of the round's monster count: 25 / 50 / 75 %) and the
- * budget multiplier — a player may place monsters whose combined VALUE is at most
- * `round's wave value × ratio × budgetMul` (confront.js confrontBudget), PER PLAYER. There is no count cap: the budget
- * (and the group's own size) bounds the placement. Step 2 (定制) has no fixed length of its own: its window is THIS
- * round's prep time (`gd.prepTime`, untimed when the prep is) and ends as soon as every alive player has submitted.
+ * insertion positions (share of the round's monster count: 25 / 50 / 75 %) and the budget multiplier — a player may place
+ * monsters whose combined VALUE is at most `round's wave value × ratio × budgetMul` (confront.js confrontBudget), PER
+ * PLAYER. There is no count cap: the budget (and the group's own size) bounds the placement. The groups are the OFFICIAL
+ * 特训敌人 types (data/factions.json), NOT a constant here. Step 2 (定制) has no fixed length of its own: its window is
+ * THIS round's prep time (`gd.prepTime`, untimed when the prep is) and ends as soon as every alive player has submitted.
  */
 export const VERSUS_CONFRONT = Object.freeze({
   targetSeconds: 10,
-  groups: 6,
   /**
    * The intervention's size — the share of the opponent's original wave a team may replace, and the same share of the
    * wave value it may spend (budget = wave value × ratio × budgetMul, PER PLAYER). 5 % at the contest round, +2 %/round,

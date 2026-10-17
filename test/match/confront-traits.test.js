@@ -54,7 +54,7 @@ describe('悬赏期 特性分档 (2V2)', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
     const m = h.m;
     assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
-    const row = m.confrontGroups()[0][0];
+    const row = m.confrontGroups()[0].rows[0];
     assert.equal(row.value, m.confrontValueOf(row.key, m.confrontScale()), 'a group row carries the priced value');
     assert.equal(m.confrontSpent([{ enemyKey: row.key, gate: 'lower' }]), row.value, 'a submission costs the priced value');
     assert.ok(m.confrontBounty(row.key) >= 1, 'a bounty of at least 1');

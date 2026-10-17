@@ -3,19 +3,25 @@
 //     their team's colour — no name, no avatar. Inside a team it is first come, first served (the server hands the
 //     teammate whatever is left).
 //   step 2 ('monster'): fill this seat's VALUE BUDGET (server confront.js confrontBudget — PER PLAYER, no count limit)
-//     with monsters of ONE of the 6 equal-value groups, each on a gate (上路 'upper' / 下路 'lower'), all inserted
-//     together at one position of the wave (靠前/靠中/靠后 = 25/50/75 % of the round's monster count). Submitting early is
-//     fine; the step always runs its window out.
+//     with monsters of ONE of the OFFICIAL 特训敌人 types (特异 / 飞行 / 频次 / 元素 / 持续 / 隐匿 / 折射, data/factions.json
+//     — one group per type, named and iconed like the briefing's), each on a gate (上路 'upper' / 下路 'lower'), all
+//     inserted together at one position of the wave (靠前/靠中/靠后 = 25/50/75 % of the round's monster count). Submitting
+//     early is fine; the step ends as soon as every alive player has submitted.
 // Texts go through t() (docs/I18N.md).
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, MicroLabel, Countdown } from '../ui/components.js';
 import { Img, GIcon, PlayerAvatar, useGameData } from '../ui/gameComponents.js';
-import { enemyIconUrl } from '../ui/assetUrls.js';
+import { enemyIconUrl, factionIconUrl } from '../ui/assetUrls.js';
 import { useStore } from '../store.js';
 import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 const POSITIONS = [['front', '靠前'], ['mid', '靠中'], ['back', '靠后']];
+/**
+ * A 特训敌人 type's short label: the data name is 特训敌人·隐匿, the shown label drops the translated prefix (the same
+ * expression the enemy drawer's faction chips use).
+ */
+const typeLabel = (name) => String(name || '').replace(t('特训敌人·'), '');
 /**
  * The squad this browser last submitted (module-level: the overlay unmounts between rounds, the page does not). The
  * 沿用上轮 button refits these kinds to the CURRENT round's budget — values and the groups' membership move per round.
@@ -58,12 +64,33 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const targets = conf.targets || {};
   const myTarget = targets[myId] || null;
   const stage = conf.stage || 'target';
-  const sel = group != null ? groups[group - 1] || [] : [];
+  // every monster a type offers, deduped (a monster may belong to TWO 特训敌人 types): the player MAY MIX TYPES — step
+  // into one, spend part of the budget, step into another and add more — so the budget, not the type, is the cap.
+  const rowByKey = new Map();
+  for (const g of groups) for (const r of g.rows || []) if (!rowByKey.has(r.key)) rowByKey.set(r.key, r);
+  const allRows = [...rowByKey.values()];
+  const sel = group != null && groups[group - 1] ? groups[group - 1].rows || [] : [];
   // step 2: the placement cap is this seat's VALUE budget — no count limit, only Σ value ≤ budget
   const budget = Math.max(0, Number(conf.budget) || 0);
   // the share of the opponent's wave this round's intervention replaces (and spends) — 5→15 %, 50 % on the 追猎 round
   const pct = Math.round((Number(conf.ratio) || 0) * 100);
-  const valOf = (key) => (sel.find((r) => r.key === key) || {}).value || 0;
+  const valOf = (key) => (rowByKey.get(key) || {}).value || 0;
+  /** The greedy fill (most expensive that fits) of `rows` up to the budget — the same walk the AI uses. */
+  const plan = (rows) => {
+    const out = [];
+    let left = budget;
+    for (const r of rows.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)))) {
+      if (r.value > left) continue;
+      left -= r.value;
+      out.push({ enemyKey: r.key, gate: out.length % 2 ? 'upper' : 'lower' });
+    }
+    return out;
+  };
+  /** The tab (1-based) of the first 特训敌人 type offering `key` — where to land after 自动选择 / 沿用上轮. */
+  const groupOfKey = (key) => {
+    const i = groups.findIndex((g) => (g.rows || []).some((r) => r.key === key));
+    return i >= 0 ? i + 1 : 1;
+  };
   const spent = picks.reduce((s, p) => s + valOf(p.enemyKey), 0);
   const remaining = Math.max(0, budget - spent);
   const fits = (rec) => !busy && rec.value <= remaining;
@@ -120,23 +147,15 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const submitted = !!mine;
   const foesPicked = mates.every((p) => targets[p.playerId]);
   /**
-   * 自动选择: fill the budget the way the AI does (most expensive monster that still fits, walking the group by value),
-   * on the currently chosen group (the first when none is chosen). The player tweaks from there — and a player who never
-   * submits gets exactly this at the window's end (server confront.js botConfront / finishConfront).
+   * 自动选择: fill the budget the way the AI does — most expensive monster that still fits, walking the types in order
+   * (特异 first) and each type by value. It may mix types. The player tweaks from there — and a player who never submits
+   * gets exactly this at the window's end (server confront.js botConfront / finishConfront).
    */
   const autoPick = () => {
     if (submitted || busy) return;
-    const gi = group != null ? group : (groups.length ? 1 : 0);
-    if (!gi) return;
-    const list = (groups[gi - 1] || []).slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
-    const out = [];
-    let left = budget;
-    for (const r of list) {
-      if (r.value > left) continue;
-      left -= r.value;
-      out.push({ enemyKey: r.key, gate: 'lower' });
-    }
-    setGroup(gi);
+    const out = plan(allRows);
+    if (!out.length) return;
+    setGroup(groupOfKey(out[0].enemyKey));
     setPicks(out);
     setPosition('mid');
   };
@@ -146,28 +165,24 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
    */
   const reuse = () => {
     if (submitted || busy || !lastSquad || !lastSquad.keys.length) return;
-    const gi = groups.findIndex((g) => g.some((r) => r.key === lastSquad.keys[0]));
-    const idx = gi >= 0 ? gi + 1 : (group != null ? group : 1);
-    if (!idx) return;
-    const list = groups[idx - 1] || [];
     const out = [];
     const used = new Set();
     let left = budget;
     for (const key of lastSquad.keys) {
-      const rec = list.find((r) => r.key === key);
+      const rec = rowByKey.get(key);
       if (!rec || used.has(key) || rec.value > left) continue;
       left -= rec.value;
       used.add(key);
       out.push({ enemyKey: key, gate: lastSquad.gates[out.length] || (out.length % 2 ? 'upper' : 'lower') });
     }
-    for (const r of list.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)))) {
+    for (const r of allRows) {
       if (used.has(r.key) || r.value > left) continue;
       left -= r.value;
       used.add(r.key);
       out.push({ enemyKey: r.key, gate: 'lower' });
     }
     if (!out.length) return;
-    setGroup(idx);
+    setGroup(groupOfKey(out[0].enemyKey));
     setPicks(out);
     setPosition(lastSquad.position || 'mid');
   };
@@ -190,7 +205,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
                 <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 你的怪只会出现在这个对手的波次', { r: conf.round })}</span></h2>`}
           <p class="spov__sub">${stage === 'target'
             ? (myTarget ? t('已锁定目标，等待队友与对手') : t('点击一个 ? 头像框锁定你的目标'))
-            : (submitted ? t('你已提交，等待其他玩家') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）'))}</p>
+            : (submitted ? t('你已提交，等待其他玩家') : t('点怪加入；可切换类型继续添加（不限数量，只限总价值）'))}</p>
         </div>
         <div class="spov__turn">
           ${conf.hunt ? html`<span class="spov__turntxt">${t('追猎模式')}</span>` : null}
@@ -226,15 +241,16 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
       </div>` : html`
       <div class="confov__groups">
         ${groups.map((g, i) => {
-          const total = g.reduce((s, r) => s + r.value, 0);
+          const total = (g.rows || []).reduce((s, r) => s + r.value, 0);
           const isSel = group === i + 1;
-          return html`<button key=${i} type="button" class=${cx('confgroup', isSel && 'is-sel')} disabled=${submitted} onClick=${() => { setGroup(i + 1); setPicks([]); }}>
+          return html`<button key=${g.id || i} type="button" class=${cx('confgroup', isSel && 'is-sel')} disabled=${submitted}
+            title=${g.desc || typeLabel(g.name)} onClick=${() => setGroup(i + 1)}>
             <span class="confgroup__head">
-              <b class="confgroup__name">G${i + 1}</b>
-              <span class="confgroup__meta num">${g.length} ${t('种')} · ${t('总价值 {v}', { v: total })}</span>
+              <b class="confgroup__name">${g.icon ? html`<${Img} src=${factionIconUrl(m, g.icon)} class="confgroup__ficon" />` : null}${typeLabel(g.name) || `G${i + 1}`}</b>
+              <span class="confgroup__meta num">${(g.rows || []).length} ${t('种')} · ${t('总价值 {v}', { v: total })}</span>
             </span>
             <span class="confgroup__icons">
-              ${g.map((r) => html`<span key=${r.key} class="confgroup__ic" title=${`${r.name}（${r.value}）`}><${Img} src=${enemyIconUrl(m, r.key)} fallback=${html`<${GIcon} name="target" />`} /></span>`)}
+              ${(g.rows || []).map((r) => html`<span key=${r.key} class="confgroup__ic" title=${`${r.name}（${r.value}）`}><${Img} src=${enemyIconUrl(m, r.key)} fallback=${html`<${GIcon} name="target" />`} /></span>`)}
             </span>
           </button>`;
         })}
@@ -242,9 +258,9 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
 
       ${group != null ? html`<div class="confov__body">
         <section class="confov__pool">
-          <h3 class="confov__h">${t('G{n} 的怪物（点击加入）', { n: group })} <span class="num t-dim">${t('剩余价值 {v}', { v: remaining })}</span></h3>
+          <h3 class="confov__h">${t('{g} 的怪物（点击加入）', { g: typeLabel((groups[group - 1] || {}).name) || t('G{n}', { n: group }) })} <span class="num t-dim">${t('剩余价值 {v}', { v: remaining })}</span></h3>
           <div class="confov__chips">
-            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} disabled=${submitted || !fits(r)} onAdd=${add} />`)}
+            ${sel.map((r) => html`<${EnemyChip} key=${r.key} m=${m} rec=${r} count=${picks.filter((p) => p.enemyKey === r.key).length} disabled=${submitted || !fits(r)} onAdd=${add} />`)}
           </div>
         </section>
         <section class="confov__placed">
@@ -252,7 +268,7 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
           <p class="confov__tip t-dim">${t('点一下换门 · 长按拖动排序（默认下路）')}</p>
           ${picks.length ? html`<ol class="confov__list" onPointerMove=${listMove} onPointerUp=${listUp} onPointerCancel=${listUp} onPointerLeave=${listUp}>
             ${picks.map((p, i) => {
-              const rec = sel.find((r) => r.key === p.enemyKey) || { key: p.enemyKey, name: p.enemyKey, value: 0 };
+              const rec = rowByKey.get(p.enemyKey) || { key: p.enemyKey, name: p.enemyKey, value: 0 };
               return html`<li key=${`${p.enemyKey}:${i}`} data-qidx=${i}
                   class=${cx('confrow', p.gate === 'upper' && 'is-upper', dragIdx === i && 'is-drag', overIdx === i && dragIdx != null && dragIdx !== i && 'is-over')}
                   title=${t('点击换门 · 长按拖动排序')} onPointerDown=${(e) => rowDown(e, i)}>

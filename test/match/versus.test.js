@@ -7,6 +7,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA } from './harness.js';
 import { PHASE, teamOfSeat, VERSUS_LOW_LP, VERSUS_INFO_SECONDS } from '../../shared/constants.js';
+import { confrontPool } from '../../server/match/match/confront.js';
 
 /** 4 seats laid out as two teams of two (0,1 → team 0; 2,3 → team 1). */
 const vsSeats = () => ([
@@ -26,7 +27,7 @@ const vsSeats = () => ([
 const affordablePick = (m, budget) => {
   let best = null;
   m.confrontGroups().forEach((g, i) => {
-    for (const r of g) if (r.value <= budget && (!best || r.value < best.rec.value)) best = { rec: r, group: i + 1 };
+    for (const r of g.rows) if (r.value <= budget && (!best || r.value < best.rec.value)) best = { rec: r, group: i + 1 };
   });
   return best;
 };
@@ -385,13 +386,14 @@ describe('versus (2V2) match: team model', () => {
       assert.equal(m.confrontStage, 'monster', `R${m.round}: step 2 opens`);
       const picks = [];
       let left = m.confrontBudget();
-      for (const r of m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+      const pick0 = affordablePick(m, left);
+      for (const r of (pick0 ? m.confrontGroups()[pick0.group - 1].rows : []).slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
         if (r.value > left) continue;
         left -= r.value;
         picks.push({ enemyKey: r.key, gate: 'lower' });
         if (picks.length >= 2) break;
       }
-      assert.equal(m.submitConfront(me(), { group: 6, position: 'mid', picks }).ok, true, `R${m.round}: the monsters are accepted`);
+      assert.equal(m.submitConfront(me(), { group: pick0.group, position: 'mid', picks }).ok, true, `R${m.round}: the monsters are accepted`);
       assert.ok(h.drive(() => m.phase !== PHASE.CONFRONT, { maxSteps: 3e6 }), 'the window closed');
       return m.round;
     };
@@ -437,13 +439,15 @@ describe('versus (2V2) match: team model', () => {
     const budget = m.confrontBudget();
     const picks = [];
     let left = budget;
-    for (const r of m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+    const pick0 = affordablePick(m, budget);
+    assert.ok(pick0, 'the budget affords at least one monster');
+    for (const r of m.confrontGroups()[pick0.group - 1].rows.slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
       if (r.value > left) continue;
       left -= r.value;
       picks.push({ enemyKey: r.key, gate: 'lower' });
       if (picks.length >= 1) break;
     }
-    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 6, position: 'mid', picks }).ok, true);
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: pick0.group, position: 'mid', picks }).ok, true);
     assert.equal(m.phase, PHASE.COMBAT, 'the submission closes the step at once');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
@@ -479,7 +483,7 @@ describe('versus (2V2) match: team model', () => {
     const budget = m.confrontBudget();
     const pick = affordablePick(m, budget);
     assert.ok(pick, 'at least one monster fits the contest-round budget');
-    const g = m.confrontGroups()[pick.group - 1].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const g = m.confrontGroups()[pick.group - 1].rows.slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
     const picks = [];
     let left = budget;
     for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 3) break; }
@@ -501,7 +505,7 @@ describe('versus (2V2) match: team model', () => {
     const budget = m.confrontBudget();
     const pick = affordablePick(m, budget);
     assert.ok(pick, "at least one monster fits the round's budget");
-    const g = m.confrontGroups()[pick.group - 1].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const g = m.confrontGroups()[pick.group - 1].rows.slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
     const picks = [];
     let left = budget;
     for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 2) break; }
@@ -581,11 +585,18 @@ describe('versus (2V2) match: team model', () => {
     assert.equal(m.round, m.contestStartRound, 'at the contest round');
     assert.equal(m.confrontStage, 'target', 'step 1 (who do I attack) comes first');
     const groups = m.confrontGroups();
-    assert.equal(groups.length, 6, '6 monster groups');
-    assert.equal(groups.flat().length, 120, '120 enemies across the groups');
-    // the whole point of the split: the 6 groups hold the SAME total value, so the choice is never about strength
-    const totals = groups.map((g) => g.reduce((s, r) => s + r.value, 0));
-    assert.ok(Math.max(...totals) / Math.min(...totals) - 1 < 0.01, `group values equal within 1%: ${totals.join('/')}`);
+    // the groups are the OFFICIAL 特训敌人 types (data/factions.json), in the data's order — NOT equal-value buckets
+    const typeIds = Object.keys(DATA.factions.types);
+    assert.deepEqual(groups.map((g) => g.id), typeIds, 'one group per 特训敌人 type');
+    assert.equal(groups.length, typeIds.length, `${typeIds.length} type groups`);
+    assert.ok(groups.every((g) => g.rows.length > 0), 'no empty type');
+    assert.ok(groups.every((g) => g.name && g.icon), 'every group carries the official name and icon');
+    // every pool enemy is offered by at least one type (the template-slot enemies are hand-assigned: CONFRONT_GROUP_EXTRA)
+    const offered = new Set(groups.flatMap((g) => g.rows.map((r) => r.key)));
+    for (const k of confrontPool(m.data.factions)) assert.ok(offered.has(k), `${k} is offered by no type`);
+    // the types are NOT equal-valued any more (that rule is gone with the type grouping): 特异 is the big one
+    const totals = groups.map((g) => g.rows.reduce((s, r) => s + r.value, 0));
+    assert.ok(Math.max(...totals) / Math.min(...totals) - 1 > 0.2, `type sizes differ: ${totals.join('/')}`);
     // step 1: the human names one opponent; the teammate is given the other (first come, first served)
     const me = m.players.get('p_0');
     const opp = [...m.players.values()].filter((p) => m.teamIdOf(p) === 1).map((p) => p.playerId);
@@ -599,12 +610,12 @@ describe('versus (2V2) match: team model', () => {
     assert.ok(budget > 0, 'a positive budget');
     const pick = affordablePick(m, budget);
     assert.ok(pick, "at least one monster fits the round's budget");
-    const whole = groups[pick.group - 1].map((x) => ({ enemyKey: x.key, gate: 'lower' }));
+    const whole = groups[pick.group - 1].rows.map((x) => ({ enemyKey: x.key, gate: 'lower' }));
     assert.ok(m.confrontSpent(whole) > budget, 'the whole group exceeds the contest round budget');
     assert.ok(m.submitConfront(me, { group: pick.group, position: 'mid', picks: whole }).error, 'an over-budget submission is refused');
     const picks = [];
     let left = budget;
-    for (const r of groups[pick.group - 1].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+    for (const r of groups[pick.group - 1].rows.slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
       if (r.value > left) continue;
       left -= r.value;
       picks.push({ enemyKey: r.key, gate: 'lower' });
@@ -641,6 +652,29 @@ describe('versus (2V2) match: team model', () => {
     // the share IS the budget's factor: budget = the wave value × the share × budgetMul (2), per player
     assert.equal(m.confrontBudget(), Math.round(m.confrontWaveValue() * m.confrontRatio() * 2));
     assert.equal(m.confrontHunt(), m.round === 13, 'the hunt flag follows the round');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: a submission may MIX 特训敌人 types (the budget is the only cap)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
+    assert.equal(m.confrontStage, 'monster', 'step 2 opened');
+    const groups = m.confrontGroups();
+    const budget = m.confrontBudget();
+    const cheap = groups.flatMap((g, i) => g.rows.map((r) => ({ ...r, type: i })))
+      .sort((a, b) => a.value - b.value || a.key.localeCompare(b.key));
+    const first = cheap[0];
+    const second = cheap.find((r) => r.type !== first.type && r.value + first.value <= budget);
+    assert.ok(first && second, `two cheap monsters of DIFFERENT types fit ${budget}: ${first && first.value} + ${second && second.value}`);
+    const picks = [{ enemyKey: first.key, gate: 'lower' }, { enemyKey: second.key, gate: 'upper' }];
+    assert.ok(m.confrontSpent(picks) <= budget, 'within the budget');
+    // an enemy no type offers is still refused
+    assert.ok(m.submitConfront(m.players.get('p_0'), { group: 1, position: 'mid', picks: [{ enemyKey: 'enemy_not_offered', gate: 'lower' }] }).error, 'an unknown monster is refused');
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 1, position: 'mid', picks }).ok, true, 'a cross-type submission is accepted');
+    const sub = m.confrontSubs.get('p_0');
+    assert.deepEqual(sub.picks.map((p) => p.enemyKey), [first.key, second.key], 'both types land');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 

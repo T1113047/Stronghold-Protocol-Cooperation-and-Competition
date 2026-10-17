@@ -105,7 +105,11 @@ export class MatchViews {
             hunt: this.confrontHunt(),
             budget: this.confrontBudget(),
             targets: this.confrontTargets ? Object.fromEntries(this.confrontTargets) : {},
-            groups: this.confrontGroups().map((g) => g.map((r) => ({ key: r.key, name: r.name, value: r.value }))),
+            // the official 特训敌人 types: one group per type, its rows priced in this round's currency
+            groups: this.confrontGroups().map((g) => ({
+              id: g.id, name: g.name, icon: g.icon, desc: g.desc,
+              rows: g.rows.map((r) => ({ key: r.key, name: r.name, value: r.value })),
+            })),
             subs,
           },
         };

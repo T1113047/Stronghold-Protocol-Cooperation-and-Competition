@@ -429,6 +429,8 @@ export class Match {
     this.event = null;
     this.eventHistory = [];
     this.eventIndex = 0;
+    /** 'roster' while the 5 s 词条公示 holds the period; null otherwise. */
+    this.eventStage = null;
     /** the match's used ally / monster entries (no card repeats while its kind has an unused one) */
     this.eventUsedAlly = new Set();
     this.eventUsedFoe = new Set();

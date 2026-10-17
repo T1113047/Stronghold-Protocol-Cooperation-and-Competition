@@ -20,6 +20,8 @@
 // local 联防 replica's count while it is on screen (`uniteLocal`: the battle runner's state().uniteLeft, the same battle
 // the player watches, so the number moves with the kills on screen), else m.public players[].uniteLeft (the authority's
 // report, ~1 Hz).
+// 本回合词条: after the seat rows (under P4) the panel renders ui/roundBuffs.js — this round's 事件期 entries I RECEIVED
+// (whoever picked them), this round's monster entry and its 强力属性, one small line each; nothing without an event.
 
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { PHASE } from '../../../shared/constants.js';
@@ -29,6 +31,7 @@ import { EmoteBubble } from './emotes.js';
 import { ChatBubble } from './chat.js';
 import { STATUS_META, sortedPlayers, teamFrameIds } from './gameLogic.js';
 import { MissTag, uniteRemaining } from './hud.js';
+import { RoundBuffs } from './roundBuffs.js';
 import { localAsset } from '../data.js';
 import { t } from '../../../shared/i18n.js';
 
@@ -218,5 +221,6 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
         ${chatLine ? html`<${ChatBubble} key=${chatLine.seq} text=${chatLine.text} at=${chatLine.at} class="team__bubble team__bubble--chat" />` : null}
       </div>`;
     })}
+    <${RoundBuffs} pub=${pub} myId=${myId} />
   </aside>`;
 }

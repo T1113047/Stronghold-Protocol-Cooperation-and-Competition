@@ -1,28 +1,8 @@
 # 卫戍协议：狩猎模拟 · Stronghold Protocol: Hunt Simulation
 
-《明日方舟》季节性自走棋塔防玩法「卫戍协议：盟约」的**非官方同人复刻**，浏览器即开即玩：既保留 1–4 人的合作模式，也在上游基础上扩展出**两支双人小队（2V2）**的「**狩猎模拟**」模式——每轮休整期结束后进入**狩猎期**，给对面派去猎物，击杀猎物为己方赢得赏金。
+**版本 `V0.0.1（0.2.6）`** · 基于 [sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol) **v0.2.6** 的**非官方 2V2 衍生版**。它保留 1–4 人合作，浏览器即开即玩，并把「狩猎」做成核心玩法：休整期布阵，**狩猎期**给对面（或由系统给你）派猎物，击杀拿**赏金**，找商人**坎诺特**把赏金按比率换成金币，最后在 **R13 最终狩猎 → R14 最终攻势 → R15 隐秘核心**里决出胜负。
 
-> **本仓库：《卫戍协议：狩猎模拟》 · *Stronghold Protocol: Hunt Simulation***
->
-> 这是在 [sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol) **v0.2.6** 基础上开发的**非官方 2V2 衍生版**：把原本 1–4 人的合作玩法扩展为**两支双人小队**的「**2V2 + 狩猎期**」模式，并内置了一批局内交流、统计与画面 / 性能能力。代码同样以 **GPL-3.0-or-later** 发布，同样**非官方、非商业、不含游戏素材**；上游的全部声明与限制继续适用（见下）。上游作者与贡献者的著作权与署名一并保留（详见 [NOTICE.md](NOTICE.md)）。
->
-> **本作版本号：`V0.0.1（0.2.6）`** —— 本衍生版的第 1 版，基于上游 **0.2.6**。
-
-## 🙏 原项目与原作者（请先支持上游）
-
-本仓库是 **[sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol)** 的 **2V2 衍生版**。原版的完整合作玩法、规则复刻、战斗模拟、素材工具与全部文档，都出自原作者 **[@sganggs](https://github.com/sganggs)** 与上游贡献者；**没有原项目就没有本衍生版**。本仓库只在上游之上增加了 2V2「狩猎模拟」模式（含狩猎期）与一批局内能力，其余内容与上游一致。
-
-👉 **请优先 Star、关注并使用原项目，把支持给到原作者：**
-
-| 入口 | 链接 |
-|---|---|
-| ⭐ 原仓库（**Star 请点这里**） | https://github.com/sganggs/Stronghold-Protocol |
-| 👤 原作者 | https://github.com/sganggs |
-| 📦 原版整合包 / Releases | https://github.com/sganggs/Stronghold-Protocol/releases |
-| 📖 原版玩法指南 | https://github.com/sganggs/Stronghold-Protocol/blob/master/docs/PLAYING.md |
-| 🐞 上游问题反馈 | https://github.com/sganggs/Stronghold-Protocol/issues |
-
-> 只想体验原版的话，请直接使用上面的原仓库；本衍生版仅在你需要 2V2（狩猎模拟）时使用。本衍生版源码仓库：<https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation>。
+> **非官方、非商业、不含游戏素材。** 本仓库与鹰角网络、Yostar 及其关联方没有任何关系；《明日方舟》相关素材版权归原权利人所有，不适用本项目的 GPL。仅供学习交流与个人非商业使用，详见下方[声明](#声明)与 [NOTICE.md](NOTICE.md)。
 
 ![version](https://img.shields.io/badge/version-0.2.6-2ea44f)
 ![fork](https://img.shields.io/badge/fork-V0.0.1（0.2.6）-8957e5)
@@ -41,6 +21,22 @@
 
 English summary: [below](#english).
 
+## 原项目与原作者（请先支持上游）
+
+本仓库是 **[sganggs/Stronghold-Protocol](https://github.com/sganggs/Stronghold-Protocol)** 的 **2V2 衍生版**。原版的完整合作玩法、规则复刻、战斗模拟、素材工具与全部文档，都出自原作者 **[@sganggs](https://github.com/sganggs)** 与上游贡献者；**没有原项目就没有本衍生版**。本仓库只在上游之上增加了「狩猎」玩法（2V2 狩猎模拟、同盟狩猎）、事件期与一批局内能力，其余内容与上游一致。
+
+👉 **请优先 Star、关注并使用原项目，把支持给到原作者：**
+
+| 入口 | 链接 |
+|---|---|
+| ⭐ 原仓库（**Star 请点这里**） | https://github.com/sganggs/Stronghold-Protocol |
+| 👤 原作者 | https://github.com/sganggs |
+| 📦 原版整合包 / Releases | https://github.com/sganggs/Stronghold-Protocol/releases |
+| 📖 原版玩法指南 | https://github.com/sganggs/Stronghold-Protocol/blob/master/docs/PLAYING.md |
+| 🐞 上游问题反馈 | https://github.com/sganggs/Stronghold-Protocol/issues |
+
+> 只想体验原版的话，请直接使用上面的原仓库；本衍生版仅在你需要「狩猎」玩法时使用。本衍生版源码仓库：<https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation>。
+
 | 同盟房间 | 策略轮选 | 休整期（商店 / 盟约） |
 |---|---|---|
 | ![房间](docs/img/room.jpg) | ![策略](docs/img/band-draft.jpg) | ![休整期](docs/img/prep.jpg) |
@@ -49,84 +45,176 @@ English summary: [below](#english).
 
 ## 目录
 
-- [声明](#声明) · [简介](#简介) · [玩法：狩猎模拟（2V2）与狩猎期](#玩法狩猎模拟2v2与狩猎期) · [功能一览](#功能一览)
-- [快速开始](#快速开始)：[整合包](#方式一整合包推荐) · [从源码运行](#方式二从源码运行) · [系统要求](#系统要求) · [端口与配置](#端口与配置) · [局域网联机](#和朋友一起玩局域网)
-- [联机方式](#联机方式) · [操作](#操作) · [文档](#文档) · [开发与测试](#开发与测试) · [项目结构](#项目结构)
-- [许可证](#许可证) · [致谢与数据来源](#致谢与数据来源) · [贡献](#贡献)
+- [声明](#声明) · [原项目与原作者](#原项目与原作者请先支持上游)
+- [什么是「狩猎」](#什么是狩猎) · [核心玩法](#核心玩法重点) · [相对原版的价值](#相对原版的价值)
+- [功能一览](#功能一览) · [快速开始](#快速开始) · [联机方式](#联机方式) · [操作](#操作)
+- [文档](#文档) · [开发与测试](#开发与测试) · [项目结构](#项目结构)
+- [许可证](#许可证) · [致谢与数据来源](#致谢与数据来源) · [贡献](#贡献) · [English](#english)
 
-## 简介
+## 什么是「狩猎」
 
-「卫戍协议：盟约」是自走棋 + 塔防：休整期在调度中心招募干员、摆阵、配装备，作战期干员自动部署，迎击从红门涌来的敌人，漏过去的敌人扣目标生命值。本项目在浏览器里复刻了这一玩法，规则和数值尽量对照官方数据表与 PRTS 核对。
+一局仍从**休整期**开始：招募干员、摆阵、配装备。休整期结束后进入**狩猎期**：双方各给对方派一份猎物，猎物会插进对方下一场作战的波次里。击杀对面投放的怪才有**赏金**；赏金**不直接进金币**，而是记在商人**坎诺特**的账上，休整期再按当回合的比率取钱。狩猎从抽到的 **R4 / R5 / R6** 开始，**R13 是最终狩猎**（比例固定 50%、固定 25 赏金）；随后 **R14 最终攻势 → R15 隐秘核心**，两队各打各的领袖，先比两场领袖战的**剩余时间**，再比共享生命池。
 
-- **三种模式**：**独立狩猎**（单人）、**同盟狩猎**（1–4 人**合作**）、以及本衍生版新增的 **狩猎模拟（2V2）**。狩猎模拟里 4 个座位分成**两支双人小队**（座位 0 / 1 为一队，2 / 3 为另一队），空位可以加 AI 队友。
-- **狩猎期（本作核心差异）**：从抽到的对抗回合起，每个普通（非首领）回合在双方休整期结束后、作战开始前进入狩猎期——双方各提交一份**悬赏名单**，把怪投放到**对面**的波次里。漏过去的怪**不扣目标生命、也不破坏「完美作战」**；**击杀对面投放的怪**才按价值表折算**赏金**。狩猎期结束会**弹出双方名单（含赏金）**。规则细节见[玩法：狩猎模拟（2V2）与狩猎期](#玩法狩猎模拟2v2与狩猎期)。
-- **每队共享一条生命池**：顶栏我方 / 对面各显示一条共享 HP，另有一条每队自己的 Boss 血条；队伍同生共死，因此狩猎期的「一对一」配对始终成立。
-- **队内隔离**：作战播报按队下发（看不到对面），准备期侦察限本队，策略也按队各一套。
-- **服务器是一个 Node.js 程序，战斗在各玩家的浏览器里模拟**（和官方一样），服务器只管经济与回合，一台低功耗小主机就能开服。
-- **本作内置**：快速匹配、局内文字聊天与违禁词过滤、对局记录落盘、全服通知横幅、伤害 / 治疗统计板、队友概览、干员素材预取，以及设置里的「画面自动调节」（2D / 3D 棋盘与角色模型开关）和按 GPU 自动降档。
-- **账号体系**：本作正在加入账号体系（QQ 绑定 + 云存档 + 端到端加密），当前版本仍可直接匿名游玩。
+**一局的核心循环：**
 
-<!-- TODO(账号线): A 落地后补齐账号章节（登录/绑定/云存档/加密/共享账号库） -->
+> 休整期布阵 → 狩猎期派猎物 → 击杀得赏金 → 坎诺特按比率取钱 → R13 最终狩猎 → R14 最终攻势 → R15 隐秘核心 → 结算
 
-仍有少数规则按推断实现，与官方不一致的地方欢迎在 Issue 里反馈。
+**猎物的漏与杀是两套规则**：投放的怪漏进保护目标点**不扣目标生命值、也不破坏「完美作战」**；只有**击杀**对面投放的怪才结算赏金。于是「派什么、派给谁、什么时候清」本身就是一个节奏决策，而不只是多打几只怪。
 
-## 玩法：狩猎模拟（2V2）与狩猎期
+规则与数值尽量对照官方数据表与 PRTS 核对；仍有少数地方按推断实现，与官方不一致之处欢迎在 Issue 里反馈。
 
-4 个座位分成**两支双人小队**：座位 0 / 1 为一队（team 0），2 / 3 为另一队（team 1）。空位可以加 AI 队友，AI 会照常招募、摆阵与投放怪物。
+## 核心玩法（重点）
 
-**共享生命池**：每队只有一条生命池（= 两名队员所选策略 HP 之和），顶栏我方 / 对面各显示一条；队伍同生共死，没有「只剩一名队员」的中间状态。
+以下先讲 **2V2「狩猎模拟」**；4 人合作的**同盟狩猎**在同一套规则上由系统投放猎物，差异见本节最后。
 
-**狩猎期**：从本局抽到的对抗回合开始，每个普通（非首领）回合在双方休整期结束后进入狩猎期，分两步——
+### 狩猎期：把猎物送到对面
 
-1. **选目标**：每个存活玩家点名自己这一轮要针对的**对面**玩家；队内**先到先得**（队友自动拿到剩下的那一个），于是两队一对一配对，人人既攻打也被攻打。这一步有一个短窗口，全部锁定即提前结束。
-2. **定制怪物**：每人用自己的**价值预算**挑选怪，同一轮里**可以跨类型混搭**（只限总价值，不限数量、不限单组），每只怪选**上路 / 下路**，全部怪一起插在本轮波次的**靠前 / 靠中 / 靠后**（即本轮怪物数的 25% / 50% / 75%）三个位置之一。这一步的窗口等于本轮休整期，**全员提交即结束**；超时未提交的会由 **AI 自动投放**（挑放得下的组）。你投放的怪只会出现在**你选定的那个对手**的波次里。
+**两支双人小队。** 4 个座位固定分成两队：座位 0 / 1 为一队，2 / 3 为另一队；房主可以在等待室交换座位，**换座位就是换队伍**。每队只有**一条共享生命池**（两名队员所选策略的初始生命值之和），两人同生共死。空位由 AI 队友补上；中途退出或「暂离」交给 AI 托管，**不按淘汰处理**，席位保持满员，一对一配对不受影响。
 
-- **怪物分组**：官方 **7 类「特训敌人」**（特异 / 飞行 / 频次 / 元素 / 持续 / 隐匿 / 折射），用官方的中文名与图标；分组只是「口味」，强度由价值预算约束。
-- **替换比例**：起步 **5%**，每回合 **+2%**，上限 **15%**；**第 13 回合的「最终狩猎」回合固定 50%**（面板会标明）。比例同时决定预算（本轮波次价值 × 比例 × 倍率，按人计算）与被替换掉的原怪份额。
-- **价值表与特性分档**：价值 = 按属性的打分（生命为主，攻击 / 防御 ×2，法抗 ×15，首领加成、每阻挡 60，飞行按 2 阻挡）+ **特性分档**（1 / 2 / 3 档，越「机制化」越贵）；特性部分**恰好占整张价值表的 30%**。
-- **赏金**：**击杀对面投放的怪**才有赏金给击杀者——第 1–4 次狩猎期固定 **1 / 1 / 2 / 2 金**（按被清投放怪的比例、向下取整），第 5 次起按 **价值 ÷ 本轮波次价值 × 本轮收入 × `killIncomeShare`** 实时结算、不封顶；**R13「最终狩猎」固定 25 金**（同样按击杀比例，全清 25、杀一半 12）。**没有「每只至少 1 金」**，分母只算**投给这名玩家的投放怪**（普通波次怪不计）。
-- **赏金 ≠ 金币（坎诺特）**：赏金**不进金币**，而是记在**商人「坎诺特」**的账上（每人一份、跨回合留存）；**休整期在坎诺特处取钱**是赏金变成金币的**唯一**通道——按回合比率（R8 及以前 **20%**、R9 **30%**、R10 起每回合 **+5%**、R15 **100%**），成本 = 金币 ÷ 比率，**每回合第一次取款向上取整、之后向下取整**，普通回合最多取 **4 金/回合**、R15 不限。官方「悬赏」卡的赏金仍照旧直接进金币。对面投放的怪**漏过去不扣目标生命、也不算破「完美作战」**——只有击杀才有收益。
-- **交互**：队列里的怪**默认走下路**，**点一下换门**、**长按拖动排序**；「**沿用上轮**」把上一轮的编队按本轮预算重新装填，「**自动选择**」按价值贪心填满预算、之后仍可手改。
-- **看得见来源**：对面投放的怪带**淡红描边**，脚下还有 `P<n>` 的**来源小字**（只作显示，不改归属）。
-- **悬赏名单**：狩猎期一结束，会**弹出双方名单**（谁打谁、投放了什么、赏金多少）。
+**什么时候开始。** 每局从 **R4 / R5 / R6** 里随机抽一个**狩猎起始回合**（由服务器抽定）。从该回合起，每个**非首领回合**的休整期结束后、作战开始前进入狩猎期。狩猎期分两步：
 
-**首领链**：**第 14 回合「最终攻势」→ 第 15 回合「隐秘核心」**，两名队员共享同一片战场、共同削减**同一条领袖血条**。
+1. **选目标（10 秒）**：每人指定一名对手。队内**先选先得**——你锁定的对手，队友就拿剩下的那一个，于是四人**一对一配对**，每个人都既打别人也被别人打。全员选好即提前结束。
+2. **定制怪物**：把这一份**价值预算**填满。窗口就是本轮休整期的时间，**全员提交即立刻结束**；超时由 **AI 自动投放**（默认「靠中」、按价值从大到小尽量塞满）。
+
+**投放规则：**
+
+- **替换比例**：起始回合 **5%**，之后每回合 **+2 个百分点**，上限 **15%**；**R13 最终狩猎固定 50%**（面板会标明）。
+- **每人预算**：本回合波次总价值 × 替换比例 × **2**，每人各算各的。比例同时决定预算与被替换掉的原怪份额。
+- **7 类「特训敌人」**：特异 / 飞行 / 频次 / 元素 / 持续 / 隐匿 / 折射，用官方的中文名与图标。类型只是「口味」，**可以跨类型混搭**，只受**总价值**约束，合计不超预算即可。
+- **价值表**：按属性打分（生命为主，攻击 / 防御 ×2，法抗 ×15，首领加成、每阻挡 60，飞行按 2 阻挡），再加上**特性分档**（1 / 2 / 3 档：纯数值 / 真机制 / 改变战局）；特性部分**恰好占整张价值表的 30%**。
+- **出怪位置与门**：全部怪一起插在本轮波次的**靠前 / 靠中 / 靠后**（本轮怪物数的 **25% / 50% / 75%**）；每只怪单独选**上路 / 下路**，按它自己的移动方式走对应路线。队列里的怪**默认下路**，点一下换门，长按拖动排序。
+- **只落在你选定的对手身上**：你投放的怪只会出现在**你锁定的那名对手**的下一场作战里，替换掉对方波次里价值对等的一部分原怪（误差在 2% 以内）。
+- **漏过不扣血**：被投放的怪漏进保护目标点**不扣**对方的共享生命池，也**不算**对方的漏怪、不破坏「完美作战」——**只有击杀才有收益**。
+- **看得见来源**：对面投放给你的怪带一圈**淡红描边**，脚下标出 `P<n>` **来源小字**（只作显示，不改归属、不参与扣血计算）。
+- **5 秒名单公示**：狩猎期一结束（双方都锁定、即将开战），会弹出**双方名单**——逐条列出「谁 → 派了什么 → 打谁 → 赏金 +N」，在屏幕上停留 **5 秒**后自动消失。这是除最终攻势之外唯一能看到对手阵容的时刻。
+
+**操作辅助**：「**沿用上轮**」把上一轮提交过的编队按本轮预算重新装填；「**自动选择**」按价值贪心填满预算、之后仍可手改。
+
+### 赏金经济：坎诺特账本
+
+**只有「对面投放的怪」被击杀才结算赏金**，普通波次怪不计。赏金按**击杀比例**折算，全程**向下取整**，没有「每只至少 1 金」的保底：
+
+| 第几次狩猎期 | 赏金 |
+|---|---|
+| 第 1–4 次 | 固定 **1 / 1 / 2 / 2 金**（按被清投放怪的比例折算） |
+| 第 5 次起 | 被清投放怪的价值 ÷ 本回合波次总价值 × **本轮收入**，实时结算、不封顶 |
+| **R13 最终狩猎** | 固定 **25 金**（全清 25、杀一半 12） |
+
+「第几次」从抽到的狩猎起始回合开始数，不是绝对回合。分母只算**投给这名玩家的投放怪**；如果没人能算作击杀（地形烫死、自己掉血等），赏金归**被投放的那一方**。
+
+**赏金 ≠ 金币。** 投放怪的赏金**不进金币**，而是记在**商人「坎诺特」**的账上（每名玩家一份、**跨回合留存**、重连不丢）。休整期在**金币卡上方的坎诺特头像**处取钱，是赏金变成金币的**唯一**通道：
+
+| 回合 | 比率 | 每回合上限 |
+|---|---|---|
+| R1–R8 | **20%** | 4 金 |
+| R9 | **30%** | 4 金 |
+| R10–R14 | **35 / 40 / 45 / 50 / 55%**（每回合 +5） | 4 金 |
+| R15 隐秘核心 | **100%** | 不限 |
+
+- 成本 = 取出的金币 ÷ 比率；**每回合第一次取款向上取整（ceil），之后向下取整（floor）**，计数器每回合重置。
+- 面板给 **1 / 2 / 4 / 全部** 四档，每档都写明要消耗多少赏金；余额不足、超过本回合上限、或不在休整期，服务器都会拒绝。
+- 官方的「悬赏」卡赏金不受影响，仍**直接进金币**；这套银行只处理**投放怪**的赏金。
+
+**为什么这样设计**：击杀不会立刻变成可花的钱，而是先存进坎诺特；越早取越贵（20% 比率意味着取 1 金要花 5 赏金），越晚取越划算，但每回合最多取 4 金、R15 才 1:1。于是「这回合取不取、取多少」本身就是一个和布阵抢资源的**节奏决策**，也天然抑制了击杀收益带来的通胀。
+
+### 事件期：一局三次的构筑博弈
+
+**一局 3 次**，与狩猎期节奏对齐，都在该轮**休整期开始之前**触发：
+
+- **E1** = 本局抽到的首个狩猎期轮次（R4 / R5 / R6）；
+- **E2** = E1 + **4** 轮（R8 / R9 / R10）；
+- **E3** = **R13 最终狩猎**。
+
+每次事件抽**两条**：一条**我方词条**（四选一决定给谁），一条**怪物词条**（独立抽取，与目标无关）。
+
+**我方词条（24 条，局内不重复）**：每次在**对面 A / 对面 B / 队友 / 自己**里四选一；**同一个目标一局只能用一次**，所以三次事件必然落在三个不同的目标上。选**自己**时幅度 **×2**——吃到增益最爽，吃到减益也最疼。词条分输出 / 生存 / 技力 / 经济·机制四类，既有纯增益、纯减益，也有「攻击换攻速」「生命换攻击」这类**交换型中性**。类型概率随事件次序递进（减益 / 中性 / 增益）：
+
+| 次序 | 我方词条概率 | 怪物词条概率（削弱 / 中性 / 强化） | 强力属性比例 |
+|---|---|---|---|
+| **E1** | **15 / 45 / 40** | **35 / 40 / 25** | **10–15%** |
+| **E2** | **30 / 40 / 30** | **25 / 40 / 35** | **15–20%** |
+| **E3** | **45 / 30 / 25** | **20 / 35 / 45** | **20–25%** |
+
+**怪物词条（12 条，局内不重复）**：只改本回合敌人的攻击 / 生命 / 护甲 / 移速 / 数量，**不进入玩家属性，也绝不重算赏金**——`bounty.coins` 在投放时定死，词条与强力属性只改敌人面板。
+
+**强力属性**：每次事件还会强制给本回合的普通怪与**赏金怪**附加一种强力属性——**獠牙** 攻击 +25% / **厚皮** 生命 +30% / **坚壳** 护甲 +25% / **疾行** 移速 +20%；比例从该次序的区间按种子抽取。它与怪物词条**乘法叠加**，赏金金额不变。
+
+**环境 buff 乘区**：事件词条的百分比走一个**只属于事件期**的乘区——每个来源各自乘一次（两条 +20% 是 **1.20 × 1.20 = 1.44**，不是 1.40）；攻速 / 技力 / 技能消耗等**加减值最高优先级，先加到角色面板**，不被乘区缩放；这个乘区不与盟约 / 装备 / 技能 / 机变的加法池混用，既有系统仍用原来的算法。
+
+事件词条对**双方都公开**：谁拿了哪一条、加在谁身上，场上都看得到——它不和「对手在 R14 前不可见」叠成信息差。
+
+### 同盟狩猎：合作版
+
+**同盟狩猎**是同一套狩猎规则的合作版：**1–4 人一队**、共享一条生命池、**没有对手**。
+
+- **系统投放**：从抽到的狩猎起始回合起，服务器按本回合的比例与价值预算，从官方 7 类「特训敌人」里给**每名存活玩家各配一份**猎物，**直接插入各自的波次**（不替换原怪），所以每个人都会遇到自己那一份；各份的**总价值两两不同**，避免四个人的投放完全雷同。
+- **同样的狩猎经济**：漏过不扣血、不破坏完美作战；击杀同样只进**坎诺特**，按同样的比率、首取 ceil / 后续 floor、每回合 4 金上限（R15 不限）取钱。
+- **同样的事件期与公示**：一局 3 次事件期照常出现；休整期结束后同样有 **5 秒本回合投放公示**，让全队先看清这一轮会多出什么。
+- **同样的终局**：难度、回合数、机变、R14 最终攻势与 R15 隐秘核心都沿用同盟的参数。
+
+### 终局结算：用时间分胜负
+
+- **R14 最终攻势**：**同队的两人**配对（配对本局固定，隐秘核心沿用），共享一个关底战场，一人守左半边、一人守右半边（右侧玩家棋盘左右镜像），共同削**本队的一条领袖血条**。**两队各打各的 Boss**，一队的进度不影响另一队。顶部 120 秒倒计时结束后战斗**继续**；超过开战 120 秒后（实际秒数），本队每秒扣 1 点共享生命值。
+- **R15 隐秘核心**（仅险境及以上）：至少一队达到门槛即可进入，两队继续各打各的强化领袖。2V2 按**队**判定：本队存活成员的激活层数总和 **> 600**，且共享生命池 > 1。Boss 链止于 R15，隐秘核心清完即整局结算（没有第 16 回合）。
+- **胜负判定（4:5 时间分）**：先比较两队在**两场领袖战**里的**剩余时间占比**——R14 最终攻势按 **4** 份、R15 隐秘核心按 **5** 份，`4 × R14 剩余 ÷ R14 时限 + 5 × R15 剩余 ÷ R15 时限`（按各轮自己的倒计时折算，**没打到的回合按 0 计**）。时间分相同再比**共享生命池**，仍相同才用「打掉自己领袖血条的比例 → 剩余生命池 × 2 秒 + 剩余时间」的折算分；结算页会注明「**时间同分**」。
+- **双败**：一队在最终攻势前被全灭，两队都不通关；胜利按队判定，同队两人一起记为通关。
+- **结算统计**：结算页同时给出本局**赏金收入 / 坎诺特取钱**统计，以及伤害、治疗、领袖伤害等数据。
+
+### 信息与观战
+
+- **对手在 R13 结束前不可见**：从开局到 **R13 最终狩猎**结束前，对手的头像是灰的，只能看到对方队伍的**共享生命池**；**R14 最终攻势起公开**——对方成员的行、等级与上场数、他们的战场都能查看。
+- **观战席看得见所有人**：每个房间另有 **2 个观战席**，**从第一回合起**就能看任何人的阵地与战场，不受「对手在 R14 前不可见」的限制；观战只读，不能购买、部署或准备。
+- **局内交流与信息**：左下角文字聊天（**Enter 发送**、2 秒冷却、单条上限 80 字，服务端清洗与违禁词过滤）、顶部全服通知横幅（20 秒自清、可关闭）、**伤害 / 治疗统计板**（回血按来源速率归给提供者）、**队友概览**（生命 / 等级 / 上场）。
+- **快速匹配**：房主「开放匹配」后，其他博士可在大厅一键加入**同难度、未开局、有空座**的房间（合作与 2V2 都支持，单人房不能开放）。
+
+## 相对原版的价值
+
+上游 0.2.6 是一套很完整的 **1–4 人纯合作**玩法。本作在不动这套底子的前提下，主要给玩家多加了下面几件事：
+
+1. **两种狩猎，不再只有纯合作。** 想和朋友一起打，就开**同盟狩猎**：最多四个人共享生命池，系统按比例往每个人的波次里投放猎物。想互相较劲，就开 **2V2 狩猎模拟**：两队互派猎物、共享生命池、各打各的 Boss。同一套游戏、两种完全不同的社交体验。
+2. **每局都能换 build。** 事件期一局 3 次，每次在「对面 A / 对面 B / 队友 / 自己」里四选一，配 24 条我方词条与 12 条怪物词条。它不是单纯的抽卡运气——**把词条给谁**才是决策：给对面可能养肥对手，给队友是稳，给自己是 ×2 的高方差赌博；2V2 里三次目标还不能重复。
+3. **把击杀收益变成节奏决策。** 赏金不直接进金币，而是存在坎诺特那里，按回合比率折价取钱。早取更贵、晚取更划算，但普通回合最多取 4 金，R15 才 1:1 且不限。你必须在「现在补强」和「再等等」之间做选择，击杀收益不再是无脑通胀。
+4. **信息差与时间胜负。** 对手从开局一直隐藏到 R13，最终攻势起才公开；结算先比两场领袖战的**剩余时间占比（4:5）**，而不是只比谁血多。藏阵容、抢时间、在最终攻势里冒险，都有了意义。
+5. **轻量运维。** 仍然是**单个 Node.js 进程 + WebSocket**，战斗在各玩家浏览器里模拟；一台低功耗小主机就能开服。账号库可与盟约部署**共用同一份数据**（身份、在线时长、配装 / 设置同源），同一 QQ 在本服**单账号单登录**，新登录会踢掉旧会话。
+6. **手机与低配友好。** 手机横屏优先，结算页分两栏；界面字号跟随设置里的「文字大小」；可切**简化平面 / 2D 棋盘**、关闭角色模型；核显 / 软件渲染会按 GPU 自动降档，玩家显式选择优先。
 
 ## 功能一览
 
 - **完整的一局**：确认本局信息 → 策略轮选（40 名策略）→ 14 回合 → 结算称号；险境及以上满足条件时进入第 15 回合「隐秘核心」。
 - **4 种难度**：标准 / 险境 / 绝境 / 终极，独立与同盟各一套参数，均取自官方数据；2V2 沿用同盟的难度参数，差异由代码叠加。
-- **狩猎模拟（2V2）与狩猎期**：两支双人小队、每队共享生命池、按轮进入狩猎期给对面派怪、击杀得赏金、悬赏名单公示；R14 / R15 两人共享战场。细节见上。
-- **最终狩猎（第 13 回合）**：第 13 回合的狩猎期是一次**总攻**——替换比例固定 **50%**，赏金固定 **25 金**（按击杀比例折算，全清 25、杀一半 12），全场的投放都要在这一轮打出价值。
-- **商人「坎诺特」（赏金 → 金币）**：击杀对面投放的怪拿到的**赏金不进金币**，而是记在坎诺特的账上（每人一份、跨回合保留）。休整期在**金币卡上方的坎诺特头像**处取钱是唯一的兑换通道：比率随回合变高（R8 及以前 **20%**、R9 **30%**、R10 起每回合 **+5%**、R15 **100%**），成本 = 金币 ÷ 比率（每回合第一次向上取整、之后向下取整），普通回合每回合最多取 **4 金**、R15 不限；面板给 1 / 2 / 4 / 全部四档，每档都写着要花多少赏金。
-- **事件期（狩猎词条）**：一局 **3 次**，与狩猎期对齐（E1 = 本局首个狩猎期轮次 R4/5/6，E2 = E1+4，E3 = R13 最终狩猎）；每次**四选一**（对面 A / 对面 B / 队友 / 自己），**同一个目标一局只能用一次**；我方类型概率随次序递进（**E1 15 / 45 / 40、E2 30 / 40 / 30、E3 45 / 30 / 25**，减 / 中 / 增；给自己幅度 ×2），每次抽 **2 条**——24 条我方词条（局内不重复）和 12 条怪物词条（E1 35/40/25、E2 25/40/35、E3 20/35/45，只改敌人，不进入玩家属性与赏金）。每次另给该次序比例（10~15% / 15~20% / 20~25%）的普通怪与**赏金怪**附加一种**强力属性**；赏金怪的 `bounty.coins` 与击杀总额不变。
-- **对面视角**：对手在 **R13「最终狩猎」之后（R14 最终攻势起）** 公开——对方成员的行、等级与上场数、他们的战场都能查看，之前只有一张共享生命池。
-- **观众席看得见所有人**：每个房间另有 **2 个观战席**，**从第一回合起就能看任何人的阵地与战场**，不受「对手在 R14 前不可见」的限制；观战只读，不能购买、部署或准备。
-- **快速匹配**：房主在房间里「开放匹配」后，其他博士可在大厅点「快速匹配」一键加入**同难度、未开局、有空座**的房间（人多优先 → 占座多 → 等最久；合作与 2V2 房都支持，单人房不能开放）。
-- **局内文字聊天**：左下角聊天框，**Enter 发送**（2 秒冷却、单条上限 80 字，服务端清洗与截断）；观战只读；聊天气泡、未读红点、常驻展开。
+- **狩猎模拟（2V2）与狩猎期**：两支双人小队、每队共享生命池、按轮给对面派怪、击杀得赏金、5 秒悬赏名单公示；R14 / R15 两人共享战场。
+- **同盟狩猎**：1–4 人合作，系统按比例给每人投放一份猎物，同样有坎诺特、事件期与 5 秒投放公示。
+- **最终狩猎（R13）**：替换比例固定 **50%**，赏金固定 **25**（按击杀比例折算），全场的投放都要在这一轮打出价值。
+- **事件期（狩猎词条）**：一局 3 次、四选一目标、2V2 中目标不可重复；24 条我方词条 + 12 条怪物词条；每次另给 10–25% 的普通怪与赏金怪附加一种强力属性；环境 buff 乘区独立相乘。
+- **商人「坎诺特」**：赏金不进金币，休整期在金币卡上方的头像处按比率取钱；首取 ceil、之后 floor，每回合 4 金上限、R15 不限。
+- **对面视角**：对手在 R13 最终狩猎之后（R14 最终攻势起）公开；**观战席从第一回合起就能看所有人**。
+- **快速匹配**：房主开放匹配后，其他博士一键加入同难度、未开局、有空座的房间。
+- **局内文字聊天**：左下角聊天框，**Enter 发送**（2 秒冷却、单条上限 80 字）；观战只读；聊天气泡、未读红点。
 - **违禁词过滤**：服务端权威，命中后替换为等长 `*`；词库从服务端配置读取，本仓库只带**示例占位词表**。
-- **对局记录落盘**：每局一份，含参与者与结果，默认保留 **7 天**，记录带「游戏」标识。
+- **对局记录落盘**：每局一份，含参与者与结果，默认保留 **7 天**。
 - **全服通知横幅**：顶部一条醒目横幅，**20 秒自清**、可点击关闭。
 - **伤害 / 治疗统计板**：显示本场战斗累计的伤害（黄）与治疗（蓝），**回血按来源速率归给提供者**。
 - **队友概览**：观战 / 查看阵地时显示该干员的**生命 / 等级 / 上场**。
 - **干员素材预取**：抓到干员的当下就预取头像与战斗模型，减少战斗首帧加载。
 - **画面自动调节**：设置 →「画面质量」里默认开启；关掉后可分别选 **2D 棋盘（简化平面）/ 3D 棋盘**与**加载 / 不加载角色模型**，立即生效。
 - **按 GPU 自动降档**：核显 / 软件渲染的机器默认「中」画质 + 2D，玩家显式选择优先。
+- **文字大小**：设置 →「文字大小」只放大界面文字，不移动棋盘与 HUD。
 - **过场延迟可调**：回合间等过场停顿可用环境变量调整，默认比上游更短（例如回合间由 2000 ms 降到 1000 ms）。
 - **休整期**：招募、刷新、冻结、升级调度中心；整备区与临时整备区；从整备区拖到棋盘部署，用**方向轮盘**选择朝向。合作与 2V2 的卡池共用。
 - **晋升精锐**：3 名同名干员自动合成精锐，并获得一次高一阶的免费招募。
 - **干员与调配**：112 名可招募干员（+ 精锐）及其技能、天赋和特质；开局前可以为每名干员选择携带的技能（283 个技能全部手工实现）和精锐的模组。
 - **盟约与层数**：23 个盟约（8 个势力核心盟约 + 附加盟约），层数整局保留，每个盟约最多 999 层。
-- **装备与机变**：装备与法术，同名装备合成、特定组合赋予盟约效果；已配发的装备锁定在干员身上。部分回合开始前有机变选卡（装备、资金、干员、层数、悬赏等）。
-- **自动作战**：技能按官方「技能策略」自动释放；按接触半径阻挡，阻挡者倒下时由接触的干员接替；元素损伤与元素爆发；召唤物由玩家手动摆放；推开 / 拉拽按力度与重量计算；被击倒的干员留在原地显示再部署倒计时。
+- **装备与机变**：装备与法术，同名装备合成、特定组合赋予盟约效果；已配发的装备锁定在干员身上；部分回合开始前有机变选卡。
+- **自动作战**：技能按官方「技能策略」自动释放；按接触半径阻挡，阻挡者倒下时由接触的干员接替；元素损伤与元素爆发；召唤物由玩家手动摆放；推开 / 拉拽按力度与重量计算。
 - **地形与敌人**：阻隔工事、射击台、源石流吹风机、沼泽、排气格栅、涨潮等地形装置；空中与近地悬浮敌人、悬赏敌人。
 - **联防**：有人漏怪、又有人完美作战时，完美作战的队友带着阵容帮忙拦截漏掉的敌人。
-- **最终攻势与隐秘核心**：全队共享一个战场，共同削减同一条领袖血条；10 个敌方领袖，巨型领袖约 5×3 格的受击范围，以及官方的限伤规则。
+- **最终攻势与隐秘核心**：同队两人共享一个关底战场，共同削减同一条领袖血条（2V2 两队各打各的）；10 个敌方领袖，巨型领袖约 5×3 格的受击范围，以及官方的限伤规则。
 - **结算称号**：卫戍之星、不朽盟约、坚若磐石等 6 个称号。
-- **断线重连**：断线后座位保留，合作与 2V2 在 10 分钟内、独立狩猎在 24 小时内重新打开页面即可回到原座位；掉线期间作战按原编队由服务器接管，中途退出或「暂离」才交给 AI 托管（同一个浏览器，独立狩猎）。
+- **断线重连**：断线后座位保留，合作与 2V2 在 10 分钟内、独立狩猎在 24 小时内重新打开页面即可回到原座位；掉线期间作战按原编队由服务器接管，中途退出或「暂离」才交给 AI 托管。
 - **交互细节**：漏怪时顶栏用红字 + 「−N」标记待扣的目标生命值（结算时才扣除）；点选、拖放和配发装备都按地上的方格；购买、升级和机变选卡都需要点两次确认；只有一名玩家时除作战外不计时。
 - **画面与声音**：真实 Spine 小人、官方 BGM 与音效、表情（6 套 × 6 个）、作战特效；可选的官方 3D 棋盘（需要从本机客户端提取贴图）。
-- **手机与电脑**：触摸拖拽、长按查看详情，推荐横屏；设置里可以调低画质。
+- **手机与电脑**：触摸拖拽、长按查看详情，推荐横屏；设置里可以调低画质、选文字大小。
+- **账号（可选）**：QQ 绑定 + 云存档；账号库可与盟约部署共用（身份 / 在线时长 / 配装同源），同一 QQ 在本服单账号单登录；不登录仍可匿名游玩。绑定方式由部署方提供。
 
 ## 快速开始
 
@@ -187,6 +275,8 @@ npm start          # 启动服务器：http://localhost:3000
 | `SP_COMBAT` | `client` | `client`：各玩家浏览器模拟自己的战斗（服务器负载极低）；`server`：由服务器模拟并推流 |
 | `SP_VERIFY` | `off` | 服务器复算客户端上报的战斗结果：`off` / `sample`（约 1/8 抽查）/ `all`（全部复算，更耗 CPU） |
 | `TRUST_PROXY` | `auto` | 是否信任 `X-Forwarded-For` 等转发头：`auto` 只信任来自本机 / 内网的代理；`1` 总是；`0` 从不 |
+| `ACCOUNT_DIR` | `<app>/.account` | 账号库根目录；与盟约部署共用账号时，两边指向同一个目录 |
+| `ACCOUNT_KEY_DIR` | `<ACCOUNT_DIR>/account-secrets` | RSA 私钥目录（`server.key`）；绝不进仓库 |
 | `DEBUG` | 空 | 设为任意值输出详细日志 |
 | `SP_NO_BROWSER` | 空 | 设为 `1` 时启动脚本不自动打开浏览器 |
 | `SP_BOT_EMOTES` | 空 | AI 队友的对局表情回应（战斗、整备、合成、联防、收礼时即刻的 `m.emote` 广播）；设为 `0` 时整体关闭 |
@@ -219,7 +309,7 @@ npm start          # 启动服务器：http://localhost:3000
 
 - 游戏是**单个常驻 Node.js 进程 + WebSocket**（路径 `/ws`），只能跑一个实例，必须部署在域名根路径；Vercel 之类的 Serverless 平台和 GitHub Pages 之类的静态托管都不适用。反向代理要转发 WebSocket 升级。
 - 从 CDN 节点打开时，游戏 WebSocket 会**直连源站**，绕开「玩家 → CDN → 源站」的中转（页面由源站直接打开时仍走同源）。
-- 游戏没有账号系统（账号体系仍在开发中），**知道地址的人都能进来**。请只把地址发给朋友，不要公开发布，也不要搭建公开大厅；这同时能降低素材版权方面的风险。
+- 账号是**可选**的：不登录也能匿名游玩；**知道地址的人都能进来**。请只把地址发给朋友，不要公开发布，也不要搭建公开大厅；这同时能降低素材版权方面的风险。开启账号后，同一 QQ 在本服只保留一个活跃会话，新登录会替换旧会话。
 - 有公网 IPv4 时也可以在路由器上做端口转发，但这会把家里的电脑直接暴露在公网上，优先考虑上面的方式。
 
 ## 操作
@@ -234,9 +324,13 @@ npm start          # 启动服务器：http://localhost:3000
 | 查看详情 | 右键或长按单位 / 卡牌（属性为实时数值，高于基础值为绿色、低于为红色） |
 | 快捷键 | `R` 刷新 · `F` 冻结 · `D` 升级 · `Q` 撤退 / `X` 出售选中的干员 · `Space` 准备就绪 · `Esc` 取消 / 关闭；除 `Esc` 外都可以在「设置 → 快捷键」里改成别的键（[玩法指南 §11](docs/PLAYING.md#11-快捷键)） |
 | 方向轮盘键盘操作 | 方向键预览 · `Enter` 确认 · `Esc` 取消 |
+| 狩猎期（2V2） | 第 1 步点一名对手（10 秒，队内先到先得）；第 2 步点怪加入队列，**点一下这一行切换上路 / 下路**，**长按拖动**排序；「自动选择」按价值贪心填满预算，「沿用上轮」按本回合预算重新装填 |
+| 坎诺特取钱 | 休整期点金币卡上方的商人头像；面板给 1 / 2 / 4 / 全部四档，每档写明要花多少赏金，点两次确认 |
+| 事件期 | 2V2 面板里四选一（对面 A / 对面 B / 队友 / 自己），同一个目标一局只能用一次，已用过的目标会置灰；同盟狩猎只有自己 / 队友两个目标 |
 | 局内聊天 | 左下角聊天框输入文字，按 **`Enter` 发送**（2 秒冷却、单条最多 80 字；观战只读）；点左上角图标可收起 / 展开，收起时有未读红点 |
 | 快速匹配 / 开放匹配 | 大厅点「快速匹配」加入同难度、未开局、有空座且已**开放匹配**的房间；房主在房间里用「开放匹配」开关（单人房不能开放） |
 | 查看队友概览 | 观战或准备期查看队友阵地时，底部条显示该干员的**生命 / 等级 / 上场** |
+| 文字大小 | 设置 →「文字大小」：只放大界面文字，棋盘和 HUD 的位置不变 |
 | 画面自动调节 | 设置 →「画面质量」：默认开启；关掉后可分别选 **2D 棋盘（简化平面）/ 3D 棋盘**与**加载 / 不加载角色模型**，立即生效（也可用网址参数 `?board=2d\|3d`、`?render=fallback\|engine`） |
 | 暂停（独立狩猎） | 作战中（含最终攻势 / 隐秘核心）点顶栏的「暂停」或按 `Space`，再点「继续作战」（或 `Space`）继续；合作与 2V2 的作战不能暂停 |
 | 表情 | 左下角「交流」，左右滑动（或方向键）换主题，冷却 1 秒 |
@@ -250,7 +344,7 @@ npm start          # 启动服务器：http://localhost:3000
 | 文档 | 内容 |
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | 更新记录：每个版本修复了什么、哪些反馈经核实不是问题 |
-| [docs/PLAYING.md](docs/PLAYING.md) | 玩法指南：流程、经济、招募与晋升、摆阵、联防、盟约、最终攻势、结算称号 |
+| [docs/PLAYING.md](docs/PLAYING.md) | 玩法指南：流程、经济、招募与晋升、摆阵、联防、盟约、最终攻势、2V2 狩猎模拟与同盟狩猎 |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | 部署指南：Windows 开服与开机自启、防火墙、组网 / 隧道、反向代理与 HTTPS、Docker、systemd、排错 |
 | [docs/WINDOWS.md](docs/WINDOWS.md) | Windows 便携包：怎么打一份「零安装」包（`scripts/make-windows-bundle.mjs`）、包里放了什么、授权注意事项 |
 | [docs/DESIGN.md](docs/DESIGN.md) | 架构与契约（英文）：索引，按章节号找到文件；现行规则在 `docs/design/`（范围与目录分工、坐标与时间、战斗引擎、对局、网络协议、渲染与 UI），各次试玩和各版本的规则修订与依据在 `docs/history/` |
@@ -287,7 +381,7 @@ node tools/perfbench.mjs --cpu 1,4,6 --profile             # 真实战斗的帧�
 
 | 路径 | 内容 |
 |---|---|
-| `server/` | 入口 `index.js`；Node HTTP 静态服务 + WebSocket（`/ws`，代码在 `http/`）、大厅、对局引擎（`match/`）、战斗模拟（`sim/`，浏览器与服务器共用） |
+| `server/` | 入口 `index.js`；Node HTTP 静态服务 + WebSocket（`/ws`，代码在 `http/`）、大厅、对局引擎（`match/`）、战斗模拟（`sim/`，浏览器与服务器共用）、账号（`account.js`） |
 | `shared/` | 前后端共用的常量与网络协议 |
 | `public/` | 浏览器客户端（原生 ES 模块，PixiJS + pixi-spine、three.js 3D 棋盘、Preact + htm UI） |
 | `data/` | 由官方数据表生成的游戏数据与素材清单 `assets.json` |
@@ -326,13 +420,17 @@ node tools/perfbench.mjs --cpu 1,4,6 --profile             # 真实战斗的帧�
 
 ## English
 
-An **unofficial, non-commercial fan remake** of Arknights' seasonal auto-chess tower-defense **mode *Stronghold Protocol: Alliance***, played in the browser. This fork — **Stronghold Protocol: Hunt Simulation** (`V0.0.1`, built on upstream 0.2.6) — keeps the 1–4 player co-op and adds a **2V2 mode**: the four seats form **two duos** (seats 0/1 vs 2/3) that share one HP pool per team, and after each prep a **Bounty Phase** lets both sides loose monsters, drawn from the official 特训敌人 (training-enemy) groups, into the other team's wave. The monsters you place **leak for free** (no target HP lost, no broken perfect-clear), but killing the ones the opponent placed pays a **bounty** scaled from the value table (`killIncomeShare`); when the phase closes, both teams' lists — and the bounties — are revealed. Each team also fights a shared boss chain, Final Assault (R14) → Hidden Core (R15), on one battlefield against one leader HP bar.
+An **unofficial, non-commercial fan remake** of Arknights' seasonal auto-chess tower-defense **mode *Stronghold Protocol: Alliance***, played in the browser. This fork — **Stronghold Protocol: Hunt Simulation** (`V0.0.1`, built on upstream 0.2.6) — keeps the 1–4 player co-op and makes **the hunt** its core gameplay. In a match, you build during the Rest Phase, then a **Hunting Phase** hands out prey: in **2V2 Hunt Simulation** the four seats form two duos (0/1 vs 2/3) that share one HP pool and place monsters into the opposing team's wave; in **Alliance Hunt** (1–4 player co-op) the server instead gives every living player their own share, with pairwise-distinct totals. Prey that leaks costs no target HP and breaks no perfect-clear; only kills pay.
 
-- **Also built in**: in-match text chat with **server-side banned-word filtering**, per-match chat logs on disk (7-day retention), a **server-wide notice banner**, a **damage / healing board** (healing credited to whoever granted it), a **teammate overview** (HP / level / deployed), **operator asset prefetch**, and a **graphics auto-adjust** setting (2D/3D board + a character-model toggle, with GPU-based auto-downgrade).
+- **The hunt loop:** deploy in the Rest Phase → place prey in the Hunting Phase → kill the opponent's monsters for **bounty** → withdraw bounty from the merchant **Cannot** at the round's rate → the **R13 Final Hunt** (50% ratio, up to 25 bounty, scaled by the kill ratio) → the **R14 Final Assault** → the **R15 Hidden Core**. When a Hunting Phase closes, both teams' lists — who placed what at whom, and the bounty — stay on screen for **5 seconds**.
+- **Bounty is not gold.** Placement bounties are banked with Cannot (per player, kept across rounds). Withdrawal is the only way to turn them into gold: 20% through R8, 30% at R9, +5% per round from R10, 100% at R15; cost = gold ÷ rate, the first withdrawal of a round rounds up and later ones down, at most 4 gold per round (unlimited at R15). Official bounty cards still pay gold directly.
+- **Three event periods per match** (the drawn start round, +4, and R13): each draws an ally entry — in 2V2, four targets (opponent A / opponent B / teammate / yourself, no target twice in a match) from 24 entries, with E1/E2/E3 odds of 15/45/40, 30/40/30 and 45/30/25 and double magnitude on yourself — plus one of 12 monster entries (35/40/25, 25/40/35, 20/35/45) and a 10–25% elite-attribute subset. Percentages use an event-only multiplicative bucket; flat aspd / SP values go onto the panel first.
+- **Endgame by time:** the two duos share a boss battlefield in R14, each team fights its own leader, and the result is decided by the **4:5 time score** (R14 and R15 remaining-time shares) before shared HP. The R15 Hidden Core threshold is **> 600 layers per team** (2V2). Opponents stay hidden through R13 and are revealed from R14; spectators see everyone from round 1.
+- **Also built in:** in-match text chat with **server-side banned-word filtering**, per-match logs on disk (7-day retention), a **server-wide notice banner**, a **damage / healing board** (healing credited to whoever granted it), a **teammate overview** (HP / level / deployed), **operator asset prefetch**, **quick match**, a **text-size setting**, and a **graphics auto-adjust** mode (2D/3D board + a character-model toggle, with GPU-based auto-downgrade).
+- **Accounts (optional):** QQ-bound accounts with cloud saves; the account store can be shared with the Alliance deployment (identity, online time and loadouts come from the same data), and one QQ has a single active session on this server. Anonymous play still works.
 - **Run:** download the full bundle `…-v<version>.zip` (~560 MB, all the art inside, the Chinese and Japanese operator voices and the official battlefield scenes included) from [Releases](../../releases/latest) — or the lite one, `…-v<version>-lite.zip` (~22 MB), which downloads the art (~550 MB) on its first start; the update bundle `…-v<version>-update.zip` holds only the files changed since the earlier releases: stop the server, extract it over an existing install and start again — install Node.js 22 or 24, then double-click `scripts\start-windows.bat` (Windows) or run `./scripts/start.sh` (macOS / Linux) and open <http://localhost:3000>. From source: `git clone https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation.git`, then `npm install && npm run setup && npm start` (setup downloads ~550 MB of art from public mirrors; the official 3D board and some HUD art come from a local Arknights client — without one the game uses the 2D board and look-alike stand-ins).
 - **Languages:** Chinese (the default), English, 日本語, 한국어 and 繁體中文 — switch on the title screen or in Settings. Game texts come from the official clients; the Japanese, Korean and Traditional Chinese interface strings are machine translations (corrections welcome: [docs/I18N.md](docs/I18N.md)).
 - **Play with friends:** create a room and share the 4-letter key or the `?room=KEY` link, or open the room to **quick match** so anyone can join a same-difficulty room in one click. On a LAN, use the address printed at start; otherwise use a virtual-LAN tool, a tunnel or a VPS — see [docs/DEPLOY.md](docs/DEPLOY.md).
-- **Accounts:** a QQ-bound account system (cloud saves, end-to-end encryption) is being added; the current build still plays fully anonymously.
 - **Disclaimer:** not affiliated with or endorsed by Hypergryph or Yostar. All Arknights names, art, audio, text and data are © their respective owners and are **not** covered by this project's GPL licence. For study and personal non-commercial use only — no selling, paid distribution, paid servers or monetisation of any kind. Content will be removed on request of the rights holders. Provided "as is", without warranty.
 - **License:** code GPL-3.0-or-later ([LICENSE](LICENSE)); game assets excluded.
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) (an English summary at its end); the code map is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

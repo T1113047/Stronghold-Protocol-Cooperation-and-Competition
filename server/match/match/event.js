@@ -24,7 +24,7 @@
 
 import {
   PHASE, ERR, EVENT_TARGETS, EVENT_SELF_MUL, EVENT_PICK_SECONDS, EVENT_CARDS, EVENT_SEQUENCE,
-  EVENT_FOE_CARDS, EVENT_FOE_ELITES, COOP_HUNT,
+  EVENT_FOE_CARDS, EVENT_FOE_ELITES, EVENT_ROSTER_MS, COOP_HUNT,
 } from '../../../shared/constants.js';
 import { OK, fail } from './common.js';
 
@@ -319,7 +319,8 @@ export class MatchEvent {
     if (!alive.length) { this.continueAfterEvent(); return; }
     this.phase = PHASE.EVENT;
     this.eventIndex = (Number(this.eventIndex) || 0) + 1;
-    this.event = { round: this.round, index: this.eventIndex, picks: new Map(), done: false };
+    this.eventStage = null;
+    this.event = { round: this.round, index: this.eventIndex, picks: new Map(), done: false, rosterUntil: 0 };
     // the monster entry: drawn once for THIS period, on its own stream and before any player picks, so it can never
     // depend on the targets chosen (a separate channel; public to both teams). The sequence row moves its odds.
     const seq = Math.max(1, Math.min(EVENT_SEQUENCE.length, this.eventIndex));
@@ -417,23 +418,23 @@ export class MatchEvent {
     return OK;
   }
 
-  /** Every alive seat has picked → continue the round. */
+  /** Every alive seat has picked → the roster hold. */
   maybeFinishEvent() {
-    if (this.phase !== PHASE.EVENT || !this.event || this.event.finishing) return;
+    if (this.phase !== PHASE.EVENT || !this.event || this.event.finishing || this.eventStage === 'roster') return;
     const alive = this.alivePlayers();
     if (!alive.length) { this.finishEvent(); return; }
     if (alive.every((ps) => this.event.picks.has(ps.playerId))) this.finishEvent();
   }
 
-  /** The deadline (EVENT_PICK_SECONDS): auto-pick every seat that has not answered, then continue. */
+  /** The deadline (EVENT_PICK_SECONDS): auto-pick every seat that has not answered, then the roster hold. */
   timeoutEvent() {
-    if (this.phase !== PHASE.EVENT || !this.event) return;
+    if (this.phase !== PHASE.EVENT || !this.event || this.eventStage === 'roster') return;
     this.finishEvent();
   }
 
-  /** Close the period (auto-picking whoever is missing), archive it in eventHistory and continue the round. */
+  /** Close the period (auto-picking whoever is missing), archive it in eventHistory and open the roster hold. */
   finishEvent() {
-    if (this.phase !== PHASE.EVENT || !this.event) return;
+    if (this.phase !== PHASE.EVENT || !this.event || this.eventStage === 'roster') return;
     const ev = this.event;
     if (ev.finishing) return;
     ev.finishing = true;
@@ -446,6 +447,35 @@ export class MatchEvent {
     for (const [playerId, rec] of ev.picks) this.eventHistory.push({ round: ev.round, index: ev.index, playerId, ...rec });
     ev.done = true;
     this._eventDoneRound = this.round;
+    this.markPublic();
+    this.enterEventRoster();
+  }
+
+  /**
+   * 词条公示 (user 2026-10-17, addendum): after every seat has picked (or the timeout filled the AI seats in), keep
+   * PHASE.EVENT for EVENT_ROSTER_MS so everyone can read the full roster before the round continues. Server-timed
+   * through setDeadline → later → scaled (virtual time and goldens agree); no bare setTimeout. Idempotent: a second
+   * call while the roster runs returns false and does not schedule another timer.
+   * @returns {boolean} whether a roster hold was opened now
+   */
+  enterEventRoster() {
+    if (this.phase !== PHASE.EVENT || !this.event) return false;
+    if (this.eventStage === 'roster') return false;
+    const ms = Math.max(0, Number(EVENT_ROSTER_MS) || 0);
+    if (!(ms > 0)) { this.continueAfterEvent(); return false; }
+    this.eventStage = 'roster';
+    this.event.rosterUntil = this.sched.now() + this.scaled(ms);
+    this.setDeadline(ms / 1000, () => this.finishEventRoster());
+    this.markPublic();
+    return true;
+  }
+
+  /** The roster's deadline: clear the stage and continue to 机变 / 休整期. */
+  finishEventRoster() {
+    if (this.phase !== PHASE.EVENT || this.eventStage !== 'roster') return;
+    this.eventStage = null;
+    this.setDeadline(0);
+    if (this.event) this.event.rosterUntil = 0;
     this.markPublic();
     this.continueAfterEvent();
   }
@@ -573,6 +603,8 @@ export class MatchEvent {
         index: ev ? ev.index : this.eventHistory.length,
         active: this.phase === PHASE.EVENT,
         done: !!(ev && ev.done),
+        stage: this.eventStage || null,
+        roster: this.eventStage === 'roster' ? { until: (ev && ev.rosterUntil) || 0, ms: EVENT_ROSTER_MS } : null,
         deadline: this.phase === PHASE.EVENT ? this.deadline : 0,
         targets: Object.fromEntries(this.order.map((ps) => [ps.playerId, this.eventTargetIds(ps)])),
         available: Object.fromEntries(this.order.map((ps) => [ps.playerId, this.eventAvailableTargets(ps)])),

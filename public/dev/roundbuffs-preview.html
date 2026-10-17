@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- Temporary visual check for the 本回合词条 strip (ui/roundBuffs.js under ui/teamPanel.js). Delete after use. -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Round buffs preview</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/fonts/fonts.css" />
+  <link rel="stylesheet" href="/css/theme.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+  <link rel="stylesheet" href="/css/screens/game.css" />
+  <link rel="stylesheet" href="/css/emotes.css" />
+  <link rel="stylesheet" href="/css/devices.css" />
+  <script type="importmap">
+    { "imports": { "preact": "/vendor/preact.module.js", "preact/hooks": "/vendor/hooks.module.js", "htm": "/vendor/htm.module.js" } }
+  </script>
+  <style>
+    html { font-size: clamp(40px, min(calc(100vw / 19.2), calc(100vh / 10.8)), 240px); }
+    body { overflow: hidden; background: #0a0d0c; }
+    .mockfield { position: absolute; inset: 0; background: radial-gradient(60% 60% at 55% 45%, #16302a, #070a09 75%); }
+  </style>
+</head>
+<body>
+  <div class="mockfield"></div>
+  <div id="app"></div>
+  <script type="module">
+    import { render } from '/vendor/preact.module.js';
+    import { html } from '/js/ui/components.js';
+    import { TeamPanel } from '/js/ui/teamPanel.js';
+
+    const players = [
+      { playerId: 'p1', seat: 0, name: '凯尔希', lp: 12, status: 'ready' },
+      { playerId: 'p2', seat: 1, name: 'AI·华法琳', lp: 10, status: 'acting', isBot: true },
+      { playerId: 'p3', seat: 2, name: 'Doctor·B', lp: 9, status: 'acting' },
+      { playerId: 'p4', seat: 3, name: '灰烬', lp: 11, status: 'ready' },
+    ];
+    const targets = {
+      p1: { self: 'p1', mate: 'p2', oppA: 'p3', oppB: 'p4' },
+      p2: { self: 'p2', mate: 'p1', oppA: 'p3', oppB: 'p4' },
+      p3: { self: 'p3', mate: 'p4', oppA: 'p1', oppB: 'p2' },
+      p4: { self: 'p4', mate: 'p3', oppA: 'p1', oppB: 'p2' },
+    };
+    const pub = {
+      round: 8, phase: 'PREP', players,
+      event: {
+        ally: {
+          round: 8, index: 2, active: false, targets, available: {}, picks: {},
+          history: [
+            { round: 8, index: 2, playerId: 'p2', target: 'mate', targetId: 'p1', card: 1, key: 'whetstone', mag: 1 },
+            { round: 8, index: 2, playerId: 'p3', target: 'oppA', targetId: 'p1', card: 3, key: 'armor_break', mag: 1 },
+            { round: 8, index: 2, playerId: 'p1', target: 'self', targetId: 'p1', card: 4, key: 'blunted', mag: 2 },
+            { round: 8, index: 2, playerId: 'p4', target: 'self', targetId: 'p4', card: 8, key: 'iron_hide', mag: 2 },
+          ],
+        },
+        foe: { round: 8, card: 3, key: 'fangs', elite: { share: 0.15, attr: 'swift', count: 3 } },
+      },
+    };
+    render(html`<${TeamPanel} pub=${pub} myId="p1" watching=${null} bubbles=${new Map()} onWatch=${() => {}} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>

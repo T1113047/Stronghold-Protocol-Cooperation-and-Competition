@@ -24,8 +24,10 @@ const TARGETS = [
 ];
 const TARGET_LABEL = Object.fromEntries(TARGETS.map((x) => [x.key, x.label]));
 
-// Entry names: the server sends `key` (and the numeric id), the msgid is the Chinese name of the entry.
-const ALLY_NAMES = {
+// Entry names: the server sends `key` (and the numeric id), the msgid is the Chinese name of the entry. Shared with
+// ui/roundBuffs.js (the team panel's one-line "this round's entries" strip), so the two views can never show
+// different names — neither may keep its own copy of these tables.
+export const ALLY_NAMES = {
   whetstone: N_('磨刃'), tailwind: N_('追风'), armor_break: N_('破甲'), blunted: N_('钝口'),
   heavy_crossbow: N_('重弩'), rapid_volley: N_('连击'),
   hunter_cloak: N_('猎人披挂'), campfire: N_('营地篝火'), iron_hide: N_('铁衣'), bloodstain: N_('血痕'),
@@ -35,7 +37,7 @@ const ALLY_NAMES = {
   hunter_commission: N_('猎人佣金'), bounty_scent: N_('赏金嗅觉'), nimble: N_('轻捷'),
   empty_handed: N_('空手而归'), market_swap: N_('集市换货'),
 };
-const FOE_NAMES = {
+export const FOE_NAMES = {
   rusted_blade: N_('锈刃'), bone_swap: N_('换骨'), fangs: N_('獠牙'), wound: N_('创口'),
   hard_shell: N_('坚壳'), thick_hide: N_('厚皮'), sluggish: N_('迟缓'), coiled: N_('盘踞'),
   swift: N_('疾行'), sparse: N_('稀疏'), replace: N_('替换'), reinforce: N_('增援'),
@@ -46,6 +48,18 @@ const ALLY_BY_ID = new Map(EVENT_CARDS.map((c) => [c.id, c]));
 const FOE_BY_KEY = new Map(EVENT_FOE_CARDS.map((c) => [c.key, c]));
 const FOE_BY_ID = new Map(EVENT_FOE_CARDS.map((c) => [c.id, c]));
 const ELITE_BY_KEY = new Map(EVENT_FOE_ELITES.map((c) => [c.key, c]));
+
+/** The ally entry of a recorded pick (an `ally.history` row or an `ally.picks` value), or null. */
+export function eventAllyCard(rec) {
+  if (!rec) return null;
+  return ALLY_BY_KEY.get(rec.key) || ALLY_BY_ID.get(rec.card) || null;
+}
+
+/** The monster entry of `m.public.event.foe` (or a `foe.history` row), or null. */
+export function eventFoeCard(foe) {
+  if (!foe) return null;
+  return FOE_BY_KEY.get(foe.key) || FOE_BY_ID.get(foe.card) || null;
+}
 
 /** P1 / P2 … of a player row (the seat number). */
 const pNo = (p) => (p && Number.isInteger(p.seat) ? `P${p.seat + 1}` : '');
@@ -60,7 +74,7 @@ const pct = (ratio, mag = 1) => signed(Number(ratio) * mag * 100);
 const scaled = (base, mag = 1) => num(1 + (Number(base) - 1) * mag);
 
 /** The effect of one ally entry at `mag` (1, or EVENT_SELF_MUL for 自己), built from the constants. */
-function allyEffect(card, mag = 1) {
+export function allyEffect(card, mag = 1) {
   if (!card) return '';
   const out = [];
   if (card.atkPct) out.push(t('攻击力 {v}%', { v: pct(card.atkPct, mag) }));
@@ -88,7 +102,7 @@ function allyEffect(card, mag = 1) {
 }
 
 /** The effect of one monster entry (always applied to the enemies). */
-function foeEffect(card) {
+export function foeEffect(card) {
   if (!card) return '';
   const out = [];
   if (card.atkMul) out.push(t('敌人攻击力 ×{v}', { v: num(card.atkMul) }));
@@ -100,7 +114,7 @@ function foeEffect(card) {
 }
 
 /** The effect of one 强力属性 on the marked enemies. */
-function eliteEffect(key) {
+export function eliteEffect(key) {
   const a = ELITE_BY_KEY.get(key);
   if (!a) return '';
   if (a.atkMul) return t('敌人攻击力 ×{v}', { v: num(a.atkMul) });

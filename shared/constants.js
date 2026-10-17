@@ -71,6 +71,13 @@ export const VERSUS_INFO_SECONDS = 45;
  * deadline / scheduler, never a bare setTimeout), so virtual time (goldens, tests) and real time agree. One line to tune.
  */
 export const CONFRONT_ROSTER_MS = 5000;
+/**
+ * 事件期 词条公示 (roster) presentation hold, ms (user 2026-10-17, addendum): once every alive player has picked (or the
+ * window ran out and the AI seats were filled in), the event's roster — who gave which entry to whom, plus the monster
+ * entry — stays on screen this long before the round continues. The phase stays EVENT; the server owns the clock
+ * (setDeadline → later → scaled, never a bare setTimeout), so virtual time and real time agree. One line to tune.
+ */
+export const EVENT_ROSTER_MS = 5000;
 
 /**
  * The 狩猎期 rhythm shared by BOTH hunt modes — 2V2 ('versus') and 同盟狩猎 (co-op, COOP_HUNT below): the ratio ramp

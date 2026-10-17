@@ -7,7 +7,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch } from './harness.js';
 import {
-  PHASE, ERR, EVENT_TARGETS, EVENT_CARDS, EVENT_SELF_MUL, EVENT_SEQUENCE,
+  PHASE, ERR, EVENT_TARGETS, EVENT_CARDS, EVENT_SELF_MUL, EVENT_SEQUENCE, EVENT_ROSTER_MS,
   EVENT_FOE_CARDS, EVENT_FOE_ELITES,
 } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
@@ -596,6 +596,71 @@ describe('2V2 事件期: the monster channel', () => {
     toEvent(h2, h2.m.eventRounds[0]);
     assert.deepEqual(h2.m.foeEvent.elite, elite);
     assert.deepEqual(h2.m.publicView().event.foe.elite, m.publicView().event.foe.elite);
+  });
+});
+
+describe('2V2 事件期: roster hold', () => {
+  test('all picked → 5 s roster; 4999 ms still EVENT, 5000 ms continues; idempotent; two events do not stack', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 41, fake: true }).start();
+    const m = h.m;
+    assert.equal(h.sched.virtual, true, 'virtual time');
+    const first = m.eventRounds[0];
+    toEvent(h, first);
+    assert.deepEqual(m.handle('p_0', { t: 'g.event.pick', target: 'self' }), { ok: true });
+    assert.ok(h.run(() => m.eventStage === 'roster' || m.phase !== PHASE.EVENT), 'the roster opened');
+    assert.equal(m.phase, PHASE.EVENT);
+    assert.equal(m.eventStage, 'roster');
+    const until = m.deadline;
+    assert.equal(m.event.rosterUntil, until);
+    const pub = m.publicView();
+    assert.equal(pub.event.ally.stage, 'roster');
+    assert.deepEqual(pub.event.ally.roster, { until, ms: EVENT_ROSTER_MS });
+    assert.equal(pub.event.ally.roster.ms, 5000);
+    assert.equal(pub.event.ally.history.length, m.alivePlayers().length, 'every pick is archived');
+    assert.equal(Object.keys(pub.event.ally.picks).length, m.alivePlayers().length);
+    // idempotent: a second call does not replace or stack the timer
+    assert.equal(m.enterEventRoster(), false);
+    assert.equal(m.deadline, until);
+    // 4999 ms: still the event period, no SP_DRAFT / PREP
+    h.sched.advance(4999);
+    assert.equal(m.phase, PHASE.EVENT);
+    assert.equal(m.eventStage, 'roster');
+    // the 5000th ms: the round continues
+    h.sched.advance(1);
+    assert.ok([PHASE.SP_DRAFT, PHASE.PREP, PHASE.COMBAT, PHASE.SETTLE].includes(m.phase), `phase ${m.phase}`);
+    assert.equal(m.eventStage, null);
+
+    // the next event has its own 5 s hold and no leftover timer from the first
+    toEvent(h, m.eventRounds[1]);
+    assert.equal(m.eventStage, null);
+    assert.deepEqual(m.handle('p_0', { t: 'g.event.pick', target: 'mate' }), { ok: true });
+    assert.ok(h.run(() => m.eventStage === 'roster' || m.phase !== PHASE.EVENT));
+    assert.equal(m.phase, PHASE.EVENT);
+    assert.equal(m.eventStage, 'roster');
+    const until2 = m.deadline;
+    assert.ok(until2 > until, 'a new roster clock');
+    h.sched.advance(4999);
+    assert.equal(m.phase, PHASE.EVENT);
+    h.sched.advance(1);
+    assert.notEqual(m.phase, PHASE.EVENT);
+  });
+
+  test('the timeout fill also opens the roster (phase stays EVENT for the hold)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 43, fake: true }).start();
+    const m = h.m;
+    toEvent(h, m.eventRounds[0]);
+    assert.equal(m.event.picks.has('p_0'), false);
+    assert.ok(h.run(() => m.eventStage === 'roster' || m.phase !== PHASE.EVENT), 'the timeout opened the roster');
+    assert.equal(m.phase, PHASE.EVENT);
+    assert.equal(m.eventStage, 'roster');
+    const pub = m.publicView();
+    assert.equal(pub.event.ally.roster.ms, EVENT_ROSTER_MS);
+    assert.equal(pub.event.ally.history.length, m.alivePlayers().length);
+    assert.ok(pub.event.ally.history.some((r) => r.playerId === 'p_0' && r.auto === true), 'the AI fill is public');
+    h.sched.advance(4999);
+    assert.equal(m.phase, PHASE.EVENT);
+    h.sched.advance(1);
+    assert.notEqual(m.phase, PHASE.EVENT);
   });
 });
 

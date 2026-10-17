@@ -102,6 +102,7 @@ export class MatchViews {
             stage: this.phase === PHASE.CONFRONT ? (this.confrontStage || 'target') : null,
             round: this.round,
             ratio: this.confrontRatio(),
+            hunt: this.confrontHunt(),
             budget: this.confrontBudget(),
             targets: this.confrontTargets ? Object.fromEntries(this.confrontTargets) : {},
             groups: this.confrontGroups().map((g) => g.map((r) => ({ key: r.key, name: r.name, value: r.value }))),

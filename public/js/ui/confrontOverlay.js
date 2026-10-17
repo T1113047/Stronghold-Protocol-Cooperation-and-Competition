@@ -61,6 +61,8 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
   const sel = group != null ? groups[group - 1] || [] : [];
   // step 2: the placement cap is this seat's VALUE budget — no count limit, only Σ value ≤ budget
   const budget = Math.max(0, Number(conf.budget) || 0);
+  // the share of the opponent's wave this round's intervention replaces (and spends) — 5→15 %, 50 % on the 追猎 round
+  const pct = Math.round((Number(conf.ratio) || 0) * 100);
   const valOf = (key) => (sel.find((r) => r.key === key) || {}).value || 0;
   const spent = picks.reduce((s, p) => s + valOf(p.enemyKey), 0);
   const remaining = Math.max(0, budget - spent);
@@ -188,9 +190,11 @@ export function ConfrontOverlay({ pub, busy = false, onTarget, onConfirm }) {
                 <span class="spov__bar">|</span><span class="spov__desc">${t('第 {r} 回合 · 你的怪只会出现在这个对手的波次', { r: conf.round })}</span></h2>`}
           <p class="spov__sub">${stage === 'target'
             ? (myTarget ? t('已锁定目标，等待队友与对手') : t('点击一个 ? 头像框锁定你的目标'))
-            : (submitted ? t('你已提交，等待时间走完') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）'))}</p>
+            : (submitted ? t('你已提交，等待其他玩家') : t('选择一组怪物 → 点怪加入（不限数量，只限总价值）'))}</p>
         </div>
         <div class="spov__turn">
+          ${conf.hunt ? html`<span class="spov__turntxt">${t('追猎模式')}</span>` : null}
+          <span class="spov__turntxt t-dim">${t('本轮替换 {pct}%', { pct })}</span>
           ${Number(pub?.deadline) > 0 ? html`<${Countdown} deadline=${pub.deadline} size="sm" />` : null}
           ${stage === 'monster'
             ? (submitted

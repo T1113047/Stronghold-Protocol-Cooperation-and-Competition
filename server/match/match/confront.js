@@ -1,33 +1,41 @@
-// server/match/match/confront.js — Match methods: the 2V2 对抗期 (PHASE.CONFRONT). From the drawn contest round on, after
+// server/match/match/confront.js — Match methods: the 2V2 悬赏期 (PHASE.CONFRONT). From the drawn contest round on, after
 // each side's prep, every ALIVE player intervenes once, against ONE opposing player:
 //
 //   step 1 (targets, VERSUS_CONFRONT.targetSeconds): each player names the opponent they attack. Inside a team it is
 //     first come, first served — whoever submits first picks, and the teammate is given the opponent that is left (A
 //     takes C, B gets D), so the two teams are paired one-to-one and every player both attacks and is attacked. The step
 //     ends once every alive player holds a target (both sides — a side that finished early waits) or its window runs out.
-//   step 2 (monsters, VERSUS_CONFRONT.monsterSeconds): each player fills their own VALUE BUDGET with monsters of ONE of
-//     the 6 groups, each on a gate (上路 'upper' / 下路 'lower') and all inserted at one place in the wave (position:
-//     front / mid / back = 25 / 50 / 75 % of the round's monster count). Submitting early is fine; the phase NEVER ends
-//     before the window is up (the sides stay in step).
+//   step 2 (monsters): each player fills their own VALUE BUDGET with monsters of ONE of the 6 groups, each on a gate
+//     (上路 'upper' / 下路 'lower') and all inserted at one place in the wave (position: front / mid / back = 25 / 50 /
+//     75 % of the round's monster count). The step has no fixed length of its own: its window is THIS round's prep time
+//     (untimed when the prep is) and it is a CAP only — submitting ends it as soon as EVERY alive player has
+//     (maybeFinishConfront), so the sides never wait on a player who is already done.
 //
-// The budget (confrontBudget) = the round's own wave value × the 10→50 % share × VERSUS_CONFRONT.budgetMul, per PLAYER
+// The budget (confrontBudget) = the round's own wave value × the 5→15 % share (50 % on the R13 追猎 round) ×
+// VERSUS_CONFRONT.budgetMul, per PLAYER
 // (each counts on its own) — both teams face the same (synced) wave, so both get the same number, and the 6 groups hold
 // the same total value (equalValueGroups), so the choice is never about raw strength. A monster's cost and the wave's
-// value are one unit: the formula carries the round's hp/atk scaling (confrontValue).
+// value are one unit: the formula carries the round's hp/atk scaling (confrontValue) AND the monster's graded 特性 score
+// (confrontTraits.js, 30 % of the whole table — confrontValueOf / confrontTraitStep).
 //
 // Applying: the placed monsters of an intervention land on ITS TARGET's wave only (confrontFor), replacing originals
 // worth `share × the wave value` picked at random (within 2 % of that value), inserted at the chosen position. The
 // opponent never sees who is aiming at whom (m.public isolation) — the panel shows the opponents as '?'.
 // Installed on Match.prototype like the other method containers.
 import { PHASE, ERR, VERSUS_CONFRONT } from '../../../shared/constants.js';
+import { confrontTraitGrade } from './confrontTraits.js';
 import { gateOf, roundMods } from '../waves.js';
 import { OK, fail } from './common.js';
 
 /**
- * value(enemy, scale) — the 对抗期 scoring formula: HP-primary, attack ×2, defence ×2, resistance ×15, the leader
+ * value(enemy, scale) — the 对抗期 STAT scoring formula: HP-primary, attack ×2, defence ×2, resistance ×15, the leader
  * (lpr > 1) HP bonus and 60 per block. FLYING enemies count as 2 blocks (the user's rule): a ground blocker cannot stop
  * them, so they are worth an extra block. `scale` is the round's hp/atk multiplier (gd.enemyScale), which makes a card's
  * value and the round's wave value comparable.
+ *
+ * This is the STAT half only. The 特性 (trait) half is an absolute addend added by Match.confrontValueOf from the graded
+ * table (confrontTraits.js) — so a pure stat stick keeps exactly this number, and the graded part takes
+ * VERSUS_CONFRONT.traitShare (30 %) of the whole value table.
  * @param {any} e data/enemies.json record
  * @param {{ hpMul?: number, atkMul?: number }|null} scale
  */
@@ -75,14 +83,62 @@ export class MatchConfront {
       && this.round >= this.contestStartRound && this.round < this.gd.bossRound;
   }
 
-  /** The share of the opponent's original wave a team may replace this round (10% at R_contest, +10 %/round, cap 50 %). */
+  /**
+   * The share of the opponent's original wave a team may replace (and the share of its value it may spend) this round:
+   * 5 % at R_contest, +2 %/round, capped at 15 % (VERSUS_CONFRONT.ratioBase / Step / Max). R13 is the 追猎 (hunt) round
+   * — a flat 50 %, the one round the intervention can gut a wave.
+   */
   confrontRatio() {
+    if (this.round === VERSUS_CONFRONT.huntRound) return VERSUS_CONFRONT.huntRatio;
     const r = this.round - this.contestStartRound + 1;
-    return Math.min(0.5, Math.max(0.1, 0.1 * r));
+    return Math.min(VERSUS_CONFRONT.ratioMax, VERSUS_CONFRONT.ratioBase + VERSUS_CONFRONT.ratioStep * (r - 1));
   }
+
+  /** Whether THIS round is the 追猎 (hunt) round — the one with the flat, much larger share (R13). */
+  confrontHunt() { return this.round === VERSUS_CONFRONT.huntRound; }
 
   /** The round's hp/atk scaling: card costs and the wave value are both in its unit. */
   confrontScale() { return this.gd.enemyScale(this.round); }
+
+  /**
+   * The absolute 特性 (trait) score of ONE grade step, in this round's currency: the graded part is
+   * `step × (grade − 1)`, and `step` is calibrated so the graded part is exactly `VERSUS_CONFRONT.traitShare`
+   * (30 %) of the whole value table — Σ(step·(g−1)) = share/(1−share) · Σ(stat value) over the confront pool
+   * (confrontTraits.js holds the grades). Recomputed when the round's scaling moves the stat values.
+   */
+  confrontTraitStep() {
+    const scale = this.confrontScale();
+    const sig = `${this.round}|${scale.hpMul}|${scale.atkMul}`;
+    if (this._traitStep != null && this._traitStepSig === sig) return this._traitStep;
+    const en = (this.data && this.data.enemies) || {};
+    const scores = VERSUS_CONFRONT.traitStepScores;
+    const share = Math.max(0, Math.min(0.9, Number(VERSUS_CONFRONT.traitShare) || 0));
+    let stat = 0;
+    let steps = 0;
+    for (const k of confrontPool(this.data && this.data.factions)) {
+      if (!en[k]) continue;
+      stat += confrontValue(en[k], scale);
+      steps += scores[confrontTraitGrade(k) - 1] || 0;
+    }
+    this._traitStep = steps > 0 ? Math.round((share / (1 - share)) * stat / steps) : 0;
+    this._traitStepSig = sig;
+    return this._traitStep;
+  }
+
+  /**
+   * The value of ONE enemy in this match's currency: its stats at `scale` (default: this round's) plus its graded 特性
+   * score. Every value the 悬赏期 uses — the group rows, the wave total, a submission's cost and a kill's bounty — goes
+   * through here, so the traits are priced exactly once.
+   * @param {string} enemyKey
+   * @param {{ hpMul?: number, atkMul?: number }|null} scale
+   */
+  confrontValueOf(enemyKey, scale = null) {
+    const en = (this.data && this.data.enemies) || {};
+    const e = en[enemyKey];
+    if (!e) return 0;
+    const step = VERSUS_CONFRONT.traitStepScores[confrontTraitGrade(enemyKey) - 1] || 0;
+    return confrontValue(e, scale || this.confrontScale()) + this.confrontTraitStep() * step;
+  }
 
   /**
    * The 6 groups offered in the 对抗期: the pool (confrontPool) valued with THIS round's scaling and split into equal
@@ -96,7 +152,7 @@ export class MatchConfront {
     const en = (this.data && this.data.enemies) || {};
     const rows = confrontPool(this.data && this.data.factions)
       .filter((k) => en[k])
-      .map((k) => ({ key: k, name: en[k].name || k, value: confrontValue(en[k], scale) }));
+      .map((k) => ({ key: k, name: en[k].name || k, value: this.confrontValueOf(k, scale) }));
     this._confrontGroups = equalValueGroups(rows, VERSUS_CONFRONT.groups);
     this._confrontSig = sig;
     return this._confrontGroups;
@@ -108,11 +164,10 @@ export class MatchConfront {
   /** The value of the round's original wave, at this round's scaling. */
   confrontWaveValue() {
     const scale = this.confrontScale();
-    const en = (this.data && this.data.enemies) || {};
     let v = 0;
     for (const s of this._confrontWaveSpawns()) {
       const cnt = Math.max(1, Math.floor(Number(s.count) || 1));
-      v += confrontValue(en[s.enemyKey], s.mods || scale) * cnt;
+      v += this.confrontValueOf(s.enemyKey, s.mods || scale) * cnt;
     }
     return v;
   }
@@ -130,9 +185,8 @@ export class MatchConfront {
   /** Σ value of a set of picks, at this round's scaling. */
   confrontSpent(picks) {
     const scale = this.confrontScale();
-    const en = (this.data && this.data.enemies) || {};
     let v = 0;
-    for (const p of picks || []) v += confrontValue(en[p && p.enemyKey], scale);
+    for (const p of picks || []) v += this.confrontValueOf(p && p.enemyKey, scale);
     return v;
   }
 
@@ -143,12 +197,10 @@ export class MatchConfront {
    * @param {string} enemyKey
    */
   confrontBounty(enemyKey) {
-    const en = (this.data && this.data.enemies) || {};
-    const scale = this.confrontScale();
     const wave = Math.max(1, this.confrontWaveValue());
     const income = Number(this.gd.income(this.round)) || 0;
     const share = Number(VERSUS_CONFRONT.killIncomeShare) > 0 ? Number(VERSUS_CONFRONT.killIncomeShare) : 1;
-    return Math.max(1, Math.round((confrontValue(en[enemyKey], scale) / wave) * income * share));
+    return Math.max(1, Math.round((this.confrontValueOf(enemyKey) / wave) * income * share));
   }
 
   /**
@@ -230,18 +282,26 @@ export class MatchConfront {
     if (alive.length && alive.every((p) => this.confrontTargets.has(p.playerId))) this.finishConfrontTargets();
   }
 
-  /** Close step 1 (anyone the window caught out gets what is left) and open the FIXED step 2 window. */
+  /** Close step 1 (anyone the window caught out gets what is left) and open step 2, whose window is this round's prep. */
   finishConfrontTargets() {
     if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'target') return;
     for (const ps of this.alivePlayers()) this.assignConfrontTarget(ps, null, true);
     this.setDeadline(0);
     this.confrontStage = 'monster';
-    // step 2 never ends early: submitting only marks the player done, the sides stay in step until the window is up.
-    // The window matches THIS round's prep (dynamic) — the same time the players had to prepare — and is always set
-    // (it IS the step's only way to end, even in a single-human match).
-    this.setDeadline(this.gd.prepTime(this.round) ?? VERSUS_CONFRONT.monsterSeconds, () => this.finishConfront());
+    // Step 2 has no fixed length of its own: its window is THIS round's prep — the same time the players had to prepare —
+    // and it is only a CAP, since maybeFinishConfront ends it early as soon as every alive player has submitted. Untimed
+    // when the prep is (a single human — soloUntimed), and then the all-submitted end is the only way it closes.
+    this.setDeadline(this.soloUntimed ? null : this.gd.prepTime(this.round), () => this.finishConfront());
     for (const ps of this.alivePlayers()) if (ps.botControlled) this.botConfront(ps);
     this.markPublic();
+    this.maybeFinishConfront();
+  }
+
+  /** Step 2 ends as soon as EVERY alive player holds a submission (its window is only the cap). */
+  maybeFinishConfront() {
+    if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster') return;
+    const alive = this.alivePlayers();
+    if (alive.length && alive.every((p) => this.confrontSubs.has(p.playerId))) this.finishConfront();
   }
 
   /** `g.confront { group, position, picks }` in step 2: the monsters a player throws at their target. */
@@ -253,6 +313,7 @@ export class MatchConfront {
     if (!member) return fail(ERR.BAD_TARGET, 'illegal 对抗期 pick');
     this.confrontSubs.set(ps.playerId, member);
     this.markPublic();
+    this.maybeFinishConfront();
     return OK;
   }
 
@@ -276,20 +337,32 @@ export class MatchConfront {
   }
 
   /** An AI player's submission, and the one a player who never submits gets at the window's end: fill the budget from
-   *  its group, most expensive fitting monster first (the client's 自动选择 button does exactly this). */
+   *  its group, most expensive fitting monster first (the client's 自动选择 button walks the group the player chose — the
+   *  AI walks the LAST one, the strongest cards, and falls back to the first group that can actually afford something,
+   *  since a tight budget can leave the last group with nothing at all and the AI would place nothing). */
   botConfront(ps) {
     if (this.phase !== PHASE.CONFRONT || this.confrontStage !== 'monster' || this.confrontSubs.has(ps.playerId)) return;
     const groups = this.confrontGroups();
     const budget = this.confrontBudget();
-    const g = (groups[groups.length - 1] || []).slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)));
-    const picks = [];
-    let left = budget;
-    for (const r of g) {
-      if (r.value > left) continue;
-      left -= r.value;
-      picks.push({ enemyKey: r.key, gate: picks.length % 2 ? 'upper' : 'lower' });
+    const plan = (recs) => {
+      const picks = [];
+      let left = budget;
+      for (const r of recs.slice().sort((a, b) => b.value - a.value || String(a.key).localeCompare(String(b.key)))) {
+        if (r.value > left) continue;
+        left -= r.value;
+        picks.push({ enemyKey: r.key, gate: picks.length % 2 ? 'upper' : 'lower' });
+      }
+      return picks;
+    };
+    let gi = groups.length - 1;
+    let picks = plan(groups[gi] || []);
+    if (!picks.length) {
+      for (let i = 0; i < groups.length - 1; i++) {
+        const p = plan(groups[i]);
+        if (p.length) { gi = i; picks = p; break; }
+      }
     }
-    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: groups.length, position: 'mid', picks, ratio: this.confrontRatio(), budget, seat: ps.seat });
+    this.confrontSubs.set(ps.playerId, { target: this.confrontTargets.get(ps.playerId) ?? null, group: gi + 1, position: 'mid', picks, ratio: this.confrontRatio(), budget, seat: ps.seat });
     this.markPublic();
   }
 

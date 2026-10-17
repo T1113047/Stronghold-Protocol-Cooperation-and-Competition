@@ -65,16 +65,34 @@ export const VERSUS_LOW_LP = 21;
  */
 export const VERSUS_INFO_SECONDS = 45;
 /**
- * 对抗期 tunables (2V2): the target-selection window (s; ends early once every alive player holds a target), the
- * monster window (s; FIXED — submitting early does not end it), the number of monster groups offered, the insertion
- * positions (share of the round's monster count: 25 / 50 / 75 %) and the budget multiplier — a player may place
- * monsters whose combined VALUE is at most `round's wave value × ratio × budgetMul` (confront.js confrontBudget),
- * PER PLAYER. There is no count cap: the budget (and the group's own size) bounds the placement.
+ * 悬赏期 tunables (2V2): the target-selection window (s; ends early once every alive player holds a target), the
+ * number of monster groups offered, the insertion positions (share of the round's monster count: 25 / 50 / 75 %) and the
+ * budget multiplier — a player may place monsters whose combined VALUE is at most
+ * `round's wave value × ratio × budgetMul` (confront.js confrontBudget), PER PLAYER. There is no count cap: the budget
+ * (and the group's own size) bounds the placement. Step 2 (定制) has no fixed length of its own: its window is THIS
+ * round's prep time (`gd.prepTime`, untimed when the prep is) and ends as soon as every alive player has submitted.
  */
 export const VERSUS_CONFRONT = Object.freeze({
   targetSeconds: 10,
-  monsterSeconds: 30,
   groups: 6,
+  /**
+   * The intervention's size — the share of the opponent's original wave a team may replace, and the same share of the
+   * wave value it may spend (budget = wave value × ratio × budgetMul, PER PLAYER). 5 % at the contest round, +2 %/round,
+   * capped at 15 %; the R13 追猎 round is the exception — a flat 50 %, the one round an intervention can gut a wave.
+   */
+  ratioBase: 0.05,
+  ratioStep: 0.02,
+  ratioMax: 0.15,
+  huntRound: 13,
+  huntRatio: 0.5,
+  /**
+   * The 特性 (trait) pricing of the value table: `traitStepScores[grade − 1]` is how many steps a monster's 特性 score
+   * is worth (grade 1 = ≈ a stat stick → 0, grade 3 = a game-changing mechanic → 2), and `traitShare` is the share of the
+   * WHOLE value table those steps must take up — confront.js confrontTraitStep turns it into the absolute per-step value
+   * (`step = share/(1−share) × Σ stat value ÷ Σ steps` over the confront pool). The grades live in confrontTraits.js.
+   */
+  traitShare: 0.3,
+  traitStepScores: Object.freeze([0, 1, 2]),
   positions: Object.freeze(['front', 'mid', 'back']),
   budgetMul: 2,
   /**

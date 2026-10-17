@@ -16,6 +16,21 @@ const vsSeats = () => ([
   { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
 ]);
 
+/**
+ * The cheapest monster that fits `budget`, across all 6 groups, with its 1-based group index (null when nothing fits).
+ * The groups hold the same TOTAL value but not the same cheapest card, and the budget moves with the round's wave
+ * value — so a test that must actually place something has to look everywhere (on a small wave the last group can hold
+ * nothing affordable).
+ * @returns {{ rec: { key: string, value: number }, group: number }|null}
+ */
+const affordablePick = (m, budget) => {
+  let best = null;
+  m.confrontGroups().forEach((g, i) => {
+    for (const r of g) if (r.value <= budget && (!best || r.value < best.rec.value)) best = { rec: r, group: i + 1 };
+  });
+  return best;
+};
+
 describe('versus (2V2) match: team model', () => {
   test('a versus match exposes its teams and scopes allies to one team', () => {
     const h = makeMatch({ mode: 'versus', difficulty: 'NORMAL', seats: vsSeats(), seed: 7, fake: true }).start();
@@ -387,18 +402,49 @@ describe('versus (2V2) match: team model', () => {
   });
 
   test('versus: a player who never submits gets the auto-selection when the window ends', () => {
-    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 141, fake: true }).start();
+    // TWO humans: with a single one the step (like the prep) is untimed — soloUntimed — and only a submission ends it
+    const seats = [
+      { seat: 0, playerId: 'p_0', name: 'A0', isBot: false, connected: true, team: 0 },
+      { seat: 1, playerId: 'p_1', name: 'A1', isBot: false, connected: true, team: 0 },
+      { seat: 2, playerId: 'ai_2', name: 'B0', isBot: true, connected: true, team: 1 },
+      { seat: 3, playerId: 'ai_3', name: 'B1', isBot: true, connected: true, team: 1 },
+    ];
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats, seed: 141, fake: true }).start();
     const m = h.m;
     assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached step 1');
     const budget = m.confrontBudget();
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
     assert.equal(m.confrontStage, 'monster', 'step 2 opened');
+    // the cap is THIS round's prep — the same time the players had to prepare — not a fixed 30 s
+    assert.equal(m.deadline - m.sched.now(), m.scaled(m.gd.prepTime(m.round) * 1000), "the window is the round's prep time");
     // nobody submits: let the window run out
     assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'the window closed');
     const sub = m.confront && m.confront.get('p_0');
     assert.ok(sub && sub.picks.length > 0, 'the silent player got an automatic set');
     assert.ok(m.confrontSpent(sub.picks) <= budget, 'it stays within the budget');
     assert.equal(sub.position, 'mid', 'the same default the 自动选择 button uses');
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: with a single human the 定制 window is untimed (it matches the untimed prep)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 192, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
+    assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
+    assert.equal(m.confrontStage, 'monster', 'step 2 opened');
+    // one human + three bots: no countdown at all (the prep is untimed too) — the all-submitted end closes it
+    assert.equal(m.deadline, 0, 'untimed, never a fixed window');
+    const budget = m.confrontBudget();
+    const picks = [];
+    let left = budget;
+    for (const r of m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+      if (r.value > left) continue;
+      left -= r.value;
+      picks.push({ enemyKey: r.key, gate: 'lower' });
+      if (picks.length >= 1) break;
+    }
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 6, position: 'mid', picks }).ok, true);
+    assert.equal(m.phase, PHASE.COMBAT, 'the submission closes the step at once');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
@@ -430,9 +476,12 @@ describe('versus (2V2) match: team model', () => {
     const m = h.m;
     assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 对抗期');
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
-    const g = m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const budget = m.confrontBudget();
+    const pick = affordablePick(m, budget);
+    assert.ok(pick, 'at least one monster fits the contest-round budget');
+    const g = m.confrontGroups()[pick.group - 1].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
     const picks = [];
-    let left = m.confrontBudget();
+    let left = budget;
     for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 3) break; }
     assert.ok(picks.length > 0);
     // the bounty tracks the value table and the round's income: at least 1 gold, and the whole placement stays near it
@@ -440,7 +489,7 @@ describe('versus (2V2) match: team model', () => {
     const each = picks.map((p) => m.confrontBounty(p.enemyKey));
     assert.ok(each.every((b) => b >= 1), `every placed monster pays at least 1: ${each.join(',')}`);
     assert.ok(each.reduce((s, n) => s + n, 0) <= 2 * income + picks.length, `the bounty stays near the round's income: ${each.join('+')} vs ${income}`);
-    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 6, position: 'mid', picks }).ok, true);
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: pick.group, position: 'mid', picks }).ok, true);
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 
@@ -449,14 +498,18 @@ describe('versus (2V2) match: team model', () => {
     const m = h.m;
     assert.ok(h.drive(() => m.phase === PHASE.CONFRONT && m.confrontStage === 'target', { maxSteps: 3e6 }), 'reached the 悬赏期');
     assert.equal(m.submitConfrontTarget(m.players.get('p_0'), { targetPlayerId: 'ai_2' }).ok, true);
-    const g = m.confrontGroups()[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
+    const budget = m.confrontBudget();
+    const pick = affordablePick(m, budget);
+    assert.ok(pick, "at least one monster fits the round's budget");
+    const g = m.confrontGroups()[pick.group - 1].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key));
     const picks = [];
-    let left = m.confrontBudget();
+    let left = budget;
     for (const x of g) { if (x.value > left) continue; left -= x.value; picks.push({ enemyKey: x.key, gate: 'lower' }); if (picks.length >= 2) break; }
-    assert.equal(m.submitConfront(m.players.get('p_0'), { group: 6, position: 'mid', picks }).ok, true);
-    // while the phase runs the opponent's board stays hidden
+    // while the phase runs the opponent's board stays hidden (checked before the last submission closes it)
     const during = m._teamPublicView(m.publicView(), 0).confront;
     assert.ok(!during.subs['ai_2'], 'the opponent is hidden during the 悬赏期');
+    assert.equal(m.submitConfront(m.players.get('p_0'), { group: pick.group, position: 'mid', picks }).ok, true);
+    assert.equal(m.phase, PHASE.COMBAT, 'everyone submitted → step 2 ends at once');
     // the applied wave: placed monsters are free (no LP, no 完美作战 break) and carry a kill bounty
     const sub = m.confrontSubs.get('p_0');
     const out = m.applyConfront([{ time: 0, enemyKey: 'enemy_1005_yokai', count: 1, routeIndex: 0, interval: 0 }], sub, m.players.get('ai_2'));
@@ -544,12 +597,14 @@ describe('versus (2V2) match: team model', () => {
     // step 2: the cap is the round's per-player VALUE BUDGET (not a count): the whole group does not fit, a few monsters do
     const budget = m.confrontBudget();
     assert.ok(budget > 0, 'a positive budget');
-    const whole = groups[5].map((x) => ({ enemyKey: x.key, gate: 'lower' }));
+    const pick = affordablePick(m, budget);
+    assert.ok(pick, "at least one monster fits the round's budget");
+    const whole = groups[pick.group - 1].map((x) => ({ enemyKey: x.key, gate: 'lower' }));
     assert.ok(m.confrontSpent(whole) > budget, 'the whole group exceeds the contest round budget');
-    assert.ok(m.submitConfront(me, { group: 6, position: 'mid', picks: whole }).error, 'an over-budget submission is refused');
+    assert.ok(m.submitConfront(me, { group: pick.group, position: 'mid', picks: whole }).error, 'an over-budget submission is refused');
     const picks = [];
     let left = budget;
-    for (const r of groups[5].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
+    for (const r of groups[pick.group - 1].slice().sort((a, b) => b.value - a.value || a.key.localeCompare(b.key))) {
       if (r.value > left) continue;
       left -= r.value;
       picks.push({ enemyKey: r.key, gate: 'lower' });
@@ -557,19 +612,35 @@ describe('versus (2V2) match: team model', () => {
     }
     assert.ok(picks.length > 0, 'at least one monster fits the budget');
     assert.ok(m.confrontSpent(picks) <= budget, 'the picks stay within the budget');
-    const r = m.submitConfront(me, { group: 6, position: 'mid', picks });
+    const r = m.submitConfront(me, { group: pick.group, position: 'mid', picks });
     assert.equal(r && r.ok, true, JSON.stringify(r));
     // the placed monsters carry the SENDER's seat for the client's marker (display only)
     assert.equal(m.confrontSubs.get('p_0').seat, me.seat, 'the submission remembers who sent it');
-    // the window is FIXED: submitting early does not end step 2
-    assert.equal(m.phase, PHASE.CONFRONT, 'the sides stay in step until step 2 runs out');
-    assert.ok(h.drive(() => m.phase === PHASE.COMBAT, { maxSteps: 3e6 }), 'combat starts once the window is up');
+    // the three bots submitted when step 2 opened, so the last submission ends the step at once (no waiting out a window)
+    assert.equal(m.phase, PHASE.COMBAT, 'everyone submitted → combat starts at once');
     // an intervention lands on ITS TARGET's wave only
     const hit = m.confrontFor(m.players.get(opp[0]));
     assert.ok(Array.isArray(hit) && hit.length === 1 && hit[0].picks.length === picks.length, "team 0's set lands on its own target");
     assert.ok(hit[0].picks.every((p) => p.enemyKey && (p.gate === 'upper' || p.gate === 'lower')), 'every placed monster carries a gate');
     const other = m.confrontFor(m.players.get(opp[1]));
     assert.ok(Array.isArray(other) && other.every((s) => s.target === opp[1]), "the other target only takes its own attacker's set");
+    assert.deepEqual(h.logs.error, [], 'no engine errors');
+  });
+
+  test('versus: the intervention share is 5 % at R_contest, +2 %/round, 15 % cap, 50 % on the 追猎 round (R13)', () => {
+    const h = makeMatch({ mode: 'versus', difficulty: 'FUNNY', seats: vsSeats(), seed: 81, fake: true }).start();
+    const m = h.m;
+    assert.ok(h.drive(() => m.phase === PHASE.CONFRONT, { maxSteps: 3e6 }), 'reached the 悬赏期');
+    const start = m.contestStartRound;
+    const ratioAt = (round) => { const keep = m.round; m.round = round; const v = m.confrontRatio(); m.round = keep; return v; };
+    assert.equal(ratioAt(start), 0.05, 'the contest round replaces 5 %');
+    assert.ok(Math.abs(ratioAt(start + 1) - 0.07) < 1e-9, '+2 % the round after');
+    assert.ok(Math.abs(ratioAt(start + 2) - 0.09) < 1e-9, '+2 % again');
+    assert.ok(Math.abs(ratioAt(start + 10) - 0.15) < 1e-9, 'capped at 15 %');
+    assert.equal(ratioAt(13), 0.5, 'R13 is the 追猎 round — a flat 50 %');
+    // the share IS the budget's factor: budget = the wave value × the share × budgetMul (2), per player
+    assert.equal(m.confrontBudget(), Math.round(m.confrontWaveValue() * m.confrontRatio() * 2));
+    assert.equal(m.confrontHunt(), m.round === 13, 'the hunt flag follows the round');
     assert.deepEqual(h.logs.error, [], 'no engine errors');
   });
 

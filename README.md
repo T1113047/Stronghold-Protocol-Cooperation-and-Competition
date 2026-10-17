@@ -31,9 +31,9 @@ English summary: [below](#english).
 |---|---|
 | ⭐ 原仓库（**Star 请点这里**） | https://github.com/sganggs/Stronghold-Protocol |
 | 👤 原作者 | https://github.com/sganggs |
-| 📦 原版整合包 / Releases | https://github.com/sganggs/Stronghold-Protocol/releases |
-| 📖 原版玩法指南 | https://github.com/sganggs/Stronghold-Protocol/blob/master/docs/PLAYING.md |
-| 🐞 上游问题反馈 | https://github.com/sganggs/Stronghold-Protocol/issues |
+| 📦 原版整合包 / Releases | https://github.com/sganggs/Hunt-Simulation/releases |
+| 📖 原版玩法指南 | https://github.com/sganggs/Hunt-Simulation/blob/master/docs/PLAYING.md |
+| 🐞 上游问题反馈 | https://github.com/sganggs/Hunt-Simulation/issues |
 
 > 只想体验原版的话，请直接使用上面的原仓库；本衍生版仅在你需要「狩猎」玩法时使用。本衍生版源码仓库：<https://github.com/T1113047/Stronghold-Protocol-Hunt-Simulation>。
 
@@ -220,7 +220,7 @@ English summary: [below](#english).
 [Releases](../../releases/latest) 里有两种包，按自己的网络情况选一种：
 
 - **完整包**：附带全部美术 / 音频素材，体积大（约 560 MB，解压后约 790 MB），解压就能玩，不需要再下载任何东西。
-- **精简包** `Stronghold-Protocol-v0.0.1-lite.zip`（约 23 MB）：不含素材，第一次启动时自动从公开镜像下载约 550 MB，可中断，再次启动会续传。
+- **精简包** `Hunt-Simulation-v0.0.1-lite.zip`（约 23 MB）：不含素材，第一次启动时自动从公开镜像下载约 550 MB，可中断，再次启动会续传。
 
 版本 `V0.0.1（0.2.6）`；解压后按 `scripts/start-windows.bat`（Windows）或 `./scripts/start.sh`（macOS / Linux）启动。
 
